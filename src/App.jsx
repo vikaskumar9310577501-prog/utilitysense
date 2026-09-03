@@ -4591,21 +4591,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return (
                     <>
                     <div
-                        className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-cover bg-center"
+                        className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-slate-100"
                         style={{
-                            backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.45), rgba(15, 23, 42, 0.7)), url('/login-bg.jpg')`,
+                            backgroundImage: `radial-gradient(circle at center, rgba(248, 250, 252, 0.45) 0%, rgba(226, 232, 240, 0.75) 100%), url('/login-bg.png')`,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
+                            backgroundRepeat: 'no-repeat',
                             display: 'flex',
                             justifyContent: 'center',
                             alignItems: 'center'
                         }}
                     >
-                        {/* Subtle ambient blur overlay */}
-                        <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px] pointer-events-none" />
+                        {/* Soft backdrop blur */}
+                        <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] pointer-events-none" />
 
                         <div
-                            className="w-full max-w-md bg-white rounded-3xl p-8 border border-slate-200/80 shadow-[0_25px_60px_rgba(0,0,0,0.35)] z-10"
+                            className="w-full max-w-md bg-white/95 backdrop-blur-md rounded-3xl p-8 border border-slate-200/90 shadow-[0_25px_60px_rgba(0,0,0,0.18)] z-10"
                             style={{ position: 'relative' }}
                         >
                             <div className="flex flex-col items-center text-center mb-6">
@@ -5493,23 +5494,24 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         {/* 2. DAILY DATA ENTRY GRID COMPONENT */}
                         {activeTab === "entry" && (
                             <div className="space-y-6 pt-4">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
-                                    <div>
-                                        <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-1.5 uppercase">
+                                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b pb-4">
+                                    <div className="shrink-0">
+                                        <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-1.5 uppercase whitespace-nowrap">
                                             <span className="material-symbols-outlined text-[#0284c7]">edit_document</span>
                                             <span>Daily Operations Logs</span>
                                         </h2>
-                                        <p className="text-xs text-slate-400 mt-0.5">Read, insert, update and manage operational transaction metrics</p>
+                                        <p className="text-xs text-slate-400 mt-0.5 whitespace-nowrap">Read, insert, update and manage operational transaction metrics</p>
                                     </div>
 
-                                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                                    {/* All controls in ONE single horizontal line */}
+                                    <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto pb-0.5 max-w-full">
                                         <select
                                             value={entryLocationFilter}
                                             onChange={(e) => {
                                                 setEntryLocationFilter(e.target.value);
                                                 setEntryPlantFilter("all");
                                             }}
-                                            className="h-9 rounded-xl border border-slate-200 px-3 text-xs bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold min-w-[130px]"
+                                            className="h-9 rounded-xl border border-slate-200 px-2.5 text-xs bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold shrink-0"
                                             title="Filter by location"
                                         >
                                             <option value="all">All Locations</option>
@@ -5521,7 +5523,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         <select
                                             value={entryPlantFilter}
                                             onChange={(e) => setEntryPlantFilter(e.target.value)}
-                                            className="h-9 rounded-xl border border-slate-200 px-3 text-xs bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold min-w-[140px]"
+                                            className="h-9 rounded-xl border border-slate-200 px-2.5 text-xs bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold shrink-0"
                                             title="Filter by plant"
                                         >
                                             <option value="all">All Plants</option>
@@ -5532,32 +5534,32 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             ))}
                                         </select>
 
-                                        <div className="relative">
+                                        <div className="relative shrink-0">
                                             <input
                                                 type="text"
                                                 placeholder="Search date, plant, operator..."
                                                 value={entrySearch}
                                                 onChange={(e) => setEntrySearch(e.target.value)}
-                                                className="w-44 sm:w-52 h-9 rounded-xl border border-slate-200 pl-9 pr-3 text-xs bg-slate-50 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                                className="w-36 sm:w-44 h-9 rounded-xl border border-slate-200 pl-8 pr-2.5 text-xs bg-slate-50 focus:outline-none focus:ring-1 focus:ring-sky-500 font-medium"
                                             />
-                                            <span className="material-symbols-outlined absolute left-3 top-2.5 text-[16px] text-slate-400">search</span>
+                                            <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-[15px] text-slate-400">search</span>
                                         </div>
 
                                         {currentUser.role === "IT_ADMIN" && (
                                             !isDailyDeleteMode ? (
                                                 <button
                                                     onClick={() => setIsDailyDeleteMode(true)}
-                                                    className="flex items-center gap-1 px-3.5 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                                                    className="flex items-center gap-1 h-9 px-2.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
                                                     title="Click to enable selection mode for deleting entries"
                                                 >
                                                     <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
                                                     <span>Delete All</span>
                                                 </button>
                                             ) : (
-                                                <div className="flex items-center gap-1.5">
+                                                <div className="flex items-center gap-1 shrink-0">
                                                     <button
                                                         onClick={handleBulkDelete}
-                                                        className="flex items-center gap-1 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer"
+                                                        className="flex items-center gap-1 h-9 px-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer whitespace-nowrap"
                                                         title={selectedRowIds.size > 0 ? `Delete ${selectedRowIds.size} selected entries` : "Delete all database entries"}
                                                     >
                                                         <span className="material-symbols-outlined text-[16px]">{selectedRowIds.size > 0 ? 'delete' : 'delete_forever'}</span>
@@ -5565,7 +5567,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                     </button>
                                                     <button
                                                         onClick={() => { setIsDailyDeleteMode(false); setSelectedRowIds(new Set()); }}
-                                                        className="flex items-center gap-1 px-3 py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                                                        className="flex items-center gap-1 h-9 px-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer whitespace-nowrap"
                                                         title="Cancel selection mode"
                                                     >
                                                         <span>Cancel</span>
@@ -5577,7 +5579,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         {currentUser.role === "IT_ADMIN" && (
                                             <button
                                                 onClick={openMassUploadModal}
-                                                className="flex items-center gap-1.5 h-9 px-3.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer whitespace-nowrap"
+                                                className="flex items-center gap-1.5 h-9 px-3 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
                                                 title="Smart Mass Excel Importer / Bulk Data Uploader (IT Admin Only)"
                                             >
                                                 <span className="material-symbols-outlined text-[17px] text-sky-600">upload_file</span>
@@ -5587,7 +5589,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                         <button
                                             onClick={() => openDailyForm()}
-                                            className="flex items-center gap-1 h-9 px-4 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer whitespace-nowrap"
+                                            className="flex items-center gap-1 h-9 px-3.5 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer shrink-0 whitespace-nowrap"
                                         >
                                             <span className="material-symbols-outlined text-[16px]">add</span>
                                             <span>Daily Entry</span>
