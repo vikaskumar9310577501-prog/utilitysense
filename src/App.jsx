@@ -1231,10 +1231,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         setFilters(getDefaultDateFilters());
                     }
 
-                    // Load configs
+                    // Load configs safely with fallback
                     const loadConfig = async (table, setter) => {
-                        const { data, error } = await supabase.from(table).select('*');
-                        if (!error && data) setter(data);
+                        try {
+                            const { data, error } = await supabase.from(table).select('*');
+                            if (!error && data) {
+                                setter(data);
+                            }
+                        } catch (err) {
+                            console.info(`Table '${table}' will be initialized once created in Supabase.`);
+                        }
                     };
 
                     await Promise.all([
