@@ -673,7 +673,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const logoRef = useRef(null);
             const rafRef = useRef(0);
             const timerRef = useRef(null);
-            const posRef = useRef({ x: 40, y: 40, vx: 1.2, vy: 1.0 });
+            const posRef = useRef({ x: 40, y: 40, vx: 1.8, vy: 1.4 });
             const idleMs = Math.max(0, Number(idleMinutes) || 0) * 60 * 1000;
             const enabled = idleMs > 0;
 
@@ -696,6 +696,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 armIdleTimer();
             }, [armIdleTimer]);
 
+            // Expose a global test trigger for screensaver
+            useEffect(() => {
+                window.__triggerScreensaver = () => setActive(true);
+                return () => { delete window.__triggerScreensaver; };
+            }, []);
+
             // Activity listeners
             useEffect(() => {
                 if (!enabled) {
@@ -712,40 +718,36 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     clearIdleTimer();
                     if (rafRef.current) cancelAnimationFrame(rafRef.current);
                 };
-            }, [wake, armIdleTimer, clearIdleTimer, enabled]);
+            }, [wake, armIdleTimer, clearIdleTimer, enabled, idleMs]);
 
-            // Bounce animation (DVD-style) via rAF — smooth, low cost
+            // Bounce animation (DVD-style)
             useEffect(() => {
                 if (!active) {
                     if (rafRef.current) cancelAnimationFrame(rafRef.current);
                     return;
                 }
 
-                const logo = logoRef.current;
-                if (!logo) return;
-
-                // Randomize start so it doesn't always begin top-left
                 posRef.current = {
-                    x: 40 + Math.random() * 120,
-                    y: 40 + Math.random() * 80,
-                    vx: (Math.random() > 0.5 ? 1 : -1) * (1.1 + Math.random() * 0.6),
-                    vy: (Math.random() > 0.5 ? 1 : -1) * (0.9 + Math.random() * 0.5),
+                    x: 60 + Math.random() * 100,
+                    y: 60 + Math.random() * 80,
+                    vx: (Math.random() > 0.5 ? 1 : -1) * 2.2,
+                    vy: (Math.random() > 0.5 ? 1 : -1) * 1.8,
                 };
 
                 const tick = () => {
                     const el = logoRef.current;
                     if (!el) return;
-                    const w = el.offsetWidth || 160;
-                    const h = el.offsetHeight || 80;
-                    const maxX = Math.max(0, window.innerWidth - w);
-                    const maxY = Math.max(0, window.innerHeight - h);
+                    const w = el.offsetWidth || 220;
+                    const h = el.offsetHeight || 90;
+                    const maxX = Math.max(0, window.innerWidth - w - 20);
+                    const maxY = Math.max(0, window.innerHeight - h - 20);
                     let { x, y, vx, vy } = posRef.current;
 
                     x += vx;
                     y += vy;
-                    if (x <= 0) { x = 0; vx = Math.abs(vx); }
+                    if (x <= 10) { x = 10; vx = Math.abs(vx); }
                     else if (x >= maxX) { x = maxX; vx = -Math.abs(vx); }
-                    if (y <= 0) { y = 0; vy = Math.abs(vy); }
+                    if (y <= 10) { y = 10; vy = Math.abs(vy); }
                     else if (y >= maxY) { y = maxY; vy = -Math.abs(vy); }
 
                     posRef.current = { x, y, vx, vy };
@@ -763,20 +765,28 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
             return (
                 <div
-                    className="idle-screensaver"
+                    className="fixed inset-0 z-[999999] bg-slate-950/95 flex flex-col cursor-none select-none overflow-hidden"
                     role="presentation"
                     onMouseMove={wake}
                     onClick={wake}
                     onKeyDown={wake}
                     tabIndex={-1}
                 >
-                    <img
+                    <div
                         ref={logoRef}
-                        src={logoSrc}
-                        alt="PG Groups"
-                        className="idle-screensaver__logo"
-                        draggable={false}
-                    />
+                        className="absolute p-4 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl flex items-center gap-3"
+                        style={{ willChange: "transform" }}
+                    >
+                        <img
+                            src={logoSrc || "/utilitysense-banner.png"}
+                            alt="PG Groups UtilitySense"
+                            className="h-16 w-auto object-contain select-none"
+                            draggable={false}
+                        />
+                    </div>
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-xs font-bold text-slate-400 tracking-widest uppercase animate-pulse">
+                        Move mouse or click anywhere to resume
+                    </div>
                 </div>
             );
         }
@@ -859,6 +869,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             };
             useEffect(() => {
                 document.documentElement.setAttribute("data-theme", theme);
+                document.body.setAttribute("data-theme", theme);
+                if (theme === "dark") {
+                    document.documentElement.classList.add("dark");
+                    document.body.classList.add("dark");
+                } else {
+                    document.documentElement.classList.remove("dark");
+                    document.body.classList.remove("dark");
+                }
                 try { localStorage.setItem("ep_theme", theme); } catch (e) { }
             }, [theme]);
 
@@ -6114,36 +6132,36 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         </p>
                                     </div>
 
-                                    {/* All header controls in ONE single horizontal line */}
-                                    <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto pb-0.5 max-w-full">
+                                    {/* All header controls in ONE single horizontal line with NO horizontal scrollbar */}
+                                    <div className="flex items-center gap-1.5 flex-nowrap shrink-0 overflow-x-hidden">
                                         {/* Theme Picker */}
                                         <div className="relative shrink-0">
                                             <button
                                                 onClick={() => { setThemePickerOpen(o => !o); setIdlePickerOpen(false); }}
-                                                className="flex items-center gap-1.5 h-9 px-2.5 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-sm whitespace-nowrap"
+                                                className="flex items-center gap-1 h-8.5 px-2 border border-slate-200 rounded-xl bg-white text-[11.5px] font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-xs whitespace-nowrap"
                                                 title="Change Theme"
                                             >
-                                                <span className="material-symbols-outlined text-[17px] text-amber-500">palette</span>
+                                                <span className="material-symbols-outlined text-[16px] text-amber-500">palette</span>
                                                 <span>Theme</span>
                                             </button>
                                             {themePickerOpen && (
                                                 <React.Fragment>
                                                     <div className="fixed inset-0 z-40" onClick={() => setThemePickerOpen(false)}></div>
-                                                    <div className="theme-popover absolute right-0 top-11 z-50 w-52 rounded-2xl border border-slate-200 bg-white shadow-lg p-2.5">
-                                                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 px-2 pb-2 pt-1">Choose Theme</p>
+                                                    <div className="theme-popover absolute right-0 top-10 z-50 w-48 rounded-2xl border border-slate-200 bg-white shadow-xl p-2">
+                                                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 px-2 pb-1.5 pt-0.5">Choose Theme</p>
                                                         {THEME_OPTIONS.map(opt => (
                                                             <button
                                                                 key={opt.id}
                                                                 onClick={() => { setTheme(opt.id); setThemePickerOpen(false); }}
-                                                                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${theme === opt.id ? "bg-sky-50 text-sky-700" : "text-slate-600 hover:bg-slate-50"}`}
+                                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border-none ${theme === opt.id ? "bg-sky-50 text-sky-700 font-bold" : "bg-transparent text-slate-600 hover:bg-slate-50"}`}
                                                             >
                                                                 <span
-                                                                    className="h-5 w-5 rounded-full border border-black/10 shrink-0"
+                                                                    className="h-4.5 w-4.5 rounded-full border border-black/10 shrink-0"
                                                                     style={{ background: opt.swatch }}
                                                                 ></span>
                                                                 {opt.label}
                                                                 {theme === opt.id && (
-                                                                    <span className="material-symbols-outlined text-[16px] ml-auto text-sky-600">check</span>
+                                                                    <span className="material-symbols-outlined text-[15px] ml-auto text-sky-600">check</span>
                                                                 )}
                                                             </button>
                                                         ))}
@@ -6156,40 +6174,55 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         <div className="relative shrink-0">
                                             <button
                                                 onClick={() => { setIdlePickerOpen(o => !o); setThemePickerOpen(false); }}
-                                                className="flex items-center gap-1.5 h-9 px-2.5 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-sm whitespace-nowrap"
+                                                className="flex items-center gap-1 h-8.5 px-2 border border-slate-200 rounded-xl bg-white text-[11.5px] font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-xs whitespace-nowrap"
                                                 title="Idle Screensaver Timeout"
                                             >
-                                                <span className="material-symbols-outlined text-[17px] text-sky-500">timer</span>
+                                                <span className="material-symbols-outlined text-[16px] text-sky-500">timer</span>
                                                 <span>Screensaver ({idleMinutes}m)</span>
                                             </button>
                                             {idlePickerOpen && (
                                                 <React.Fragment>
                                                     <div className="fixed inset-0 z-40" onClick={() => setIdlePickerOpen(false)}></div>
-                                                    <div className="absolute right-0 top-11 z-50 w-48 rounded-2xl border border-slate-200 bg-white shadow-lg p-2.5">
-                                                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 px-2 pb-2 pt-1">Idle Screen</p>
+                                                    <div className="absolute right-0 top-10 z-50 w-48 rounded-2xl border border-slate-200 bg-white shadow-xl p-2">
+                                                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 px-2 pb-1.5 pt-0.5">Idle Screen</p>
                                                         {IDLE_MINUTE_OPTIONS.map(opt => (
                                                             <button
                                                                 key={opt.value}
                                                                 type="button"
                                                                 onClick={() => { setIdleMinutes(opt.value); setIdlePickerOpen(false); }}
-                                                                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer border-none ${idleMinutes === opt.value ? "bg-sky-50 text-sky-700" : "bg-transparent text-slate-600 hover:bg-slate-50"}`}
+                                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border-none ${idleMinutes === opt.value ? "bg-sky-50 text-sky-700 font-bold" : "bg-transparent text-slate-600 hover:bg-slate-50"}`}
                                                             >
                                                                 {opt.label}
                                                                 {idleMinutes === opt.value && (
-                                                                    <span className="material-symbols-outlined text-[16px] ml-auto text-sky-600">check</span>
+                                                                    <span className="material-symbols-outlined text-[15px] ml-auto text-sky-600">check</span>
                                                                 )}
                                                             </button>
                                                         ))}
+                                                        <div className="pt-1.5 mt-1 border-t border-slate-100">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setIdlePickerOpen(false);
+                                                                    if (typeof window !== 'undefined' && window.__triggerScreensaver) {
+                                                                        window.__triggerScreensaver();
+                                                                    }
+                                                                }}
+                                                                className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-bold bg-sky-50 text-sky-700 hover:bg-sky-100 transition cursor-pointer border-none"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[15px]">play_circle</span>
+                                                                <span>Preview Screensaver</span>
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </React.Fragment>
                                             )}
                                         </div>
 
-                                        {selectedMasterTable !== "users" && (
+                                        {selectedMasterTable !== "users" && selectedMasterTable !== "email_automation" && selectedMasterTable !== "audit_logs" && (
                                             <select
                                                 value={selectedMasterTable}
                                                 onChange={(e) => setSelectedMasterTable(e.target.value)}
-                                                className="h-9 border border-slate-200 rounded-xl px-2 text-xs bg-[#f8fafc] font-bold text-slate-700 focus:outline-none shrink-0"
+                                                className="h-8.5 border border-slate-200 rounded-xl px-2 text-[11.5px] bg-[#f8fafc] font-bold text-slate-700 focus:outline-none shrink-0"
                                             >
                                                 {currentUser.role === "IT_ADMIN" ? (
                                                     <React.Fragment>
@@ -6197,8 +6230,6 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                         <option value="tariff_rates">Tariff Rates (₹)</option>
                                                         <option value="multiply_factors">Multiply Factor (MF)</option>
                                                         <option value="target_values">Target Values Settings</option>
-                                                        <option value="email_automation">Automatic Email Reports</option>
-                                                        <option value="audit_logs">Audit Logs (Security & Activity)</option>
                                                     </React.Fragment>
                                                 ) : (
                                                     <React.Fragment>
@@ -6212,10 +6243,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         {currentUser.role === "IT_ADMIN" && (
                                             <button
                                                 onClick={() => setSelectedMasterTable(selectedMasterTable === "email_automation" ? "plants" : "email_automation")}
-                                                className={`flex items-center gap-1.5 h-9 px-2.5 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition shrink-0 whitespace-nowrap ${selectedMasterTable === "email_automation" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                                                className={`flex items-center gap-1 h-8.5 px-2 border rounded-xl text-[11.5px] font-bold cursor-pointer shadow-xs transition shrink-0 whitespace-nowrap ${selectedMasterTable === "email_automation" ? "bg-sky-50 border-sky-300 text-sky-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
                                                 title="Automatic Location/Plant-wise Scheduled Email Reports"
                                             >
-                                                <span className="material-symbols-outlined text-[17px]">forward_to_inbox</span>
+                                                <span className="material-symbols-outlined text-[16px]">forward_to_inbox</span>
                                                 <span>Auto Email</span>
                                             </button>
                                         )}
@@ -6223,10 +6254,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         {currentUser.role === "IT_ADMIN" && (
                                             <button
                                                 onClick={() => setSelectedMasterTable(selectedMasterTable === "audit_logs" ? "plants" : "audit_logs")}
-                                                className={`flex items-center gap-1.5 h-9 px-2.5 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition shrink-0 whitespace-nowrap ${selectedMasterTable === "audit_logs" ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                                                className={`flex items-center gap-1 h-8.5 px-2 border rounded-xl text-[11.5px] font-bold cursor-pointer shadow-xs transition shrink-0 whitespace-nowrap ${selectedMasterTable === "audit_logs" ? "bg-indigo-50 border-indigo-300 text-indigo-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
                                                 title="Tamper-Resistant Audit Logs"
                                             >
-                                                <span className="material-symbols-outlined text-[17px]">history</span>
+                                                <span className="material-symbols-outlined text-[16px]">history</span>
                                                 <span>Audit Logs</span>
                                             </button>
                                         )}
@@ -6234,10 +6265,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         {currentUser.role === "IT_ADMIN" && (
                                             <button
                                                 onClick={() => setSelectedMasterTable(selectedMasterTable === "users" ? "plants" : "users")}
-                                                className={`flex items-center gap-1.5 h-9 px-2.5 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition shrink-0 whitespace-nowrap ${selectedMasterTable === "users" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                                                className={`flex items-center gap-1 h-8.5 px-2 border rounded-xl text-[11.5px] font-bold cursor-pointer shadow-xs transition shrink-0 whitespace-nowrap ${selectedMasterTable === "users" ? "bg-sky-50 border-sky-300 text-sky-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
                                                 title="User Management"
                                             >
-                                                <span className="material-symbols-outlined text-[17px]">group</span>
+                                                <span className="material-symbols-outlined text-[16px]">group</span>
                                                 <span>Users</span>
                                             </button>
                                         )}
@@ -6248,10 +6279,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                     !isMasterDeleteMode ? (
                                                         <button
                                                             onClick={() => setIsMasterDeleteMode(true)}
-                                                            className="flex items-center gap-1 h-9 px-2.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
+                                                            className="flex items-center gap-1 h-8.5 px-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-xl text-[11.5px] font-bold transition shadow-xs cursor-pointer shrink-0 whitespace-nowrap"
                                                             title="Click to enable selection mode for deleting master records"
                                                         >
-                                                            <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
+                                                            <span className="material-symbols-outlined text-[15px]">delete_sweep</span>
                                                             <span>Bulk Delete</span>
                                                         </button>
                                                     ) : (
@@ -6259,16 +6290,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             {selectedMasterRowKeys.size > 0 && (
                                                                 <button
                                                                     onClick={handleBulkDeleteMaster}
-                                                                    className="flex items-center gap-1 h-9 px-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer whitespace-nowrap"
+                                                                    className="flex items-center gap-1 h-8.5 px-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[11.5px] font-bold transition shadow-xs border-none cursor-pointer whitespace-nowrap"
                                                                     title={`Delete ${selectedMasterRowKeys.size} selected master records`}
                                                                 >
-                                                                    <span className="material-symbols-outlined text-[16px]">delete</span>
+                                                                    <span className="material-symbols-outlined text-[15px]">delete</span>
                                                                     <span>Confirm Delete ({selectedMasterRowKeys.size})</span>
                                                                 </button>
                                                             )}
                                                             <button
                                                                 onClick={() => { setIsMasterDeleteMode(false); setSelectedMasterRowKeys(new Set()); }}
-                                                                className="flex items-center gap-1 h-9 px-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer whitespace-nowrap"
+                                                                className="flex items-center gap-1 h-8.5 px-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-[11.5px] font-bold transition shadow-xs cursor-pointer whitespace-nowrap"
                                                                 title="Cancel selection mode"
                                                             >
                                                                 <span>Cancel</span>
@@ -6279,9 +6310,9 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                                 <button
                                                     onClick={() => openMasterForm()}
-                                                    className="flex items-center gap-1 h-9 px-3 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold cursor-pointer transition border-none shadow-sm shrink-0 whitespace-nowrap"
+                                                    className="flex items-center gap-1 h-8.5 px-2.5 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-[11.5px] font-bold cursor-pointer transition border-none shadow-xs shrink-0 whitespace-nowrap"
                                                 >
-                                                    <span className="material-symbols-outlined text-[16px]">add</span>
+                                                    <span className="material-symbols-outlined text-[15px]">add</span>
                                                     <span>Add Record</span>
                                                 </button>
                                             </React.Fragment>
