@@ -893,17 +893,27 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const [auditSearchQuery, setAuditSearchQuery] = useState("");
             const [auditModuleFilter, setAuditModuleFilter] = useState("all");
 
-            const [emailAutoConfig, setEmailAutoConfig] = useState({
-                id: "default_monthly_report",
-                enabled: false,
+            const [emailSchedules, setEmailSchedules] = useState([]);
+            const [emailScheduleLogs, setEmailScheduleLogs] = useState([]);
+            const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+            const [editingSchedule, setEditingSchedule] = useState(null);
+            const [isScheduleLogsOpen, setIsScheduleLogsOpen] = useState(false);
+            const [runningScheduleId, setRunningScheduleId] = useState(null);
+            const [scheduleFormValues, setScheduleFormValues] = useState({
+                id: "",
+                name: "",
+                location: "",
+                plant: "",
+                report_type: "Monthly Utility Report",
+                frequency: "Monthly",
+                schedule_day: 5,
                 schedule_time: "10:00",
-                location: "all",
-                plants: "all",
-                recipients: "",
-                subject_template: "Monthly UtilitySense Report - {Plant} ({Month})",
-                body_template: "Dear Sir,\n\nPlease find attached the monthly UtilitySense report for {Location} - {Plant} for {Month}.\n\nRegards,\nUtilitySense Management",
-                last_sent_at: null,
-                last_status: null
+                to_recipients: "",
+                cc_recipients: "",
+                bcc_recipients: "",
+                subject_template: "Monthly Utility Report - {Location} - {Plant} - {Month}",
+                body_template: "Dear Team,\n\nPlease find attached the monthly UtilitySense report for {Location} - {Plant} for {Month}.\n\nPlease review the report and take necessary action where required.\n\nRegards,\nUtilitySense Management",
+                enabled: true
             });
             const [isEmailSending, setIsEmailSending] = useState(false);
 
@@ -1243,9 +1253,35 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         loadConfig('users', setUsers),
                         loadConfig('otp_logs', setOtpLogs),
                         loadConfig('audit_logs', setAuditLogs),
-                        loadConfig('email_automation_configs', (rows) => {
-                            if (rows && rows.length > 0) setEmailAutoConfig(rows[0]);
-                        })
+                        loadConfig('email_schedules', (rows) => {
+                            if (rows && rows.length > 0) {
+                                setEmailSchedules(rows);
+                            } else {
+                                // Default initial template if table is newly created
+                                const defaultSchedules = [
+                                    {
+                                        id: "sched_bhiwadi_default",
+                                        name: "Bhiwadi Unit Monthly Report",
+                                        location: "BHIWADI",
+                                        plant: "PLANT-1",
+                                        report_type: "Monthly Utility Report",
+                                        frequency: "Monthly",
+                                        schedule_day: 5,
+                                        schedule_time: "10:00",
+                                        to_recipients: "factory.head@pgel.in",
+                                        cc_recipients: "utility.hod@pgel.in",
+                                        bcc_recipients: "",
+                                        subject_template: "Monthly Utility Report - {Location} - {Plant} - {Month}",
+                                        body_template: "Dear Team,\n\nPlease find attached the monthly UtilitySense report for {Location} - {Plant} for {Month}.\n\nPlease review the report and take necessary action where required.\n\nRegards,\nUtilitySense Management",
+                                        enabled: true,
+                                        last_run_at: null,
+                                        last_status: null
+                                    }
+                                ];
+                                setEmailSchedules(defaultSchedules);
+                            }
+                        }),
+                        loadConfig('email_schedule_logs', setEmailScheduleLogs)
                     ]);
                 } catch (err) {
                     console.error("Database fetch failed:", err);
@@ -1396,25 +1432,225 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 }
             }, [currentUser]);
 
-            // Handler to trigger automated email report (test or scheduled)
-            const handleSendAutomatedMonthlyEmail = async (opts = {}) => {
-                const { isTest = false, targetMonth = null } = opts;
-                if (!emailAutoConfig.recipients || emailAutoConfig.recipients.trim() === "") {
-                    setToast({ type: "error", message: "Please configure at least one recipient email." });
+            // ----------------------------------------------------
+            // MULTI-SCHEDULE EMAIL AUTOMATION HANDLERS (IT ADMIN)
+            // ----------------------------------------------------
+            const openCreateScheduleModal = () => {
+                const firstLoc = allowedLocations[0] || "BHIWADI";
+                const matchingPlants = plants.filter(p => p.location.toUpperCase() === firstLoc.toUpperCase());
+                const firstPlant = matchingPlants[0]?.plant_code || "";
+
+                setEditingSchedule(null);
+                setScheduleFormValues({
+                    id: `sched_${Date.now()}`,
+                    name: `${firstLoc} - ${firstPlant} Monthly Schedule`,
+                    location: firstLoc,
+                    plant: firstPlant,
+                    report_type: "Monthly Utility Report",
+                    frequency: "Monthly",
+                    schedule_day: 5,
+                    schedule_time: "10:00",
+                    to_recipients: "",
+                    cc_recipients: "",
+                    bcc_recipients: "",
+                    subject_template: "Monthly Utility Report - {Location} - {Plant} - {Month}",
+                    body_template: "Dear Team,\n\nPlease find attached the monthly UtilitySense report for {Location} - {Plant} for {Month}.\n\nPlease review the report and take necessary action where required.\n\nRegards,\nUtilitySense Management",
+                    enabled: true
+                });
+                setIsScheduleModalOpen(true);
+            };
+
+            const openEditScheduleModal = (sched) => {
+                setEditingSchedule(sched);
+                setScheduleFormValues({
+                    id: sched.id,
+                    name: sched.name || "",
+                    location: sched.location || "",
+                    plant: sched.plant || "",
+                    report_type: sched.report_type || "Monthly Utility Report",
+                    frequency: sched.frequency || "Monthly",
+                    schedule_day: sched.schedule_day || 5,
+                    schedule_time: sched.schedule_time || "10:00",
+                    to_recipients: sched.to_recipients || "",
+                    cc_recipients: sched.cc_recipients || "",
+                    bcc_recipients: sched.bcc_recipients || "",
+                    subject_template: sched.subject_template || "Monthly Utility Report - {Location} - {Plant} - {Month}",
+                    body_template: sched.body_template || "Dear Team,\n\nPlease find attached the monthly UtilitySense report for {Location} - {Plant} for {Month}.\n\nPlease review the report and take necessary action where required.\n\nRegards,\nUtilitySense Management",
+                    enabled: sched.enabled !== false
+                });
+                setIsScheduleModalOpen(true);
+            };
+
+            const handleSaveSchedule = async (e) => {
+                if (e) e.preventDefault();
+                if (!scheduleFormValues.name.trim()) {
+                    setToast({ type: "error", message: "Schedule name is required" });
+                    return;
+                }
+                if (!scheduleFormValues.location) {
+                    setToast({ type: "error", message: "Please select a valid location" });
+                    return;
+                }
+                if (!scheduleFormValues.plant) {
+                    setToast({ type: "error", message: "Please select a valid plant" });
+                    return;
+                }
+                if (!scheduleFormValues.to_recipients.trim()) {
+                    setToast({ type: "error", message: "At least one valid 'To' recipient email is required" });
                     return;
                 }
 
-                setIsEmailSending(true);
+                // Email validation helper
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                const toList = scheduleFormValues.to_recipients.split(",").map(x => x.trim()).filter(Boolean);
+                const invalidTo = toList.filter(em => !emailRegex.test(em));
+                if (invalidTo.length > 0) {
+                    setToast({ type: "error", message: `Invalid 'To' email address: ${invalidTo[0]}` });
+                    return;
+                }
+
+                if (scheduleFormValues.cc_recipients.trim()) {
+                    const ccList = scheduleFormValues.cc_recipients.split(",").map(x => x.trim()).filter(Boolean);
+                    const invalidCc = ccList.filter(em => !emailRegex.test(em));
+                    if (invalidCc.length > 0) {
+                        setToast({ type: "error", message: `Invalid 'CC' email address: ${invalidCc[0]}` });
+                        return;
+                    }
+                }
+
+                setActionLoading(true);
                 try {
-                    // Determine scope
-                    const d = new Date();
-                    const monthStr = targetMonth || `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    const scheduleRecord = {
+                        ...scheduleFormValues,
+                        id: scheduleFormValues.id || `sched_${Date.now()}`,
+                        updated_at: new Date().toISOString()
+                    };
+
+                    const { error } = await supabase.from('email_schedules').upsert(scheduleRecord);
+                    if (error) {
+                        console.warn("Supabase upsert note:", error.message);
+                    }
+
+                    // Update local state
+                    setEmailSchedules(prev => {
+                        const existingIdx = prev.findIndex(s => s.id === scheduleRecord.id);
+                        if (existingIdx >= 0) {
+                            const copy = [...prev];
+                            copy[existingIdx] = scheduleRecord;
+                            return copy;
+                        } else {
+                            return [...prev, scheduleRecord];
+                        }
+                    });
+
+                    recordAuditLog({
+                        action: editingSchedule ? "UPDATE" : "CREATE",
+                        module: "Email Automation",
+                        recordId: scheduleRecord.id,
+                        location: scheduleRecord.location,
+                        plant: scheduleRecord.plant,
+                        oldValue: editingSchedule || null,
+                        newValue: scheduleRecord,
+                        status: "SUCCESS"
+                    });
+
+                    setToast({
+                        type: "success",
+                        message: editingSchedule ? "Email schedule updated successfully!" : "New email schedule created successfully!"
+                    });
+                    setIsScheduleModalOpen(false);
+                } catch (err) {
+                    console.error("Save schedule failed:", err);
+                    setToast({ type: "error", message: `Save failed: ${err.message}` });
+                } finally {
+                    setActionLoading(false);
+                }
+            };
+
+            const handleDeleteSchedule = async (scheduleId) => {
+                const target = emailSchedules.find(s => s.id === scheduleId);
+                const confirmed = await openConfirm({
+                    title: "Delete Email Schedule",
+                    message: `Are you sure you want to permanently delete the schedule "${target?.name || scheduleId}"?`,
+                    danger: true,
+                    confirmText: "Delete Schedule"
+                });
+                if (!confirmed) return;
+
+                setActionLoading(true);
+                try {
+                    const { error } = await supabase.from('email_schedules').delete().eq('id', scheduleId);
+                    if (error) console.warn("Supabase delete note:", error.message);
+
+                    setEmailSchedules(prev => prev.filter(s => s.id !== scheduleId));
+
+                    recordAuditLog({
+                        action: "DELETE",
+                        module: "Email Automation",
+                        recordId: scheduleId,
+                        location: target?.location,
+                        plant: target?.plant,
+                        oldValue: target,
+                        status: "SUCCESS"
+                    });
+
+                    setToast({ type: "success", message: "Email schedule deleted successfully." });
+                } catch (err) {
+                    console.error("Delete schedule error:", err);
+                    setToast({ type: "error", message: `Delete failed: ${err.message}` });
+                } finally {
+                    setActionLoading(false);
+                }
+            };
+
+            const handleToggleScheduleStatus = async (scheduleId, currentStatus) => {
+                const newStatus = !currentStatus;
+                try {
+                    const { error } = await supabase
+                        .from('email_schedules')
+                        .update({ enabled: newStatus, updated_at: new Date().toISOString() })
+                        .eq('id', scheduleId);
+                    if (error) console.warn("Supabase toggle note:", error.message);
+
+                    setEmailSchedules(prev => prev.map(s => s.id === scheduleId ? { ...s, enabled: newStatus } : s));
+
+                    recordAuditLog({
+                        action: newStatus ? "ENABLE" : "DISABLE",
+                        module: "Email Automation",
+                        recordId: scheduleId,
+                        newValue: { enabled: newStatus },
+                        status: "SUCCESS"
+                    });
+
+                    setToast({
+                        type: "success",
+                        message: `Schedule "${scheduleId}" is now ${newStatus ? "ACTIVE (ON)" : "PAUSED (OFF)"}.`
+                    });
+                } catch (err) {
+                    console.error("Toggle schedule error:", err);
+                    setToast({ type: "error", message: `Update failed: ${err.message}` });
+                }
+            };
+
+            const handleExecuteSchedule = async ({ schedule, isManualTest = false, targetMonth = null }) => {
+                if (!schedule) return;
+                setRunningScheduleId(schedule.id);
+                try {
+                    const emailLoc = schedule.location;
+                    const emailPlant = schedule.plant;
+
+                    let monthStr = targetMonth;
+                    if (!monthStr) {
+                        const prevD = new Date();
+                        prevD.setDate(1);
+                        prevD.setMonth(prevD.getMonth() - 1);
+                        monthStr = `${prevD.getFullYear()}-${String(prevD.getMonth() + 1).padStart(2, '0')}`;
+                    }
+
                     const startDate = `${monthStr}-01`;
                     const endDate = getMonthEnd(monthStr);
 
-                    const emailLoc = emailAutoConfig.location || "all";
-                    const emailPlant = emailAutoConfig.plants || "all";
-
+                    // Build strictly scoped report data
                     const payload = buildPlantReportData({
                         location: emailLoc,
                         plant: emailPlant,
@@ -1423,19 +1659,17 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     });
 
                     if (!payload || !payload.list || payload.list.length === 0) {
-                        setToast({ type: "warning", message: `No data entries found for ${monthStr} to generate email report.` });
-                        setIsEmailSending(false);
-                        return;
+                        throw new Error(`No daily entry records found for ${emailLoc} - ${emailPlant} during ${monthStr}.`);
                     }
 
-                    const wb = createPlantReportWorkbook(payload);
-                    const buffer = await wb.xlsx.writeBuffer();
-                    
-                    // Convert ArrayBuffer to Base64
-                    let binary = '';
+                    // Generate exact Excel workbook
+                    const workbook = await createPlantReportWorkbook(payload);
+                    const buffer = await workbook.xlsx.writeBuffer();
+
+                    // Convert ArrayBuffer to binary string
                     const bytes = new Uint8Array(buffer);
-                    const len = bytes.byteLength;
-                    for (let i = 0; i < len; i++) {
+                    let binary = '';
+                    for (let i = 0; i < bytes.byteLength; i++) {
                         binary += String.fromCharCode(bytes[i]);
                     }
                     const base64Attachment = btoa(binary);
@@ -1444,18 +1678,20 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const [y, mNum] = monthStr.split("-").map(Number);
                     const readableMonth = `${monthNames[(mNum || 1) - 1]} ${y}`;
 
-                    // Dynamic template replacements
+                    // Dynamic template token replacement
                     const formatTemplate = (tmpl) => {
                         return String(tmpl || "")
                             .replace(/\{Location\}/g, payload.locationLabel || emailLoc)
                             .replace(/\{Plant\}/g, payload.plantLabel || emailPlant)
                             .replace(/\{Month\}/g, readableMonth)
-                            .replace(/\{Report Month\}/g, readableMonth)
-                            .replace(/\{Report Date\}/g, new Date().toLocaleDateString("en-IN"));
+                            .replace(/\{Year\}/g, String(y || new Date().getFullYear()))
+                            .replace(/\{ReportDate\}/g, new Date().toLocaleDateString("en-IN"))
+                            .replace(/\{Report Date\}/g, new Date().toLocaleDateString("en-IN"))
+                            .replace(/\{Report Month\}/g, readableMonth);
                     };
 
-                    const emailSubject = formatTemplate(emailAutoConfig.subject_template || "Monthly UtilitySense Report - {Plant} ({Month})");
-                    const rawBody = formatTemplate(emailAutoConfig.body_template || "Please find attached the monthly UtilitySense report.");
+                    const emailSubject = formatTemplate(schedule.subject_template || "Monthly Utility Report - {Location} - {Plant} - {Month}");
+                    const rawBody = formatTemplate(schedule.body_template || "Please find attached the monthly UtilitySense report.");
                     const emailHtml = `
                         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; max-width: 600px; margin: 0 auto;">
                             <div style="text-align: center; margin-bottom: 20px;">
@@ -1471,14 +1707,18 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         </div>
                     `;
 
-                    const recipientList = emailAutoConfig.recipients.split(",").map(x => x.trim()).filter(Boolean);
+                    const toList = (schedule.to_recipients || "").split(",").map(x => x.trim()).filter(Boolean);
+                    const ccList = (schedule.cc_recipients || "").split(",").map(x => x.trim()).filter(Boolean);
+                    const bccList = (schedule.bcc_recipients || "").split(",").map(x => x.trim()).filter(Boolean);
 
                     const res = await fetch("/api/send-report-email", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            recipients: recipientList,
-                            subject: isTest ? `[TEST] ${emailSubject}` : emailSubject,
+                            to: toList,
+                            cc: ccList.length > 0 ? ccList : undefined,
+                            bcc: bccList.length > 0 ? bccList : undefined,
+                            subject: isManualTest ? `[TEST] ${emailSubject}` : emailSubject,
                             html: emailHtml,
                             attachments: [{
                                 filename: `UtilitySense_${payload.locationLabel}_${payload.plantLabel}_${monthStr}.xlsx`,
@@ -1492,44 +1732,75 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     if (!res.ok) throw new Error(resData.error || resData.details || "Failed to dispatch email.");
 
                     const nowIso = new Date().toISOString();
-                    setEmailAutoConfig(prev => ({
-                        ...prev,
-                        last_sent_at: nowIso,
-                        last_status: "SUCCESS"
-                    }));
+                    const logEntry = {
+                        schedule_id: schedule.id,
+                        schedule_name: schedule.name,
+                        location: emailLoc,
+                        plant: emailPlant,
+                        to_recipients: toList.join(", "),
+                        cc_recipients: ccList.join(", "),
+                        status: "SUCCESS",
+                        executed_at: nowIso
+                    };
 
-                    await supabase.from('email_automation_configs').upsert({
-                        ...emailAutoConfig,
-                        id: 'default_monthly_report',
-                        last_sent_at: nowIso,
-                        last_status: 'SUCCESS'
-                    });
+                    // Persist log
+                    setEmailScheduleLogs(prev => [logEntry, ...prev]);
+                    await supabase.from('email_schedule_logs').insert(logEntry);
+
+                    // Update schedule status
+                    setEmailSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, last_run_at: nowIso, last_status: "SUCCESS" } : s));
+                    await supabase.from('email_schedules').update({ last_run_at: nowIso, last_status: "SUCCESS" }).eq('id', schedule.id);
 
                     recordAuditLog({
-                        action: isTest ? "TEST_EMAIL" : "EMAIL_DISPATCH",
+                        action: isManualTest ? "TEST_EMAIL" : "EMAIL_DISPATCH",
                         module: "Email Automation",
-                        recordId: `${emailLoc}_${emailPlant}`,
+                        recordId: schedule.id,
                         location: payload.locationLabel,
                         plant: payload.plantLabel,
-                        newValue: { recipients: recipientList, rows: payload.list.length, month: monthStr },
+                        newValue: { to: toList, cc: ccList, rows: payload.list.length, month: monthStr },
                         status: "SUCCESS"
                     });
 
                     setToast({
                         type: "success",
-                        message: isTest ? `Test report email delivered successfully to ${recipientList.length} recipient(s)!` : "Automated monthly report sent successfully!"
+                        message: isManualTest
+                            ? `Test report sent successfully to ${toList.length} recipient(s)!`
+                            : `Schedule "${schedule.name}" executed successfully!`
                     });
                 } catch (err) {
-                    console.error("Email send error:", err);
-                    setToast({ type: "error", message: `Email failed: ${err.message}` });
-                    recordAuditLog({
-                        action: isTest ? "TEST_EMAIL" : "EMAIL_DISPATCH",
-                        module: "Email Automation",
+                    console.error("Email schedule run error:", err);
+                    const nowIso = new Date().toISOString();
+                    const errorLog = {
+                        schedule_id: schedule.id,
+                        schedule_name: schedule.name,
+                        location: schedule.location,
+                        plant: schedule.plant,
+                        to_recipients: schedule.to_recipients,
+                        cc_recipients: schedule.cc_recipients,
                         status: "FAILED",
-                        newValue: { error: err.message }
+                        error_message: err.message,
+                        executed_at: nowIso
+                    };
+
+                    setEmailScheduleLogs(prev => [errorLog, ...prev]);
+                    await supabase.from('email_schedule_logs').insert(errorLog);
+
+                    setEmailSchedules(prev => prev.map(s => s.id === schedule.id ? { ...s, last_run_at: nowIso, last_status: "FAILED" } : s));
+                    await supabase.from('email_schedules').update({ last_run_at: nowIso, last_status: "FAILED" }).eq('id', schedule.id);
+
+                    recordAuditLog({
+                        action: isManualTest ? "TEST_EMAIL" : "EMAIL_DISPATCH",
+                        module: "Email Automation",
+                        recordId: schedule.id,
+                        location: schedule.location,
+                        plant: schedule.plant,
+                        newValue: { error: err.message },
+                        status: "FAILED"
                     });
+
+                    setToast({ type: "error", message: `Schedule execution failed: ${err.message}` });
                 } finally {
-                    setIsEmailSending(false);
+                    setRunningScheduleId(null);
                 }
             };
 
@@ -3759,27 +4030,37 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return (
                     <>
                     <div
-                        className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-slate-100 via-sky-50 to-slate-200"
+                        className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-cover bg-center"
                         style={{
+                            backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.45), rgba(15, 23, 42, 0.7)), url('/login-bg.jpg')`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
                             display: 'flex',
                             justifyContent: 'center',
                             alignItems: 'center'
                         }}
                     >
-                        {/* Subtle ambient blur circles */}
-                        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-sky-300/30 blur-3xl pointer-events-none" />
-                        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-emerald-300/20 blur-3xl pointer-events-none" />
+                        {/* Subtle ambient blur overlay */}
+                        <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px] pointer-events-none" />
 
                         <div
-                            className="w-full max-w-md bg-white rounded-3xl p-8 border border-slate-200/80 shadow-[0_20px_50px_rgba(8,112,184,0.12)] z-10"
+                            className="w-full max-w-md bg-white rounded-3xl p-8 border border-slate-200/80 shadow-[0_25px_60px_rgba(0,0,0,0.35)] z-10"
                             style={{ position: 'relative' }}
                         >
                             <div className="flex flex-col items-center text-center mb-6">
-                                <img
-                                    src="/utilitysense-banner.png"
-                                    alt="UtilitySense - Monitor Today. Optimize Tomorrow."
-                                    className="w-full max-w-[360px] h-auto object-contain rounded-2xl shadow-sm mb-2"
-                                />
+                                <div className="h-14 w-14 mb-2 flex items-center justify-center">
+                                    <img
+                                        src={PG_LOGO_BASE_64}
+                                        alt="PG Electroplast Ltd"
+                                        className="max-h-full max-w-full object-contain"
+                                    />
+                                </div>
+                                <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-1.5 justify-center">
+                                    <span className="text-sky-600">Utility</span><span>Sense</span>
+                                </h1>
+                                <p className="text-[10.5px] font-bold text-slate-400 mt-1 uppercase tracking-wider">
+                                    Corporate Energy & Resource Governance Hub
+                                </p>
                             </div>
 
                             {loginError && (
@@ -5240,13 +5521,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         {/* 6. MASTER CONFIGS TABLE EDITOR COMPONENT */}
                         {activeTab === "master" && (
                             <div className="space-y-6 pt-4">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
-                                    <div>
-                                        <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-1.5 uppercase">
+                                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b pb-4">
+                                    <div className="shrink-0">
+                                        <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-1.5 uppercase whitespace-nowrap">
                                             <span className="material-symbols-outlined text-[#0284c7]">settings</span>
                                             <span>
                                                 {selectedMasterTable === "users" ? "User Management" :
-                                                 selectedMasterTable === "email_automation" ? "Automatic Monthly Email Reports" :
+                                                 selectedMasterTable === "email_automation" ? "Automatic Email Reports" :
                                                  selectedMasterTable === "audit_logs" ? "Security & Operations Audit Logs" :
                                                  selectedMasterTable === "multiply_factors" ? "Multiply Factor Settings" :
                                                  selectedMasterTable === "tariff_rates" ? "Tariff Rates Settings" : "Master Configuration Settings"}
@@ -5259,12 +5540,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         </p>
                                     </div>
 
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    {/* All header controls in ONE single horizontal line */}
+                                    <div className="flex items-center gap-1.5 flex-nowrap overflow-x-auto pb-0.5 max-w-full">
                                         {/* Theme Picker */}
-                                        <div className="relative">
+                                        <div className="relative shrink-0">
                                             <button
                                                 onClick={() => { setThemePickerOpen(o => !o); setIdlePickerOpen(false); }}
-                                                className="flex items-center gap-1.5 h-9 px-3 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-sm"
+                                                className="flex items-center gap-1.5 h-9 px-2.5 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-sm whitespace-nowrap"
                                                 title="Change Theme"
                                             >
                                                 <span className="material-symbols-outlined text-[17px] text-amber-500">palette</span>
@@ -5297,10 +5579,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         </div>
 
                                         {/* Idle Screen Saver Selector */}
-                                        <div className="relative">
+                                        <div className="relative shrink-0">
                                             <button
                                                 onClick={() => { setIdlePickerOpen(o => !o); setThemePickerOpen(false); }}
-                                                className="flex items-center gap-1.5 h-9 px-3 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-sm"
+                                                className="flex items-center gap-1.5 h-9 px-2.5 border border-slate-200 rounded-xl bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-sm whitespace-nowrap"
                                                 title="Idle Screensaver Timeout"
                                             >
                                                 <span className="material-symbols-outlined text-[17px] text-sky-500">timer</span>
@@ -5333,7 +5615,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             <select
                                                 value={selectedMasterTable}
                                                 onChange={(e) => setSelectedMasterTable(e.target.value)}
-                                                className="h-9 border border-slate-200 rounded-xl px-2.5 text-xs bg-[#f8fafc] font-bold text-slate-700 focus:outline-none"
+                                                className="h-9 border border-slate-200 rounded-xl px-2 text-xs bg-[#f8fafc] font-bold text-slate-700 focus:outline-none shrink-0"
                                             >
                                                 {currentUser.role === "IT_ADMIN" ? (
                                                     <React.Fragment>
@@ -5341,7 +5623,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                         <option value="tariff_rates">Tariff Rates (₹)</option>
                                                         <option value="multiply_factors">Multiply Factor (MF)</option>
                                                         <option value="target_values">Target Values Settings</option>
-                                                        <option value="email_automation">Automatic Monthly Email Reports</option>
+                                                        <option value="email_automation">Automatic Email Reports</option>
                                                         <option value="audit_logs">Audit Logs (Security & Activity)</option>
                                                     </React.Fragment>
                                                 ) : (
@@ -5356,8 +5638,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         {currentUser.role === "IT_ADMIN" && (
                                             <button
                                                 onClick={() => setSelectedMasterTable(selectedMasterTable === "email_automation" ? "plants" : "email_automation")}
-                                                className={`flex items-center gap-1.5 h-9 px-3 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition ${selectedMasterTable === "email_automation" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
-                                                title="Automatic Monthly Email Reports"
+                                                className={`flex items-center gap-1.5 h-9 px-2.5 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition shrink-0 whitespace-nowrap ${selectedMasterTable === "email_automation" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                                                title="Automatic Location/Plant-wise Scheduled Email Reports"
                                             >
                                                 <span className="material-symbols-outlined text-[17px]">forward_to_inbox</span>
                                                 <span>Auto Email</span>
@@ -5367,7 +5649,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         {currentUser.role === "IT_ADMIN" && (
                                             <button
                                                 onClick={() => setSelectedMasterTable(selectedMasterTable === "audit_logs" ? "plants" : "audit_logs")}
-                                                className={`flex items-center gap-1.5 h-9 px-3 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition ${selectedMasterTable === "audit_logs" ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                                                className={`flex items-center gap-1.5 h-9 px-2.5 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition shrink-0 whitespace-nowrap ${selectedMasterTable === "audit_logs" ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
                                                 title="Tamper-Resistant Audit Logs"
                                             >
                                                 <span className="material-symbols-outlined text-[17px]">history</span>
@@ -5378,7 +5660,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         {currentUser.role === "IT_ADMIN" && (
                                             <button
                                                 onClick={() => setSelectedMasterTable(selectedMasterTable === "users" ? "plants" : "users")}
-                                                className={`flex items-center gap-1.5 h-9 px-3 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition ${selectedMasterTable === "users" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                                                className={`flex items-center gap-1.5 h-9 px-2.5 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition shrink-0 whitespace-nowrap ${selectedMasterTable === "users" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
                                                 title="User Management"
                                             >
                                                 <span className="material-symbols-outlined text-[17px]">group</span>
@@ -5392,18 +5674,18 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                     !isMasterDeleteMode ? (
                                                         <button
                                                             onClick={() => setIsMasterDeleteMode(true)}
-                                                            className="flex items-center gap-1 px-3.5 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                                                            className="flex items-center gap-1 h-9 px-2.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
                                                             title="Click to enable selection mode for deleting master records"
                                                         >
                                                             <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
                                                             <span>Bulk Delete</span>
                                                         </button>
                                                     ) : (
-                                                        <div className="flex items-center gap-1.5">
+                                                        <div className="flex items-center gap-1 shrink-0">
                                                             {selectedMasterRowKeys.size > 0 && (
                                                                 <button
                                                                     onClick={handleBulkDeleteMaster}
-                                                                    className="flex items-center gap-1 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer"
+                                                                    className="flex items-center gap-1 h-9 px-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer whitespace-nowrap"
                                                                     title={`Delete ${selectedMasterRowKeys.size} selected master records`}
                                                                 >
                                                                     <span className="material-symbols-outlined text-[16px]">delete</span>
@@ -5412,7 +5694,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             )}
                                                             <button
                                                                 onClick={() => { setIsMasterDeleteMode(false); setSelectedMasterRowKeys(new Set()); }}
-                                                                className="flex items-center gap-1 px-3 py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                                                                className="flex items-center gap-1 h-9 px-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer whitespace-nowrap"
                                                                 title="Cancel selection mode"
                                                             >
                                                                 <span>Cancel</span>
@@ -5423,7 +5705,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                                 <button
                                                     onClick={() => openMasterForm()}
-                                                    className="flex items-center gap-1 px-4 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold cursor-pointer transition border-none shadow-sm"
+                                                    className="flex items-center gap-1 h-9 px-3 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold cursor-pointer transition border-none shadow-sm shrink-0 whitespace-nowrap"
                                                 >
                                                     <span className="material-symbols-outlined text-[16px]">add</span>
                                                     <span>Add Record</span>
@@ -5435,167 +5717,165 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                 {/* Config Records Table / Specialized Panels */}
                                 {selectedMasterTable === "email_automation" && currentUser.role === "IT_ADMIN" ? (
-                                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-6">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden space-y-0">
+                                        {/* Multi-Schedule Header Bar */}
+                                        <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
                                             <div>
                                                 <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                                                    <span className="material-symbols-outlined text-sky-600">mail</span>
-                                                    <span>Automated Monthly Excel Report Dispatch</span>
+                                                    <span className="material-symbols-outlined text-sky-600">forward_to_inbox</span>
+                                                    <span>Automatic Location/Plant-wise Scheduled Email Reports</span>
                                                 </h3>
-                                                <p className="text-xs text-slate-500 mt-0.5">Configure scheduled monthly delivery of the exact Excel sheet report to Factory Heads and HODs</p>
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    Configure multiple independent monthly Excel report dispatches per location & plant with custom To/CC recipients.
+                                                </p>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     type="button"
-                                                    disabled={isEmailSending}
-                                                    onClick={() => handleSendAutomatedMonthlyEmail({ isTest: true })}
-                                                    className="flex items-center gap-1.5 px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+                                                    onClick={() => setIsScheduleLogsOpen(true)}
+                                                    className="flex items-center gap-1.5 h-9 px-3.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer whitespace-nowrap"
+                                                    title="View history of scheduled report dispatches"
                                                 >
-                                                    {isEmailSending ? <span className="w-3.5 h-3.5 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" /> : <span className="material-symbols-outlined text-[16px]">send</span>}
-                                                    <span>Send Test Report Email</span>
+                                                    <span className="material-symbols-outlined text-[17px] text-indigo-600">list_alt</span>
+                                                    <span>Execution Logs ({emailScheduleLogs.length})</span>
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    disabled={actionLoading}
-                                                    onClick={async () => {
-                                                        setActionLoading(true);
-                                                        try {
-                                                            const { error } = await supabase.from('email_automation_configs').upsert({
-                                                                ...emailAutoConfig,
-                                                                id: 'default_monthly_report',
-                                                                updated_at: new Date().toISOString()
-                                                            });
-                                                            if (error) throw error;
-                                                            recordAuditLog({
-                                                                action: "SETTINGS_CHANGE",
-                                                                module: "Email Automation",
-                                                                newValue: emailAutoConfig,
-                                                                status: "SUCCESS"
-                                                            });
-                                                            setToast({ type: "success", message: "Email automation settings saved successfully!" });
-                                                        } catch (err) {
-                                                            setToast({ type: "error", message: `Save failed: ${err.message}` });
-                                                        } finally {
-                                                            setActionLoading(false);
-                                                        }
-                                                    }}
-                                                    className="flex items-center gap-1.5 px-4 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer disabled:opacity-50"
+                                                    onClick={openCreateScheduleModal}
+                                                    className="flex items-center gap-1.5 h-9 px-4 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer whitespace-nowrap"
                                                 >
-                                                    <span className="material-symbols-outlined text-[16px]">save</span>
-                                                    <span>Save Configuration</span>
+                                                    <span className="material-symbols-outlined text-[17px]">add</span>
+                                                    <span>Create Email Schedule</span>
                                                 </button>
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
-                                            {/* Left Column: Triggers & Scope */}
-                                            <div className="space-y-4">
-                                                <div className="p-4 bg-slate-50/70 rounded-xl border border-slate-200/70 space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="font-bold text-slate-800">Automation Status</span>
-                                                        <label className="relative inline-flex items-center cursor-pointer">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={emailAutoConfig.enabled}
-                                                                onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, enabled: e.target.checked }))}
-                                                                className="sr-only peer"
-                                                            />
-                                                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                                                            <span className={`ml-2.5 font-bold ${emailAutoConfig.enabled ? "text-emerald-600" : "text-slate-400"}`}>
-                                                                {emailAutoConfig.enabled ? "ACTIVE (ON)" : "PAUSED (OFF)"}
-                                                            </span>
-                                                        </label>
-                                                    </div>
-                                                </div>
+                                        {/* Schedules Table */}
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse text-left text-xs">
+                                                <thead>
+                                                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[9px] bg-slate-50/70">
+                                                        <th className="py-3 px-4">Schedule</th>
+                                                        <th className="py-3 px-4">Location</th>
+                                                        <th className="py-3 px-4">Plant</th>
+                                                        <th className="py-3 px-4">To Recipients</th>
+                                                        <th className="py-3 px-4">CC Recipients</th>
+                                                        <th className="py-3 px-4">Timing</th>
+                                                        <th className="py-3 px-4">Status</th>
+                                                        <th className="py-3 px-4">Last Run</th>
+                                                        <th className="py-3 px-4 text-right">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 text-slate-700">
+                                                    {emailSchedules.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={9} className="py-12 text-center text-slate-400 font-medium">
+                                                                <div className="flex flex-col items-center gap-2">
+                                                                    <span className="material-symbols-outlined text-[36px] text-slate-300">mail_off</span>
+                                                                    <p>No automated email schedules configured yet.</p>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={openCreateScheduleModal}
+                                                                        className="mt-1 px-3 py-1.5 bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold rounded-xl text-xs border border-sky-200 cursor-pointer"
+                                                                    >
+                                                                        + Create First Schedule
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ) : (
+                                                        emailSchedules.map((sched) => {
+                                                            const toCount = (sched.to_recipients || "").split(",").map(x => x.trim()).filter(Boolean).length;
+                                                            const ccCount = (sched.cc_recipients || "").split(",").map(x => x.trim()).filter(Boolean).length;
+                                                            const isRunning = runningScheduleId === sched.id;
 
-                                                <div>
-                                                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Scheduled Dispatch Time</label>
-                                                    <input
-                                                        type="time"
-                                                        value={emailAutoConfig.schedule_time || "10:00"}
-                                                        onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, schedule_time: e.target.value }))}
-                                                        className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
-                                                    />
-                                                    <p className="text-[10px] text-slate-400 mt-1">Dispatches on the 1st day of every month at scheduled time.</p>
-                                                </div>
-
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div>
-                                                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Target Location</label>
-                                                        <select
-                                                            value={emailAutoConfig.location || "all"}
-                                                            onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, location: e.target.value }))}
-                                                            className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
-                                                        >
-                                                            <option value="all">All Locations</option>
-                                                            {Array.from(new Set(plants.map(p => p.location.toUpperCase()))).map(loc => (
-                                                                <option key={loc} value={loc}>{loc}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Target Plant</label>
-                                                        <select
-                                                            value={emailAutoConfig.plants || "all"}
-                                                            onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, plants: e.target.value }))}
-                                                            className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
-                                                        >
-                                                            <option value="all">All Plants</option>
-                                                            {plants.map(p => (
-                                                                <option key={p.plant_code} value={p.plant_code}>{p.plant_name}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Recipients (Comma Separated)</label>
-                                                    <textarea
-                                                        rows={2}
-                                                        placeholder="factory.head@pgel.in, hod.utility@pgel.in, gm.ops@pgel.in"
-                                                        value={emailAutoConfig.recipients || ""}
-                                                        onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, recipients: e.target.value }))}
-                                                        className="w-full border border-slate-200 rounded-xl p-2.5 bg-white text-slate-800 font-medium focus:outline-none focus:border-sky-500 shadow-sm resize-none"
-                                                    />
-                                                    <p className="text-[10px] text-slate-400 mt-0.5">Valid company emails ending with @pgel.in</p>
-                                                </div>
-                                            </div>
-
-                                            {/* Right Column: Template & Preview */}
-                                            <div className="space-y-4">
-                                                <div>
-                                                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Email Subject Template</label>
-                                                    <input
-                                                        type="text"
-                                                        value={emailAutoConfig.subject_template || ""}
-                                                        onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, subject_template: e.target.value }))}
-                                                        placeholder="Monthly UtilitySense Report - {Plant} ({Month})"
-                                                        className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
-                                                    />
-                                                </div>
-
-                                                <div>
-                                                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Email Body Message</label>
-                                                    <textarea
-                                                        rows={5}
-                                                        value={emailAutoConfig.body_template || ""}
-                                                        onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, body_template: e.target.value }))}
-                                                        placeholder="Dear Sir,\n\nPlease find attached the monthly UtilitySense report for {Location} - {Plant} for {Month}."
-                                                        className="w-full border border-slate-200 rounded-xl p-2.5 bg-white text-slate-800 font-mono text-xs focus:outline-none focus:border-sky-500 shadow-sm"
-                                                    />
-                                                </div>
-
-                                                <div className="bg-sky-50/60 border border-sky-100 rounded-xl p-3 text-[11px] text-sky-800 space-y-1">
-                                                    <span className="font-bold">Dynamic Variables:</span>
-                                                    <div className="flex flex-wrap gap-1.5 pt-1">
-                                                        {['{Location}', '{Plant}', '{Month}', '{Report Month}', '{Report Date}'].map(tag => (
-                                                            <code key={tag} className="px-1.5 py-0.5 bg-white border border-sky-200 rounded text-sky-700 font-mono text-[10px]">
-                                                                {tag}
-                                                            </code>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            </div>
+                                                            return (
+                                                                <tr key={sched.id} className="hover:bg-slate-50/60 transition">
+                                                                    <td className="py-3 px-4">
+                                                                        <div className="font-bold text-slate-900">{sched.name || sched.id}</div>
+                                                                        <div className="text-[10px] text-slate-400 font-mono">{sched.report_type || "Monthly Utility Report"}</div>
+                                                                    </td>
+                                                                    <td className="py-3 px-4 font-bold text-slate-800 uppercase">
+                                                                        {sched.location}
+                                                                    </td>
+                                                                    <td className="py-3 px-4 font-bold text-sky-700">
+                                                                        {sched.plant}
+                                                                    </td>
+                                                                    <td className="py-3 px-4" title={sched.to_recipients}>
+                                                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-100">
+                                                                            {toCount} recipient{toCount !== 1 ? 's' : ''}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="py-3 px-4" title={sched.cc_recipients}>
+                                                                        {ccCount > 0 ? (
+                                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                                                                                {ccCount} CC
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-[10px] text-slate-300">—</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="py-3 px-4 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                                                                        Day {sched.schedule_day || 1} @ {sched.schedule_time || "10:00"}
+                                                                    </td>
+                                                                    <td className="py-3 px-4">
+                                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={sched.enabled !== false}
+                                                                                onChange={() => handleToggleScheduleStatus(sched.id, sched.enabled !== false)}
+                                                                                className="sr-only peer"
+                                                                            />
+                                                                            <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-emerald-500"></div>
+                                                                            <span className={`ml-2 text-[10px] font-extrabold ${sched.enabled !== false ? "text-emerald-600" : "text-slate-400"}`}>
+                                                                                {sched.enabled !== false ? "ON" : "OFF"}
+                                                                            </span>
+                                                                        </label>
+                                                                    </td>
+                                                                    <td className="py-3 px-4 whitespace-nowrap text-[10.5px]">
+                                                                        {sched.last_run_at ? (
+                                                                            <div>
+                                                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold mr-1 ${sched.last_status === "SUCCESS" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                                                                                    {sched.last_status || "DONE"}
+                                                                                </span>
+                                                                                <span className="text-slate-400 font-mono">{new Date(sched.last_run_at).toLocaleDateString("en-IN")}</span>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="text-slate-300">Never executed</span>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={isRunning || isEmailSending}
+                                                                            onClick={() => handleExecuteSchedule({ schedule: sched, isManualTest: true })}
+                                                                            className="px-2.5 py-1 text-[10.5px] font-extrabold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg cursor-pointer transition disabled:opacity-50 inline-flex items-center gap-1"
+                                                                            title="Dispatch test report email right now"
+                                                                        >
+                                                                            {isRunning ? <span className="w-3 h-3 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" /> : <span className="material-symbols-outlined text-[13px]">send</span>}
+                                                                            <span>Run Now</span>
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => openEditScheduleModal(sched)}
+                                                                            className="px-2 py-1 text-[10.5px] font-extrabold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer border-none transition"
+                                                                        >
+                                                                            Edit
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleDeleteSchedule(sched.id)}
+                                                                            className="px-2 py-1 text-[10.5px] font-extrabold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg cursor-pointer border-none transition"
+                                                                        >
+                                                                            Delete
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })
+                                                    )}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     </div>
                                 ) : selectedMasterTable === "audit_logs" && currentUser.role === "IT_ADMIN" ? (
@@ -6805,6 +7085,350 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     <button
                                         type="button"
                                         onClick={() => setSelectedAuditDetail(null)}
+                                        className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold border-none cursor-pointer transition"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Create / Edit Email Schedule Modal */}
+                    {isScheduleModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                            <div className="relative w-full max-w-3xl overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-2xl flex flex-col max-h-[90vh]">
+                                <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/70">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="h-9 w-9 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600">
+                                            <span className="material-symbols-outlined text-[20px]">forward_to_inbox</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold text-slate-800">
+                                                {editingSchedule ? "Edit Automated Email Schedule" : "Create New Email Schedule"}
+                                            </h3>
+                                            <p className="text-[11px] text-slate-500">
+                                                Configure independent monthly Excel report dispatch for specific Location and Plant
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsScheduleModalOpen(false)}
+                                        className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition border-none bg-transparent cursor-pointer"
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">close</span>
+                                    </button>
+                                </div>
+
+                                <form onSubmit={handleSaveSchedule} className="p-6 overflow-y-auto space-y-4 text-xs">
+                                    {/* Row 1: Schedule Name & Status */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                                        <div className="sm:col-span-2">
+                                            <label className="block text-[10.5px] font-bold text-slate-600 mb-1">Schedule Name</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                placeholder="e.g. Bhiwadi Plant A Monthly Report"
+                                                value={scheduleFormValues.name}
+                                                onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, name: e.target.value })}
+                                                className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-semibold focus:outline-none focus:border-sky-500 shadow-sm"
+                                            />
+                                        </div>
+                                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/70 flex items-center justify-between">
+                                            <span className="font-bold text-slate-700 text-[11px]">Schedule Status</span>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={scheduleFormValues.enabled}
+                                                    onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, enabled: e.target.checked })}
+                                                    className="sr-only peer"
+                                                />
+                                                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                                <span className={`ml-2 text-[10px] font-extrabold ${scheduleFormValues.enabled ? "text-emerald-600" : "text-slate-400"}`}>
+                                                    {scheduleFormValues.enabled ? "ON" : "OFF"}
+                                                </span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Row 2: Cascading Location & Plant Selection */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-sky-50/50 p-3.5 rounded-xl border border-sky-100">
+                                        <div>
+                                            <label className="block text-[10.5px] font-bold text-slate-700 mb-1">Location</label>
+                                            <select
+                                                required
+                                                value={scheduleFormValues.location}
+                                                onChange={(e) => {
+                                                    const newLoc = e.target.value;
+                                                    const filtered = plants.filter(p => p.location.toUpperCase() === newLoc.toUpperCase());
+                                                    const newPlant = filtered[0]?.plant_code || "";
+                                                    setScheduleFormValues({
+                                                        ...scheduleFormValues,
+                                                        location: newLoc,
+                                                        plant: newPlant
+                                                    });
+                                                }}
+                                                className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
+                                            >
+                                                <option value="">Select Location</option>
+                                                {Array.from(new Set(plants.map(p => p.location.toUpperCase()))).map(loc => (
+                                                    <option key={loc} value={loc}>{loc}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10.5px] font-bold text-slate-700 mb-1">Plant (Strictly for {scheduleFormValues.location || "Selected Location"})</label>
+                                            <select
+                                                required
+                                                value={scheduleFormValues.plant}
+                                                onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, plant: e.target.value })}
+                                                className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
+                                            >
+                                                <option value="">Select Plant</option>
+                                                {plants
+                                                    .filter(p => !scheduleFormValues.location || p.location.toUpperCase() === scheduleFormValues.location.toUpperCase())
+                                                    .map(p => (
+                                                        <option key={p.plant_code} value={p.plant_code}>{p.plant_code} - {p.plant_name}</option>
+                                                    ))
+                                                }
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Row 3: TO, CC, BCC Recipients */}
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-[10.5px] font-bold text-slate-700 mb-1">
+                                                To Recipients <span className="text-red-500">*</span> (Comma Separated)
+                                            </label>
+                                            <input
+                                                type="text"
+                                                required
+                                                placeholder="fh@example.com, manager@example.com, planthead@example.com"
+                                                value={scheduleFormValues.to_recipients}
+                                                onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, to_recipients: e.target.value })}
+                                                className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-medium focus:outline-none focus:border-sky-500 shadow-sm text-xs"
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-[10.5px] font-bold text-slate-600 mb-1">
+                                                    CC Recipients (Optional)
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="hod@example.com, it@example.com, finance@example.com"
+                                                    value={scheduleFormValues.cc_recipients}
+                                                    onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, cc_recipients: e.target.value })}
+                                                    className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-medium focus:outline-none focus:border-sky-500 shadow-sm text-xs"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10.5px] font-bold text-slate-600 mb-1">
+                                                    BCC Recipients (Optional)
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="audit@example.com"
+                                                    value={scheduleFormValues.bcc_recipients}
+                                                    onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, bcc_recipients: e.target.value })}
+                                                    className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-medium focus:outline-none focus:border-sky-500 shadow-sm text-xs"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Row 4: Frequency, Day, Time, Report Type */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/70">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Report</label>
+                                            <select
+                                                value={scheduleFormValues.report_type}
+                                                onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, report_type: e.target.value })}
+                                                className="w-full h-8.5 border border-slate-200 rounded-lg px-2 bg-white text-slate-800 font-bold focus:outline-none text-[11px]"
+                                            >
+                                                <option value="Monthly Utility Report">Monthly Utility Report</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Frequency</label>
+                                            <select
+                                                value={scheduleFormValues.frequency}
+                                                onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, frequency: e.target.value })}
+                                                className="w-full h-8.5 border border-slate-200 rounded-lg px-2 bg-white text-slate-800 font-bold focus:outline-none text-[11px]"
+                                            >
+                                                <option value="Monthly">Monthly</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Day of Month</label>
+                                            <select
+                                                value={scheduleFormValues.schedule_day}
+                                                onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, schedule_day: Number(e.target.value) || 1 })}
+                                                className="w-full h-8.5 border border-slate-200 rounded-lg px-2 bg-white text-slate-800 font-bold focus:outline-none text-[11px]"
+                                            >
+                                                {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                                                    <option key={d} value={d}>{d}{d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'} of month</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Time</label>
+                                            <input
+                                                type="time"
+                                                required
+                                                value={scheduleFormValues.schedule_time}
+                                                onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, schedule_time: e.target.value })}
+                                                className="w-full h-8.5 border border-slate-200 rounded-lg px-2 bg-white text-slate-800 font-bold focus:outline-none text-[11px]"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Row 5: Custom Subject & Body with Dynamic Variable Helpers */}
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-[10.5px] font-bold text-slate-700 mb-1">Email Subject Template</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={scheduleFormValues.subject_template}
+                                                onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, subject_template: e.target.value })}
+                                                placeholder="Monthly Utility Report - {Location} - {Plant} - {Month}"
+                                                className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[10.5px] font-bold text-slate-700 mb-1">Custom Email Body</label>
+                                            <textarea
+                                                rows={4}
+                                                value={scheduleFormValues.body_template}
+                                                onChange={(e) => setScheduleFormValues({ ...scheduleFormValues, body_template: e.target.value })}
+                                                placeholder="Dear Team,\n\nPlease find attached the monthly UtilitySense report for {Location} - {Plant} for {Month}."
+                                                className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-mono text-xs focus:outline-none focus:border-sky-500 shadow-sm leading-relaxed"
+                                            />
+                                        </div>
+
+                                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 flex items-center justify-between text-[11px]">
+                                            <span className="font-bold text-slate-500">Insert Placeholders:</span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {['{Location}', '{Plant}', '{Month}', '{Year}', '{ReportDate}'].map(tag => (
+                                                    <button
+                                                        key={tag}
+                                                        type="button"
+                                                        onClick={() => setScheduleFormValues({
+                                                            ...scheduleFormValues,
+                                                            body_template: `${scheduleFormValues.body_template} ${tag}`
+                                                        })}
+                                                        className="px-1.5 py-0.5 bg-white border border-slate-300 hover:border-sky-400 hover:text-sky-700 rounded text-slate-600 font-mono text-[10px] cursor-pointer"
+                                                    >
+                                                        {tag}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsScheduleModalOpen(false)}
+                                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border-none cursor-pointer transition"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={actionLoading}
+                                            className="flex items-center gap-2 px-5 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer disabled:opacity-50"
+                                        >
+                                            {actionLoading && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                                            <span>{editingSchedule ? "Update Schedule" : "Save Email Schedule"}</span>
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Execution Logs Modal */}
+                    {isScheduleLogsOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                            <div className="relative w-full max-w-4xl overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-2xl flex flex-col max-h-[85vh]">
+                                <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/70">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="h-8 w-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                                            <span className="material-symbols-outlined text-[18px]">history_edu</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold text-slate-800">
+                                                Automated Schedule Execution Logs
+                                            </h3>
+                                            <p className="text-[10px] text-slate-400">
+                                                Complete history of automated and manual email report dispatches
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsScheduleLogsOpen(false)}
+                                        className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition border-none bg-transparent cursor-pointer"
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">close</span>
+                                    </button>
+                                </div>
+
+                                <div className="p-4 overflow-y-auto flex-1">
+                                    {emailScheduleLogs.length === 0 ? (
+                                        <div className="py-16 text-center text-slate-400 font-medium">
+                                            No automated report executions logged yet.
+                                        </div>
+                                    ) : (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse text-left text-xs">
+                                                <thead>
+                                                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[9px] bg-slate-50">
+                                                        <th className="py-2.5 px-3">Execution Time</th>
+                                                        <th className="py-2.5 px-3">Schedule Name</th>
+                                                        <th className="py-2.5 px-3">Location / Plant</th>
+                                                        <th className="py-2.5 px-3">Recipients</th>
+                                                        <th className="py-2.5 px-3">Status</th>
+                                                        <th className="py-2.5 px-3">Message / Error</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 text-slate-700">
+                                                    {emailScheduleLogs.map((log, idx) => (
+                                                        <tr key={idx} className="hover:bg-slate-50/50">
+                                                            <td className="py-2 px-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                                                                {log.executed_at ? new Date(log.executed_at).toLocaleString("en-IN") : "—"}
+                                                            </td>
+                                                            <td className="py-2 px-3 font-bold text-slate-800">{log.schedule_name || log.schedule_id}</td>
+                                                            <td className="py-2 px-3 font-semibold text-sky-700">{log.location} → {log.plant}</td>
+                                                            <td className="py-2 px-3 text-[11px] text-slate-600 max-w-xs truncate" title={`To: ${log.to_recipients || ''} | CC: ${log.cc_recipients || ''}`}>
+                                                                {log.to_recipients || "—"}
+                                                            </td>
+                                                            <td className="py-2 px-3">
+                                                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${log.status === "SUCCESS" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                                                                    {log.status}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2 px-3 text-[11px] text-slate-500 font-mono truncate max-w-xs">
+                                                                {log.error_message || "Excel report generated & delivered."}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsScheduleLogsOpen(false)}
                                         className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold border-none cursor-pointer transition"
                                     >
                                         Close

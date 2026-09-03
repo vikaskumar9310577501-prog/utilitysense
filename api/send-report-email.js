@@ -20,13 +20,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { recipients, subject, html, attachments } = req.body;
+    const { to, cc, bcc, recipients, subject, html, attachments } = req.body;
 
-    if (!recipients || (!Array.isArray(recipients) && typeof recipients !== 'string')) {
-      return res.status(400).json({ error: 'Valid recipients are required' });
+    // Normalize recipients
+    const toRecipients = to || recipients;
+    if (!toRecipients || (Array.isArray(toRecipients) && toRecipients.length === 0)) {
+      return res.status(400).json({ error: 'At least one valid "To" recipient is required' });
     }
 
-    const toList = Array.isArray(recipients) ? recipients.join(', ') : recipients;
+    const toList = Array.isArray(toRecipients) ? toRecipients.join(', ') : toRecipients;
+    const ccList = cc ? (Array.isArray(cc) ? cc.join(', ') : cc) : undefined;
+    const bccList = bcc ? (Array.isArray(bcc) ? bcc.join(', ') : bcc) : undefined;
 
     // Configure Microsoft 365 SMTP transport
     const transporter = nodemailer.createTransport({
@@ -55,6 +59,9 @@ export default async function handler(req, res) {
         contentType: att.contentType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       })) : []
     };
+
+    if (ccList && ccList.trim()) mailOptions.cc = ccList;
+    if (bccList && bccList.trim()) mailOptions.bcc = bccList;
 
     const info = await transporter.sendMail(mailOptions);
     return res.status(200).json({
