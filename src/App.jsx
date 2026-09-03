@@ -1469,11 +1469,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     };
                     setAuditLogs(prev => [logItem, ...prev]);
                     supabase.from('audit_logs').insert([logItem]).then(({ error }) => {
-                        if (error) console.warn("Supabase audit log insert:", error.message);
-                    });
-                } catch (e) {
-                    console.warn("recordAuditLog caught:", e);
-                }
+                        // Silently ignore if table doesn't exist yet
+                        if (error && !error.message?.includes("schema cache") && !error.message?.includes("relation")) {
+                            console.warn("Supabase audit log insert:", error.message);
+                        }
+                    }).catch(() => {});
+                } catch (_) {}
             }, [currentUser]);
 
             // ----------------------------------------------------
@@ -4593,7 +4594,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     <div
                         className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-slate-100"
                         style={{
-                            backgroundImage: `radial-gradient(circle at center, rgba(248, 250, 252, 0.45) 0%, rgba(226, 232, 240, 0.75) 100%), url('/login-bg.png')`,
+                            backgroundImage: `url('/login-bg.png')`,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
                             backgroundRepeat: 'no-repeat',
@@ -4602,11 +4603,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                             alignItems: 'center'
                         }}
                     >
-                        {/* Soft backdrop blur */}
-                        <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[2px] pointer-events-none" />
-
                         <div
-                            className="w-full max-w-md bg-white/95 backdrop-blur-md rounded-3xl p-8 border border-slate-200/90 shadow-[0_25px_60px_rgba(0,0,0,0.18)] z-10"
+                            className="w-full max-w-md bg-white/95 backdrop-blur-md rounded-3xl p-8 border border-slate-200/90 shadow-[0_25px_60px_rgba(0,0,0,0.22)] z-10"
                             style={{ position: 'relative' }}
                         >
                             <div className="flex flex-col items-center text-center mb-6">
@@ -4762,12 +4760,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     <img src={PG_LOGO_BASE_64} className="h-11 w-auto object-contain" alt="PG Electroplast Logo" />
                                 </div>
                                 
-                                {/* UTILITY SENSE Title Block */}
+                                {/* UTILITY SENSE Title Block with Logo Image */}
                                 <div className="flex flex-col justify-center shrink-0">
-                                    <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white uppercase leading-none">
-                                        UTILITY SENSE
-                                    </h1>
-                                    <p className="text-[10px] sm:text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 leading-tight mt-1 whitespace-nowrap">
+                                    <img
+                                        src="/utilitysense-banner.png"
+                                        alt="UtilitySense"
+                                        className="h-7 sm:h-8 w-auto object-contain select-none origin-left"
+                                    />
+                                    <p className="text-[10px] sm:text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5 whitespace-nowrap">
                                         {(() => {
                                             if (filters.plant && filters.plant !== "all") {
                                                 const p = plants.find(pl => pl.plant_code === filters.plant);
