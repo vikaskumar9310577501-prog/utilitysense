@@ -1,0 +1,696 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    background-color: #f8fafc;
+    font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+/* Material symbols — must keep font-family or ligature names show as clipped text */
+.material-symbols-outlined {
+    font-family: 'Material Symbols Outlined', sans-serif !important;
+    font-weight: normal !important;
+    font-style: normal;
+    font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    width: 1em;
+    height: 1em;
+    overflow: hidden;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Top Navigation Bar */
+.topnav-bar {
+    position: sticky;
+    top: 64px;
+    z-index: 20;
+    background: var(--surface, #ffffff);
+    border-bottom: 1px solid var(--border-light, #f1f5f9);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 10px 20px;
+}
+
+.topnav-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.topnav-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.topnav-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary, #475569);
+    background: var(--surface-alt-2, #f1f5f9);
+    border: 1px solid var(--border, #e2e8f0);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.topnav-pill:hover {
+    background: var(--surface, #ffffff) !important;
+    color: var(--accent, #0284c7) !important;
+    border-color: var(--accent, #0284c7) !important;
+    transform: translateY(-0.5px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.topnav-pill.active {
+    background: var(--accent, #0284c7) !important;
+    color: #ffffff !important;
+    border-color: var(--accent, #0284c7) !important;
+    font-weight: 800;
+    box-shadow: 0 3px 6px -1px rgba(2, 132, 199, 0.2);
+}
+
+.topnav-divider {
+    width: 1px;
+    align-self: stretch;
+    margin: 6px 6px;
+    background: var(--border-light, #f1f5f9);
+    flex-shrink: 0;
+}
+
+.topnav-badge {
+    margin-left: 1px;
+    background: #ef4444;
+    color: #fff;
+    border-radius: 9999px;
+    font-size: 9px;
+    font-weight: 700;
+    height: 16px;
+    min-width: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+}
+
+.topnav-cta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 18px;
+    border-radius: 10px;
+    background: var(--accent, #0284c7);
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    transition: background 0.15s ease;
+    flex-shrink: 0;
+}
+
+.topnav-cta:hover {
+    background: var(--accent-hover, #0369a1);
+}
+
+.main-content {
+    flex: 1;
+    min-width: 0;
+    padding: 0 16px 24px 16px;
+}
+
+.main-content--reports {
+    padding-top: 10px;
+    padding-bottom: 16px;
+}
+
+/* Printable styles */
+@media print {
+    body {
+        background: #ffffff !important;
+        background-image: none !important;
+        color: #000000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    .no-print,
+    header,
+    nav,
+    .topnav-bar,
+    button,
+    select,
+    input,
+    .toast-notification {
+        display: none !important;
+    }
+
+    .print-only {
+        display: block !important;
+    }
+
+    .print-card {
+        border: 1px solid #cbd5e1 !important;
+        box-shadow: none !important;
+        page-break-inside: avoid;
+        margin-bottom: 20px !important;
+        padding: 16px !important;
+    }
+
+    table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+    }
+
+    th,
+    td {
+        border: 1px solid #e2e8f0 !important;
+        padding: 8px !important;
+    }
+
+    th {
+        background-color: #f8fafc !important;
+    }
+
+    /* When printing plant Excel report: hide entire app, show only Excel sheet */
+    body.printing-plant-excel * {
+        visibility: hidden !important;
+    }
+    body.printing-plant-excel .plant-excel-print-root,
+    body.printing-plant-excel .plant-excel-print-root * {
+        visibility: visible !important;
+    }
+    body.printing-plant-excel .plant-excel-print-root {
+        display: block !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        padding: 6mm !important;
+        background: #fff !important;
+    }
+    body.printing-plant-excel .plant-excel-print-root th,
+    body.printing-plant-excel .plant-excel-print-root td {
+        border: 1px solid #64748b !important;
+        padding: 3px 2px !important;
+        font-size: 8px !important;
+        text-align: center !important;
+        vertical-align: middle !important;
+    }
+    body.printing-plant-excel .plant-excel-print-root th.pex-green {
+        background: #c6efce !important;
+        font-weight: 700 !important;
+    }
+    body.printing-plant-excel .plant-excel-print-root th.pex-manual,
+    body.printing-plant-excel .plant-excel-print-root td.pex-manual {
+        background: #fff2cc !important;
+    }
+    body.printing-plant-excel .plant-excel-print-root th.pex-auto {
+        background: #bdd7ee !important;
+        font-weight: 700 !important;
+    }
+    body.printing-plant-excel .plant-excel-print-root th.pex-formula {
+        font-size: 6.5px !important;
+        font-weight: 600 !important;
+        color: #334155 !important;
+    }
+    body.printing-plant-excel .plant-excel-print-root td.pex-alt {
+        background: #f8fafc !important;
+    }
+    @page {
+        size: A4 landscape;
+        margin: 6mm;
+    }
+}
+
+/* Plant Excel print sheet — hidden on screen */
+.plant-excel-print-root {
+    display: none;
+}
+.plant-excel-print-root .pex-title {
+    background: #0c4a6e;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    padding: 10px 12px;
+    border: 1px solid #64748b;
+}
+.plant-excel-print-root .pex-meta {
+    display: grid;
+    grid-template-columns: 90px 1fr 70px 1fr;
+    background: #e0f2fe;
+    border: 1px solid #64748b;
+    border-top: none;
+    font-size: 12px;
+    font-weight: 700;
+}
+.plant-excel-print-root .pex-meta > div {
+    padding: 8px 10px;
+    border-right: 1px solid #94a3b8;
+    text-align: center;
+}
+.plant-excel-print-root .pex-meta > div:last-child {
+    border-right: none;
+    color: #0369a1;
+    font-size: 13px;
+}
+.plant-excel-print-root .pex-sub {
+    font-size: 10px;
+    padding: 6px 10px;
+    border: 1px solid #64748b;
+    border-top: none;
+    background: #f8fafc;
+    color: #334155;
+}
+.plant-excel-print-root .pex-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    table-layout: fixed;
+}
+
+/* Windmill Rotation Animation */
+@keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.windmill-blades {
+    transform-origin: 50px 40px;
+    animation: spin-slow 5s linear infinite;
+}
+
+/* Theme System variables */
+html[data-theme="light"],
+html:not([data-theme]) {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface-alt: #f8fafc;
+    --surface-alt-2: #f1f5f9;
+    --border: #e2e8f0;
+    --border-light: #f1f5f9;
+    --border-strong: #cbd5e1;
+    --text-heading: #020617;
+    --text-primary: #0f172a;
+    --text-body: #1e293b;
+    --text-secondary: #334155;
+    --text-tertiary: #475569;
+    --text-muted: #64748b;
+    --text-faint: #94a3b8;
+    --accent: #0284c7;
+    --accent-hover: #0369a1;
+    --accent-soft-bg: #f0f9ff;
+    --accent-soft-text: #0369a1;
+    --scrollbar-thumb: #cbd5e1;
+    --scrollbar-thumb-hover: #94a3b8;
+    --grid-line: #f1f5f9;
+    --tooltip-bg: #ffffff;
+    --bg-glow-1: rgba(2, 132, 199, 0.03);
+    --bg-glow-2: rgba(22, 163, 74, 0.02);
+}
+
+html[data-theme="dark"] {
+    --bg: #0a0f1a;
+    --surface: #121a29;
+    --surface-alt: #182236;
+    --surface-alt-2: #1f2b40;
+    --border: #26334a;
+    --border-light: #1c2536;
+    --border-strong: #37475e;
+    --text-heading: #f8fafc;
+    --text-primary: #eef2f7;
+    --text-body: #dde3ec;
+    --text-secondary: #c3cbd8;
+    --text-tertiary: #9aa6b8;
+    --text-muted: #8593a8;
+    --text-faint: #66748c;
+    --accent: #38bdf8;
+    --accent-hover: #7dd3fc;
+    --accent-soft-bg: #0f2740;
+    --accent-soft-text: #7dd3fc;
+    --scrollbar-thumb: #2d3a51;
+    --scrollbar-thumb-hover: #445372;
+    --grid-line: #22304a;
+    --tooltip-bg: #182236;
+    --bg-glow-1: rgba(56, 189, 248, 0.06);
+    --bg-glow-2: rgba(16, 185, 129, 0.04);
+}
+
+html[data-theme="ocean"] {
+    --bg: #eef6fb;
+    --surface: #ffffff;
+    --surface-alt: #eaf4fb;
+    --surface-alt-2: #dcedf7;
+    --border: #cfe4f0;
+    --border-light: #e3f0f7;
+    --border-strong: #a9cfe3;
+    --text-heading: #052436;
+    --text-primary: #0b3a52;
+    --text-body: #123f56;
+    --text-secondary: #29566c;
+    --text-tertiary: #44708a;
+    --text-muted: #5c8299;
+    --text-faint: #89aabd;
+    --accent: #0e7490;
+    --accent-hover: #0c6178;
+    --accent-soft-bg: #e0f2fe;
+    --accent-soft-text: #0e7490;
+    --scrollbar-thumb: #a9cfe3;
+    --scrollbar-thumb-hover: #7fb8d6;
+    --grid-line: #e3f0f7;
+    --tooltip-bg: #ffffff;
+    --bg-glow-1: rgba(14, 116, 144, 0.05);
+    --bg-glow-2: rgba(2, 132, 199, 0.04);
+}
+
+html[data-theme="emerald"] {
+    --bg: #f0faf5;
+    --surface: #ffffff;
+    --surface-alt: #eafaf1;
+    --surface-alt-2: #d9f2e3;
+    --border: #cdebd9;
+    --border-light: #e3f7ec;
+    --border-strong: #a6dcbe;
+    --text-heading: #062b1a;
+    --text-primary: #0c3d24;
+    --text-body: #124a2c;
+    --text-secondary: #24623f;
+    --text-tertiary: #3f7d59;
+    --text-muted: #5b9878;
+    --text-faint: #8ab89e;
+    --accent: #059669;
+    --accent-hover: #047857;
+    --accent-soft-bg: #d1fae5;
+    --accent-soft-text: #047857;
+    --scrollbar-thumb: #a6dcbe;
+    --scrollbar-thumb-hover: #7bc79d;
+    --grid-line: #e3f7ec;
+    --tooltip-bg: #ffffff;
+    --bg-glow-1: rgba(5, 150, 105, 0.05);
+    --bg-glow-2: rgba(14, 116, 144, 0.03);
+}
+
+html[data-theme] body {
+    background-color: var(--bg) !important;
+    color: var(--text-body);
+}
+
+html[data-theme] ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb) !important;
+}
+
+html[data-theme] ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover) !important;
+}
+
+html[data-theme] .topnav-bar {
+    background: var(--surface) !important;
+    border-bottom-color: var(--border-light) !important;
+}
+
+html[data-theme] .topnav-pill {
+    color: var(--text-secondary);
+    background: var(--surface-alt-2) !important;
+    border-color: var(--border) !important;
+}
+
+html[data-theme] .topnav-pill:hover {
+    background: var(--surface) !important;
+    color: var(--accent) !important;
+    border-color: var(--accent) !important;
+}
+
+html[data-theme] .topnav-pill.active {
+    background: var(--accent) !important;
+    color: #ffffff !important;
+    border-color: var(--accent) !important;
+}
+
+html[data-theme] .topnav-divider {
+    background: var(--border-light) !important;
+}
+
+html[data-theme] .theme-popover {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+}
+
+/* Remap utility classes in dark/ocean/emerald */
+html[data-theme="dark"] [class*="bg-white"],
+html[data-theme="ocean"] [class*="bg-white"],
+html[data-theme="emerald"] [class*="bg-white"] {
+    background-color: var(--surface) !important;
+}
+
+html[data-theme="dark"] [class*="bg-slate-50"],
+html[data-theme="ocean"] [class*="bg-slate-50"],
+html[data-theme="emerald"] [class*="bg-slate-50"] {
+    background-color: var(--surface-alt) !important;
+}
+
+html[data-theme="dark"] [class*="bg-slate-100"],
+html[data-theme="ocean"] [class*="bg-slate-100"],
+html[data-theme="emerald"] [class*="bg-slate-100"] {
+    background-color: var(--surface-alt-2) !important;
+}
+
+html[data-theme="dark"] [class*="border-slate-100"],
+html[data-theme="ocean"] [class*="border-slate-100"],
+html[data-theme="emerald"] [class*="border-slate-100"] {
+    border-color: var(--border-light) !important;
+}
+
+html[data-theme="dark"] [class*="border-slate-200"],
+html[data-theme="ocean"] [class*="border-slate-200"],
+html[data-theme="emerald"] [class*="border-slate-200"] {
+    border-color: var(--border) !important;
+}
+
+html[data-theme="dark"] [class*="border-slate-300"],
+html[data-theme="ocean"] [class*="border-slate-300"],
+html[data-theme="emerald"] [class*="border-slate-300"] {
+    border-color: var(--border-strong) !important;
+}
+
+html[data-theme="dark"] [class*="text-slate-950"],
+html[data-theme="dark"] [class*="text-slate-900"],
+html[data-theme="ocean"] [class*="text-slate-950"],
+html[data-theme="ocean"] [class*="text-slate-900"],
+html[data-theme="emerald"] [class*="text-slate-950"],
+html[data-theme="emerald"] [class*="text-slate-900"] {
+    color: var(--text-heading) !important;
+}
+
+html[data-theme="dark"] [class*="text-slate-800"],
+html[data-theme="ocean"] [class*="text-slate-800"],
+html[data-theme="emerald"] [class*="text-slate-800"] {
+    color: var(--text-body) !important;
+}
+
+html[data-theme="dark"] [class*="text-slate-700"],
+html[data-theme="ocean"] [class*="text-slate-700"],
+html[data-theme="emerald"] [class*="text-slate-700"] {
+    color: var(--text-secondary) !important;
+}
+
+html[data-theme="dark"] [class*="text-slate-600"],
+html[data-theme="ocean"] [class*="text-slate-600"],
+html[data-theme="emerald"] [class*="text-slate-600"] {
+    color: var(--text-tertiary) !important;
+}
+
+html[data-theme="dark"] [class*="text-slate-500"],
+html[data-theme="ocean"] [class*="text-slate-500"],
+html[data-theme="emerald"] [class*="text-slate-500"] {
+    color: var(--text-muted) !important;
+}
+
+html[data-theme="dark"] [class*="text-slate-400"],
+html[data-theme="ocean"] [class*="text-slate-400"],
+html[data-theme="emerald"] [class*="text-slate-400"] {
+    color: var(--text-faint) !important;
+}
+
+html[data-theme="dark"] [class*="bg-sky-50"],
+html[data-theme="ocean"] [class*="bg-sky-50"],
+html[data-theme="emerald"] [class*="bg-sky-50"] {
+    background-color: var(--accent-soft-bg) !important;
+}
+
+html[data-theme="dark"] [class*="text-sky-700"],
+html[data-theme="dark"] [class*="text-sky-600"],
+html[data-theme="dark"] [class*="text-sky-800"],
+html[data-theme="ocean"] [class*="text-sky-700"],
+html[data-theme="ocean"] [class*="text-sky-600"],
+html[data-theme="ocean"] [class*="text-sky-800"],
+html[data-theme="emerald"] [class*="text-sky-700"],
+html[data-theme="emerald"] [class*="text-sky-600"],
+html[data-theme="emerald"] [class*="text-sky-800"] {
+    color: var(--accent-soft-text) !important;
+}
+
+html[data-theme="dark"] [class*="border-sky-100"],
+html[data-theme="dark"] [class*="border-sky-300"],
+html[data-theme="dark"] [class*="border-sky-400"],
+html[data-theme="ocean"] [class*="border-sky-100"],
+html[data-theme="ocean"] [class*="border-sky-300"],
+html[data-theme="ocean"] [class*="border-sky-400"],
+html[data-theme="emerald"] [class*="border-sky-100"],
+html[data-theme="emerald"] [class*="border-sky-300"],
+html[data-theme="emerald"] [class*="border-sky-400"] {
+    border-color: var(--accent) !important;
+}
+
+html[data-theme="dark"] [class*="bg-[#0284c7]"],
+html[data-theme="ocean"] [class*="bg-[#0284c7]"],
+html[data-theme="emerald"] [class*="bg-[#0284c7]"] {
+    background-color: var(--accent) !important;
+}
+
+html[data-theme="dark"] [class*="hover:bg-[#0369a1]"]:hover,
+html[data-theme="ocean"] [class*="hover:bg-[#0369a1]"]:hover,
+html[data-theme="emerald"] [class*="hover:bg-[#0369a1]"]:hover {
+    background-color: var(--accent-hover) !important;
+}
+
+html[data-theme="dark"] [class*="bg-sky-500"],
+html[data-theme="ocean"] [class*="bg-sky-500"],
+html[data-theme="emerald"] [class*="bg-sky-500"] {
+    background-color: var(--accent) !important;
+}
+
+html[data-theme="dark"] .material-symbols-outlined[class*="text-[#0284c7]"],
+html[data-theme="ocean"] .material-symbols-outlined[class*="text-[#0284c7]"],
+html[data-theme="emerald"] .material-symbols-outlined[class*="text-[#0284c7]"] {
+    color: var(--accent) !important;
+}
+
+/* Recharts: re-theme grid lines, axis text, tooltip surface */
+html[data-theme] .recharts-cartesian-grid-horizontal line,
+html[data-theme] .recharts-cartesian-grid-vertical line {
+    stroke: var(--grid-line) !important;
+}
+
+html[data-theme] .recharts-cartesian-axis-tick-value tspan,
+html[data-theme] .recharts-text.recharts-cartesian-axis-tick-value {
+    fill: var(--text-secondary) !important;
+    font-weight: 700 !important;
+    font-size: 9.5px !important;
+}
+
+html[data-theme] .recharts-default-tooltip {
+    background-color: var(--tooltip-bg) !important;
+    border-color: var(--border) !important;
+    color: var(--text-body) !important;
+}
+
+html[data-theme] .recharts-tooltip-label {
+    color: var(--text-heading) !important;
+}
+
+html[data-theme] .recharts-legend-item-text {
+    color: var(--text-secondary) !important;
+}
+
+/* Hide scrollbars but allow scrolling */
+.scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+/* Crop baked-in left vertical line from PG logo (Start + Login only) */
+.logo-no-vline {
+    display: inline-block;
+    overflow: hidden;
+    line-height: 0;
+}
+.logo-no-vline img {
+    display: block;
+    /* clip just the thin left edge line; rest of logo unchanged */
+    clip-path: inset(0 0 0 3.2%);
+    -webkit-clip-path: inset(0 0 0 3.2%);
+}
+
+/* Idle screensaver — PG logo bounce */
+.idle-screensaver {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: rgba(0, 0, 0, 0.88);
+    overflow: hidden;
+    cursor: none;
+    animation: idle-fade-in 0.45s ease-out;
+    touch-action: none;
+}
+
+.idle-screensaver__logo {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: clamp(56px, 12vw, 110px);
+    width: auto;
+    max-width: min(42vw, 280px);
+    object-fit: contain;
+    will-change: transform;
+    pointer-events: none;
+    user-select: none;
+    filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.45));
+}
+
+@keyframes idle-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .idle-screensaver {
+        animation: none;
+    }
+}
