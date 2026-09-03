@@ -69,6 +69,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             }).format(n);
         }
 
+        function getMonthEnd(monthStr) {
+            if (!monthStr) return "";
+            const parts = String(monthStr).split("-").map(Number);
+            if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return `${monthStr}-31`;
+            const year = parts[0];
+            const month = parts[1];
+            const lastDay = new Date(year, month, 0).getDate();
+            return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+        }
+
         // Active Theme Colors
         const COLORS = {
             blue: "#0284c7",
@@ -878,6 +888,37 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const [targets, setTargets] = useState([]);
             const [users, setUsers] = useState([]);
             const [otpLogs, setOtpLogs] = useState([]);
+            const [auditLogs, setAuditLogs] = useState([]);
+            const [selectedAuditDetail, setSelectedAuditDetail] = useState(null);
+            const [auditSearchQuery, setAuditSearchQuery] = useState("");
+            const [auditModuleFilter, setAuditModuleFilter] = useState("all");
+
+            const [emailAutoConfig, setEmailAutoConfig] = useState({
+                id: "default_monthly_report",
+                enabled: false,
+                schedule_time: "10:00",
+                location: "all",
+                plants: "all",
+                recipients: "",
+                subject_template: "Monthly UtilitySense Report - {Plant} ({Month})",
+                body_template: "Dear Sir,\n\nPlease find attached the monthly UtilitySense report for {Location} - {Plant} for {Month}.\n\nRegards,\nUtilitySense Management",
+                last_sent_at: null,
+                last_status: null
+            });
+            const [isEmailSending, setIsEmailSending] = useState(false);
+
+            // Smart Report Export Filters
+            const [reportRangeMode, setReportRangeMode] = useState("custom"); // "month" | "custom"
+            const [reportFromMonth, setReportFromMonth] = useState(() => {
+                const d = new Date();
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            });
+            const [reportToMonth, setReportToMonth] = useState(() => {
+                const d = new Date();
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            });
+            const [reportCustomStartDate, setReportCustomStartDate] = useState("");
+            const [reportCustomEndDate, setReportCustomEndDate] = useState("");
 
             // Filter plants based on user's allowed locations/plants permissions
             const allowedPlants = useMemo(() => {
@@ -1200,7 +1241,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         loadConfig('multiply_factors', setMultiplyFactors),
                         loadConfig('target_values', setTargets),
                         loadConfig('users', setUsers),
-                        loadConfig('otp_logs', setOtpLogs)
+                        loadConfig('otp_logs', setOtpLogs),
+                        loadConfig('audit_logs', setAuditLogs),
+                        loadConfig('email_automation_configs', (rows) => {
+                            if (rows && rows.length > 0) setEmailAutoConfig(rows[0]);
+                        })
                     ]);
                 } catch (err) {
                     console.error("Database fetch failed:", err);
@@ -1320,6 +1365,173 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 }
                 return list.sort((a, b) => b.date.localeCompare(a.date));
             }
+
+            // ----------------------------------------------------
+            // AUDIT LOGGING & EMAIL AUTOMATION SERVICES
+            // ----------------------------------------------------
+            const recordAuditLog = useCallback(async ({ action, module, recordId, location, plant, oldValue, newValue, status = "SUCCESS" }) => {
+                try {
+                    const userEmail = currentUser?.email || "system@pgel.in";
+                    const logItem = {
+                        user_email: userEmail,
+                        user_id: String(currentUser?.id || ""),
+                        user_name: currentUser?.name || currentUser?.operator_name || userEmail.split('@')[0],
+                        action: String(action || "UNKNOWN").toUpperCase(),
+                        module: String(module || "General"),
+                        record_id: recordId ? String(recordId) : null,
+                        location: location || null,
+                        plant: plant || null,
+                        old_value: oldValue ? (typeof oldValue === "object" ? oldValue : { value: oldValue }) : null,
+                        new_value: newValue ? (typeof newValue === "object" ? newValue : { value: newValue }) : null,
+                        status: status || "SUCCESS",
+                        ip_device: typeof navigator !== "undefined" ? navigator.userAgent : null,
+                        created_at: new Date().toISOString()
+                    };
+                    setAuditLogs(prev => [logItem, ...prev]);
+                    supabase.from('audit_logs').insert([logItem]).then(({ error }) => {
+                        if (error) console.warn("Supabase audit log insert:", error.message);
+                    });
+                } catch (e) {
+                    console.warn("recordAuditLog caught:", e);
+                }
+            }, [currentUser]);
+
+            // Handler to trigger automated email report (test or scheduled)
+            const handleSendAutomatedMonthlyEmail = async (opts = {}) => {
+                const { isTest = false, targetMonth = null } = opts;
+                if (!emailAutoConfig.recipients || emailAutoConfig.recipients.trim() === "") {
+                    setToast({ type: "error", message: "Please configure at least one recipient email." });
+                    return;
+                }
+
+                setIsEmailSending(true);
+                try {
+                    // Determine scope
+                    const d = new Date();
+                    const monthStr = targetMonth || `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    const startDate = `${monthStr}-01`;
+                    const endDate = getMonthEnd(monthStr);
+
+                    const emailLoc = emailAutoConfig.location || "all";
+                    const emailPlant = emailAutoConfig.plants || "all";
+
+                    const payload = buildPlantReportData({
+                        location: emailLoc,
+                        plant: emailPlant,
+                        startDate,
+                        endDate
+                    });
+
+                    if (!payload || !payload.list || payload.list.length === 0) {
+                        setToast({ type: "warning", message: `No data entries found for ${monthStr} to generate email report.` });
+                        setIsEmailSending(false);
+                        return;
+                    }
+
+                    const wb = createPlantReportWorkbook(payload);
+                    const buffer = await wb.xlsx.writeBuffer();
+                    
+                    // Convert ArrayBuffer to Base64
+                    let binary = '';
+                    const bytes = new Uint8Array(buffer);
+                    const len = bytes.byteLength;
+                    for (let i = 0; i < len; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    const base64Attachment = btoa(binary);
+
+                    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+                    const [y, mNum] = monthStr.split("-").map(Number);
+                    const readableMonth = `${monthNames[(mNum || 1) - 1]} ${y}`;
+
+                    // Dynamic template replacements
+                    const formatTemplate = (tmpl) => {
+                        return String(tmpl || "")
+                            .replace(/\{Location\}/g, payload.locationLabel || emailLoc)
+                            .replace(/\{Plant\}/g, payload.plantLabel || emailPlant)
+                            .replace(/\{Month\}/g, readableMonth)
+                            .replace(/\{Report Month\}/g, readableMonth)
+                            .replace(/\{Report Date\}/g, new Date().toLocaleDateString("en-IN"));
+                    };
+
+                    const emailSubject = formatTemplate(emailAutoConfig.subject_template || "Monthly UtilitySense Report - {Plant} ({Month})");
+                    const rawBody = formatTemplate(emailAutoConfig.body_template || "Please find attached the monthly UtilitySense report.");
+                    const emailHtml = `
+                        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; max-width: 600px; margin: 0 auto;">
+                            <div style="text-align: center; margin-bottom: 20px;">
+                                <h2 style="color: #0284c7; margin: 0; font-size: 22px; font-weight: 800;">UTILITY SENSE</h2>
+                                <p style="color: #64748b; font-size: 11px; margin: 4px 0 0 0;">Automated Operational Utility Report</p>
+                            </div>
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px; white-space: pre-line; font-size: 13px; color: #334155; line-height: 1.6;">
+                                ${rawBody}
+                            </div>
+                            <div style="border-top: 1px solid #f1f5f9; padding-top: 12px; font-size: 11px; color: #94a3b8; text-align: center;">
+                                Attached: <b>UtilitySense_${payload.locationLabel}_${payload.plantLabel}_${monthStr}.xlsx</b> (${payload.list.length} rows)
+                            </div>
+                        </div>
+                    `;
+
+                    const recipientList = emailAutoConfig.recipients.split(",").map(x => x.trim()).filter(Boolean);
+
+                    const res = await fetch("/api/send-report-email", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            recipients: recipientList,
+                            subject: isTest ? `[TEST] ${emailSubject}` : emailSubject,
+                            html: emailHtml,
+                            attachments: [{
+                                filename: `UtilitySense_${payload.locationLabel}_${payload.plantLabel}_${monthStr}.xlsx`,
+                                content: base64Attachment,
+                                encoding: 'base64'
+                            }]
+                        })
+                    });
+
+                    const resData = await res.json();
+                    if (!res.ok) throw new Error(resData.error || resData.details || "Failed to dispatch email.");
+
+                    const nowIso = new Date().toISOString();
+                    setEmailAutoConfig(prev => ({
+                        ...prev,
+                        last_sent_at: nowIso,
+                        last_status: "SUCCESS"
+                    }));
+
+                    await supabase.from('email_automation_configs').upsert({
+                        ...emailAutoConfig,
+                        id: 'default_monthly_report',
+                        last_sent_at: nowIso,
+                        last_status: 'SUCCESS'
+                    });
+
+                    recordAuditLog({
+                        action: isTest ? "TEST_EMAIL" : "EMAIL_DISPATCH",
+                        module: "Email Automation",
+                        recordId: `${emailLoc}_${emailPlant}`,
+                        location: payload.locationLabel,
+                        plant: payload.plantLabel,
+                        newValue: { recipients: recipientList, rows: payload.list.length, month: monthStr },
+                        status: "SUCCESS"
+                    });
+
+                    setToast({
+                        type: "success",
+                        message: isTest ? `Test report email delivered successfully to ${recipientList.length} recipient(s)!` : "Automated monthly report sent successfully!"
+                    });
+                } catch (err) {
+                    console.error("Email send error:", err);
+                    setToast({ type: "error", message: `Email failed: ${err.message}` });
+                    recordAuditLog({
+                        action: isTest ? "TEST_EMAIL" : "EMAIL_DISPATCH",
+                        module: "Email Automation",
+                        status: "FAILED",
+                        newValue: { error: err.message }
+                    });
+                } finally {
+                    setIsEmailSending(false);
+                }
+            };
 
             // ----------------------------------------------------
             // AUTHENTICATION LOGIC
@@ -1470,17 +1682,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         ...userRec,
                         loggedAt: Date.now()
                     };
-                    localStorage.setItem("ep_session", JSON.stringify(sessionUser));
-                    setCurrentUser(sessionUser);
+                    localStorage.setItem("ep_session", JSON.stringify({
+                        user: userRec,
+                        loggedAt: Date.now()
+                    }));
+                    setCurrentUser(userRec);
+                    recordAuditLog({ action: "LOGIN", module: "Auth", status: "SUCCESS" });
                     setToast({ type: "success", message: `Welcome back, ${userRec.name}!` });
                 } catch (err) {
                     setLoginError(err.message || "OTP verification failed.");
+                    recordAuditLog({ action: "FAILED_LOGIN", module: "Auth", status: "FAILED", newValue: { email: emailVal, error: err.message } });
                 } finally {
                     setLoginLoading(false);
                 }
             };
 
             const handleLogout = (msg = "Logged out successfully.") => {
+                recordAuditLog({ action: "LOGOUT", module: "Auth", status: "SUCCESS" });
                 localStorage.removeItem("ep_session");
                 setCurrentUser(null);
                 setOtpSent(false);
@@ -1878,9 +2096,27 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 }
             }, [entryFormValues.plant, isFormOpen]);
 
+            // Duplicate Date Entry detection (Feature 1)
+            const isDuplicateDateEntry = useMemo(() => {
+                if (!isFormOpen || !entryFormValues.date || !entryFormValues.plant) return false;
+                const targetDate = String(entryFormValues.date).trim();
+                const targetPlant = String(entryFormValues.plant).trim().toLowerCase();
+                return dailyEntries.some(e =>
+                    String(e.date).trim() === targetDate &&
+                    String(e.plant).trim().toLowerCase() === targetPlant &&
+                    (!editingRecord || String(e.id) !== String(editingRecord.id))
+                );
+            }, [isFormOpen, entryFormValues.date, entryFormValues.plant, dailyEntries, editingRecord]);
+
             const handleEntryFormSubmit = async (e) => {
                 e.preventDefault();
                 setActionLoading(true);
+
+                if (isDuplicateDateEntry) {
+                    setToast({ type: "error", message: "Duplicate entry detected. An entry already exists for this date." });
+                    setActionLoading(false);
+                    return;
+                }
 
                 const isMeterReset = entryFormValues.meter_changed === true || String(entryFormValues.meter_changed) === "true";
                 if (!isMeterReset) {
@@ -1941,8 +2177,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     payload.diesel_cost
                 );
 
+                // Server-side duplicate validation check
+                if (!editingRecord) {
+                    const { data: dupCheck } = await supabase
+                        .from('daily_entries')
+                        .select('id')
+                        .eq('date', payload.date)
+                        .eq('plant', payload.plant);
+                    if (dupCheck && dupCheck.length > 0) {
+                        setToast({ type: "error", message: "Duplicate entry detected. An entry already exists for this date and plant." });
+                        setActionLoading(false);
+                        return;
+                    }
+                }
 
-                                if (editingRecord) {
+                if (editingRecord) {
                     const { error } = await supabase
                         .from('daily_entries')
                         .update(payload)
@@ -1951,6 +2200,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         setToast({ type: "error", message: error.message || "Failed to update record." });
                         setActionLoading(false);
                     } else {
+                        recordAuditLog({
+                            action: "UPDATE",
+                            module: "Daily Operations",
+                            recordId: editingRecord.id,
+                            location: saveLoc,
+                            plant: payload.plant,
+                            oldValue: editingRecord,
+                            newValue: payload,
+                            status: "SUCCESS"
+                        });
                         setToast({ type: "success", message: "Daily entry updated successfully!" });
                         loadAllDatabase();
                         setIsFormOpen(false);
@@ -1964,6 +2223,15 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         setToast({ type: "error", message: error.message || "Failed to add record." });
                         setActionLoading(false);
                     } else {
+                        recordAuditLog({
+                            action: "CREATE",
+                            module: "Daily Operations",
+                            recordId: payload.date,
+                            location: saveLoc,
+                            plant: payload.plant,
+                            newValue: payload,
+                            status: "SUCCESS"
+                        });
                         setToast({ type: "success", message: "Daily entry added successfully!" });
                         loadAllDatabase();
                         setIsFormOpen(false);
@@ -1972,30 +2240,39 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 }
             };
 
-                    const handleDeleteEntry = async (id) => {
-            const ok = await askConfirm(
-                "Are you sure you want to delete this daily operations entry?",
-                { title: "Delete Entry", danger: true }
-            );
-            if (!ok) return;
+            const handleDeleteEntry = async (id) => {
+                const recordToDelete = dailyEntries.find(e => e.id === id);
+                const ok = await askConfirm(
+                    "Are you sure you want to delete this daily operations entry?",
+                    { title: "Delete Entry", danger: true }
+                );
+                if (!ok) return;
 
-            setActionLoading(true);
-            const { error } = await supabase
-                .from('daily_entries')
-                .delete()
-                .eq('id', id);
-            if (error) {
-                setToast({ type: "error", message: error.message || "Delete failed." });
-                setActionLoading(false);
-            } else {
-                setToast({ type: "success", message: "Daily entry deleted successfully!" });
-                loadAllDatabase();
-                setActionLoading(false);
-            }
-        };
+                setActionLoading(true);
+                const { error } = await supabase
+                    .from('daily_entries')
+                    .delete()
+                    .eq('id', id);
+                if (error) {
+                    setToast({ type: "error", message: error.message || "Delete failed." });
+                    setActionLoading(false);
+                } else {
+                    recordAuditLog({
+                        action: "DELETE",
+                        module: "Daily Operations",
+                        recordId: id,
+                        location: recordToDelete?.location,
+                        plant: recordToDelete?.plant,
+                        oldValue: recordToDelete,
+                        status: "SUCCESS"
+                    });
+                    setToast({ type: "success", message: "Daily entry deleted successfully!" });
+                    loadAllDatabase();
+                    setActionLoading(false);
+                }
+            };
 
-                        const handleBulkDelete = async () => {
-                // When no rows are explicitly selected, delete only the currently visible/filtered entries
+            const handleBulkDelete = async () => {
                 const targetIds = selectedRowIds.size > 0
                     ? Array.from(selectedRowIds)
                     : filteredEntries.map(e => e.id);
@@ -2022,6 +2299,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 if (error) {
                     setToast({ type: "error", message: error.message || "Bulk delete failed." });
                 } else {
+                    recordAuditLog({
+                        action: "DELETE",
+                        module: "Daily Operations",
+                        recordId: `Bulk (${targetIds.length})`,
+                        oldValue: { deleted_ids: targetIds },
+                        status: "SUCCESS"
+                    });
                     setToast({ type: "success", message: `Deleted ${targetIds.length} entries successfully!` });
                     setSelectedRowIds(new Set());
                     setIsDailyDeleteMode(false);
@@ -3096,19 +3380,142 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 "Auto", "Auto", "Manual", "Auto", "Auto", "Manual", "Auto", "Auto",
                 "Auto", "Auto", "Auto", "Manual", "Auto", "Auto", "Auto", "Auto", "Auto", "Auto",
             ];
-            const PLANT_REPORT_MANUAL_COLS = new Set([2, 5, 11]); // 0-based: C, F, L
+
+            const createPlantReportWorkbook = (payload) => {
+                const { list, locationLabel, plantLabel, electRate, dieselRate, dataRows, gridLabel, reportHeaders, reportFormulaRow } = payload;
+                const COLS = 18;
+                const MANUAL_COLS = new Set([3, 6, 12]);
+
+                const thin = { style: "thin", color: { argb: "FF64748B" } };
+                const borderAll = { top: thin, left: thin, bottom: thin, right: thin };
+                const center = { vertical: "middle", horizontal: "center", wrapText: true };
+                const fillGreen = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC6EFCE" } };
+                const fillYellow = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
+                const fillBlue = { type: "pattern", pattern: "solid", fgColor: { argb: "FFBDD7EE" } };
+                const fillTitle = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0C4A6E" } };
+                const fillMeta = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0F2FE" } };
+                const fontWhiteBold = { bold: true, color: { argb: "FFFFFFFF" }, size: 14, name: "Calibri" };
+                const fontBold = { bold: true, size: 10, name: "Calibri", color: { argb: "FF0F172A" } };
+                const fontSmall = { size: 8, name: "Calibri", color: { argb: "FF334155" } };
+                const fontData = { size: 10, name: "Calibri", color: { argb: "FF0F172A" } };
+
+                const wb = new ExcelJS.Workbook();
+                wb.creator = "UTILITY SENSE";
+                const sheetName = String(plantLabel).replace(/[\\/?*[\]]/g, "").slice(0, 28) || "Utility";
+                const ws = wb.addWorksheet(sheetName, { views: [{ state: "frozen", ySplit: 7 }] });
+                ws.columns = [
+                    { width: 12 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 12 },
+                    { width: 12 }, { width: 12 }, { width: 11 }, { width: 14 }, { width: 14 },
+                    { width: 11 }, { width: 12 }, { width: 13 }, { width: 14 }, { width: 8 },
+                    { width: 8 }, { width: 11 }, { width: 13 },
+                ];
+
+                ws.mergeCells(1, 1, 1, COLS);
+                const titleCell = ws.getCell(1, 1);
+                titleCell.value = "UTILITY SENSE — Daily Utility Consumption Report";
+                titleCell.fill = fillTitle;
+                titleCell.font = fontWhiteBold;
+                titleCell.alignment = center;
+                titleCell.border = borderAll;
+                ws.getRow(1).height = 28;
+
+                ws.mergeCells(2, 1, 2, 2);
+                ws.getCell(2, 1).value = "LOCATION";
+                ws.getCell(2, 1).font = fontBold;
+                ws.getCell(2, 1).fill = fillMeta;
+                ws.mergeCells(2, 3, 2, 6);
+                ws.getCell(2, 3).value = locationLabel;
+                ws.getCell(2, 3).font = { ...fontBold, size: 12, color: { argb: "FF0369A1" } };
+                ws.getCell(2, 3).fill = fillMeta;
+                ws.mergeCells(2, 7, 2, 8);
+                ws.getCell(2, 7).value = "PLANT";
+                ws.getCell(2, 7).font = fontBold;
+                ws.getCell(2, 7).fill = fillMeta;
+                ws.mergeCells(2, 9, 2, COLS);
+                ws.getCell(2, 9).value = plantLabel;
+                ws.getCell(2, 9).font = { ...fontBold, size: 12, color: { argb: "FF0369A1" } };
+                ws.getCell(2, 9).fill = fillMeta;
+                for (let c = 1; c <= COLS; c++) {
+                    ws.getCell(2, c).border = borderAll;
+                    ws.getCell(2, c).alignment = center;
+                    if (!ws.getCell(2, c).fill) ws.getCell(2, c).fill = fillMeta;
+                }
+                ws.getRow(2).height = 22;
+
+                ws.mergeCells(3, 1, 3, COLS);
+                ws.getCell(3, 1).value = `Generated: ${new Date().toLocaleString("en-IN")}  ·  Rows: ${list.length}  ·  Rate: ${gridLabel}/Solar ₹${electRate}/unit  ·  Diesel ₹${dieselRate}/L`;
+                ws.getCell(3, 1).font = fontSmall;
+                ws.getCell(3, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+                ws.getCell(3, 1).alignment = { vertical: "middle", horizontal: "left" };
+                for (let c = 1; c <= COLS; c++) ws.getCell(3, c).border = borderAll;
+                ws.getRow(3).height = 18;
+                ws.getRow(4).height = 6;
+
+                PLANT_REPORT_TYPE_ROW.forEach((v, i) => {
+                    const cell = ws.getCell(5, i + 1);
+                    cell.value = v;
+                    cell.font = fontBold;
+                    cell.alignment = center;
+                    cell.border = borderAll;
+                    cell.fill = v === "Manual" ? fillYellow : fillGreen;
+                });
+                ws.getRow(5).height = 18;
+
+                (reportFormulaRow || []).forEach((v, i) => {
+                    const cell = ws.getCell(6, i + 1);
+                    cell.value = v;
+                    cell.font = fontSmall;
+                    cell.alignment = center;
+                    cell.border = borderAll;
+                    cell.fill = MANUAL_COLS.has(i + 1) ? fillYellow : fillBlue;
+                });
+                ws.getRow(6).height = 32;
+
+                (reportHeaders || []).forEach((v, i) => {
+                    const cell = ws.getCell(7, i + 1);
+                    cell.value = v;
+                    cell.font = fontBold;
+                    cell.alignment = center;
+                    cell.border = borderAll;
+                    cell.fill = MANUAL_COLS.has(i + 1) ? fillYellow : fillBlue;
+                });
+                ws.getRow(7).height = 36;
+
+                dataRows.forEach((values, idx) => {
+                    const r = 8 + idx;
+                    values.forEach((v, i) => {
+                        const cell = ws.getCell(r, i + 1);
+                        cell.value = v;
+                        cell.font = fontData;
+                        cell.alignment = center;
+                        cell.border = borderAll;
+                        if (MANUAL_COLS.has(i + 1)) {
+                            cell.fill = fillYellow;
+                        } else if (idx % 2 === 1) {
+                            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+                        }
+                    });
+                    ws.getRow(r).height = 18;
+                });
+
+                return wb;
+            };
 
             /** Shared filtered rows + labels for Excel export & Print (same content) */
-            /** Shared filtered rows + labels for Excel export & Print (same content) */
-            const buildPlantReportData = () => {
+            const buildPlantReportData = (customScope = null) => {
+                const targetLoc = customScope?.location ?? selectedReportLocation;
+                const targetPlant = customScope?.plant ?? filters.plant;
+                const targetStart = customScope?.startDate ?? (reportRangeMode === "custom" && reportCustomStartDate ? reportCustomStartDate : filters.startDate);
+                const targetEnd = customScope?.endDate ?? (reportRangeMode === "custom" && reportCustomEndDate ? reportCustomEndDate : filters.endDate);
+
                 const list = [...dailyEntries]
                     .filter((e) => {
                         const meta = resolvePlantMeta(e.plant);
                         const ep = entryPlantKey(e.plant);
-                        const fp = entryPlantKey(filters.plant);
+                        const fp = entryPlantKey(targetPlant);
 
                         // Plant filter check
-                        if (filters.plant !== "all") {
+                        if (targetPlant && targetPlant !== "all") {
                             const matchPlant =
                                 ep === fp ||
                                 String(meta.code).toLowerCase() === fp ||
@@ -3118,33 +3525,33 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         }
 
                         // Location filter check
-                        if (selectedReportLocation !== "all") {
+                        if (targetLoc && targetLoc !== "all") {
                             const loc = String(e.location || meta.location || "").toUpperCase();
-                            const selLoc = String(selectedReportLocation).toUpperCase();
+                            const selLoc = String(targetLoc).toUpperCase();
                             const matchLoc =
                                 loc === selLoc ||
                                 loc.includes(selLoc) ||
                                 selLoc.includes(loc);
                             if (!matchLoc) return false;
                         }
-                        if (filters.startDate && e.date < filters.startDate) return false;
-                        if (filters.endDate && e.date > filters.endDate) return false;
+                        if (targetStart && e.date < targetStart) return false;
+                        if (targetEnd && e.date > targetEnd) return false;
                         return true;
                     })
                     .sort((a, b) => a.date.localeCompare(b.date) || String(a.plant).localeCompare(String(b.plant)));
 
-                // Fallback to filteredEntries if specific match array is empty so visible rows are always exported
-                const finalRows = list.length > 0 ? list : filteredEntries;
+                // If explicit customScope was passed, only return list if it matches (no fallback to all)
+                const finalRows = customScope ? list : (list.length > 0 ? list : filteredEntries);
                 if (finalRows.length === 0) return null;
 
-                const plantFilterMeta = filters.plant !== "all" ? resolvePlantMeta(filters.plant) : null;
+                const plantFilterMeta = targetPlant !== "all" ? resolvePlantMeta(targetPlant) : null;
                 const locationLabel =
-                    selectedReportLocation !== "all"
-                        ? selectedReportLocation
+                    targetLoc !== "all"
+                        ? targetLoc
                         : plantFilterMeta?.location || (finalRows.length === 1 ? resolvePlantMeta(finalRows[0].plant).location : "All Locations");
                 const plantLabel =
                     plantFilterMeta?.name ||
-                    (filters.plant !== "all" ? filters.plant : finalRows.length === 1 ? resolvePlantMeta(finalRows[0].plant).name : "All Plants");
+                    (targetPlant !== "all" ? targetPlant : finalRows.length === 1 ? resolvePlantMeta(finalRows[0].plant).name : "All Plants");
 
                 const electRate = Math.round((Number(activeElectRate) || 10.89) * 100) / 100;
                 const solarRate = Number(activeSolarRate) || 10.89;
@@ -3153,7 +3560,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const primaryLoc = locationLabel !== "All Locations"
                     ? locationLabel
                     : (finalRows[0] ? (finalRows[0].location || resolvePlantMeta(finalRows[0].plant).location) : "PUNE");
-                const primaryPlant = filters.plant !== "all" ? filters.plant : (finalRows[0]?.plant || "");
+                const primaryPlant = targetPlant !== "all" ? targetPlant : (finalRows[0]?.plant || "");
                 const gridLabel = getGridProviderLabel(primaryLoc);
                 const reportMf = resolveMultiplyFactor(multiplyFactors, primaryPlant, primaryLoc, finalRows[finalRows.length - 1]?.date);
                 const { headers: reportHeaders, formulaRow: reportFormulaRow } = buildPlantReportColumns(gridLabel, reportMf);
@@ -3214,127 +3621,51 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             /** Colourful Excel export matching plant tracker sheet */
             const handleExportPlantExcel = async () => {
                 try {
-                    const payload = buildPlantReportData();
-                    if (!payload) {
-                        setToast({ type: "error", message: "Export ke liye koi entry nahi mili. Filters check karo." });
+                    // 1. Authorization check
+                    if (currentUser && currentUser.role !== "IT_ADMIN") {
+                        if (selectedReportLocation !== "all" && !allowedLocations.map(x => x.toUpperCase()).includes(selectedReportLocation.toUpperCase())) {
+                            setToast({ type: "error", message: "Unauthorized location export." });
+                            return;
+                        }
+                        if (filters.plant !== "all" && !allowedPlants.some(p => p.plant_code === filters.plant)) {
+                            setToast({ type: "error", message: "Unauthorized plant export." });
+                            return;
+                        }
+                    }
+
+                    // 2. Validate range
+                    let startDate = "";
+                    let endDate = "";
+                    if (reportRangeMode === "month") {
+                        if (reportFromMonth && reportToMonth && reportFromMonth > reportToMonth) {
+                            setToast({ type: "error", message: "Invalid date range: 'From Month' cannot be after 'To Month'." });
+                            return;
+                        }
+                        startDate = reportFromMonth ? `${reportFromMonth}-01` : "";
+                        endDate = reportToMonth ? getMonthEnd(reportToMonth) : "";
+                    } else {
+                        startDate = reportCustomStartDate || filters.startDate;
+                        endDate = reportCustomEndDate || filters.endDate;
+                        if (startDate && endDate && startDate > endDate) {
+                            setToast({ type: "error", message: "Invalid date range: 'From Date' cannot be after 'To Date'." });
+                            return;
+                        }
+                    }
+
+                    const payload = buildPlantReportData({
+                        location: selectedReportLocation,
+                        plant: filters.plant,
+                        startDate,
+                        endDate
+                    });
+
+                    if (!payload || !payload.list || payload.list.length === 0) {
+                        setToast({ type: "warning", message: "No data found for the selected filters." });
                         return;
                     }
-                    const { list, locationLabel, plantLabel, electRate, dieselRate, dataRows, gridLabel, reportHeaders, reportFormulaRow } = payload;
-                    const COLS = 18;
-                    const MANUAL_COLS = new Set([3, 6, 12]);
+                    const { list, locationLabel, plantLabel } = payload;
 
-                    const thin = { style: "thin", color: { argb: "FF64748B" } };
-                    const borderAll = { top: thin, left: thin, bottom: thin, right: thin };
-                    const center = { vertical: "middle", horizontal: "center", wrapText: true };
-                    const fillGreen = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC6EFCE" } };
-                    const fillYellow = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF2CC" } };
-                    const fillBlue = { type: "pattern", pattern: "solid", fgColor: { argb: "FFBDD7EE" } };
-                    const fillTitle = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0C4A6E" } };
-                    const fillMeta = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0F2FE" } };
-                    const fontWhiteBold = { bold: true, color: { argb: "FFFFFFFF" }, size: 14, name: "Calibri" };
-                    const fontBold = { bold: true, size: 10, name: "Calibri", color: { argb: "FF0F172A" } };
-                    const fontSmall = { size: 8, name: "Calibri", color: { argb: "FF334155" } };
-                    const fontData = { size: 10, name: "Calibri", color: { argb: "FF0F172A" } };
-
-                    const wb = new ExcelJS.Workbook();
-                    wb.creator = "UTILITY SENSE";
-                    const sheetName = String(plantLabel).replace(/[\\/?*[\]]/g, "").slice(0, 28) || "Utility";
-                    const ws = wb.addWorksheet(sheetName, { views: [{ state: "frozen", ySplit: 7 }] });
-                    ws.columns = [
-                        { width: 12 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 12 },
-                        { width: 12 }, { width: 12 }, { width: 11 }, { width: 14 }, { width: 14 },
-                        { width: 11 }, { width: 12 }, { width: 13 }, { width: 14 }, { width: 8 },
-                        { width: 8 }, { width: 11 }, { width: 13 },
-                    ];
-
-                    ws.mergeCells(1, 1, 1, COLS);
-                    const titleCell = ws.getCell(1, 1);
-                    titleCell.value = "UTILITY SENSE — Daily Utility Consumption Report";
-                    titleCell.fill = fillTitle;
-                    titleCell.font = fontWhiteBold;
-                    titleCell.alignment = center;
-                    titleCell.border = borderAll;
-                    ws.getRow(1).height = 28;
-
-                    ws.mergeCells(2, 1, 2, 2);
-                    ws.getCell(2, 1).value = "LOCATION";
-                    ws.getCell(2, 1).font = fontBold;
-                    ws.getCell(2, 1).fill = fillMeta;
-                    ws.mergeCells(2, 3, 2, 6);
-                    ws.getCell(2, 3).value = locationLabel;
-                    ws.getCell(2, 3).font = { ...fontBold, size: 12, color: { argb: "FF0369A1" } };
-                    ws.getCell(2, 3).fill = fillMeta;
-                    ws.mergeCells(2, 7, 2, 8);
-                    ws.getCell(2, 7).value = "PLANT";
-                    ws.getCell(2, 7).font = fontBold;
-                    ws.getCell(2, 7).fill = fillMeta;
-                    ws.mergeCells(2, 9, 2, COLS);
-                    ws.getCell(2, 9).value = plantLabel;
-                    ws.getCell(2, 9).font = { ...fontBold, size: 12, color: { argb: "FF0369A1" } };
-                    ws.getCell(2, 9).fill = fillMeta;
-                    for (let c = 1; c <= COLS; c++) {
-                        ws.getCell(2, c).border = borderAll;
-                        ws.getCell(2, c).alignment = center;
-                        if (!ws.getCell(2, c).fill) ws.getCell(2, c).fill = fillMeta;
-                    }
-                    ws.getRow(2).height = 22;
-
-                    ws.mergeCells(3, 1, 3, COLS);
-                    ws.getCell(3, 1).value = `Generated: ${new Date().toLocaleString("en-IN")}  ·  Rows: ${list.length}  ·  Rate: ${gridLabel}/Solar ₹${electRate}/unit  ·  Diesel ₹${dieselRate}/L`;
-                    ws.getCell(3, 1).font = fontSmall;
-                    ws.getCell(3, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
-                    ws.getCell(3, 1).alignment = { vertical: "middle", horizontal: "left" };
-                    for (let c = 1; c <= COLS; c++) ws.getCell(3, c).border = borderAll;
-                    ws.getRow(3).height = 18;
-                    ws.getRow(4).height = 6;
-
-                    PLANT_REPORT_TYPE_ROW.forEach((v, i) => {
-                        const cell = ws.getCell(5, i + 1);
-                        cell.value = v;
-                        cell.font = fontBold;
-                        cell.alignment = center;
-                        cell.border = borderAll;
-                        cell.fill = v === "Manual" ? fillYellow : fillGreen;
-                    });
-                    ws.getRow(5).height = 18;
-
-                    (reportFormulaRow || []).forEach((v, i) => {
-                        const cell = ws.getCell(6, i + 1);
-                        cell.value = v;
-                        cell.font = fontSmall;
-                        cell.alignment = center;
-                        cell.border = borderAll;
-                        cell.fill = MANUAL_COLS.has(i + 1) ? fillYellow : fillBlue;
-                    });
-                    ws.getRow(6).height = 32;
-
-                    (reportHeaders || []).forEach((v, i) => {
-                        const cell = ws.getCell(7, i + 1);
-                        cell.value = v;
-                        cell.font = fontBold;
-                        cell.alignment = center;
-                        cell.border = borderAll;
-                        cell.fill = MANUAL_COLS.has(i + 1) ? fillYellow : fillBlue;
-                    });
-                    ws.getRow(7).height = 36;
-
-                    dataRows.forEach((values, idx) => {
-                        const r = 8 + idx;
-                        values.forEach((v, i) => {
-                            const cell = ws.getCell(r, i + 1);
-                            cell.value = v;
-                            cell.font = fontData;
-                            cell.alignment = center;
-                            cell.border = borderAll;
-                            if (MANUAL_COLS.has(i + 1)) {
-                                cell.fill = fillYellow;
-                            } else if (idx % 2 === 1) {
-                                cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
-                            }
-                        });
-                        ws.getRow(r).height = 18;
-                    });
-
+                    const wb = createPlantReportWorkbook(payload);
                     const buffer = await wb.xlsx.writeBuffer();
                     const blob = new Blob([buffer], {
                         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -3350,9 +3681,19 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     document.body.removeChild(link);
                     URL.revokeObjectURL(url);
 
+                    recordAuditLog({
+                        action: "EXPORT",
+                        module: "Reports",
+                        recordId: `${fileLoc}_${filePlant}`,
+                        location: locationLabel,
+                        plant: plantLabel,
+                        newValue: { rowCount: list.length, range: `${startDate} to ${endDate}` },
+                        status: "SUCCESS"
+                    });
+
                     setToast({
                         type: "success",
-                        message: `Colourful Excel ready: ${locationLabel} · ${plantLabel} (${list.length} rows)`,
+                        message: `Excel exported successfully: ${locationLabel} · ${plantLabel} (${list.length} rows)`,
                     });
                 } catch (err) {
                     console.error("Export Excel Error:", err);
@@ -3364,8 +3705,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
             /** Print EXACT same colourful plant report as Export Excel (not other report tables) */
             const handlePrintPlantReport = () => {
-                const payload = buildPlantReportData();
-                if (!payload) {
+                let startDate = "";
+                let endDate = "";
+                if (reportRangeMode === "month") {
+                    startDate = reportFromMonth ? `${reportFromMonth}-01` : "";
+                    endDate = reportToMonth ? getMonthEnd(reportToMonth) : "";
+                } else {
+                    startDate = reportCustomStartDate || filters.startDate;
+                    endDate = reportCustomEndDate || filters.endDate;
+                }
+                const payload = buildPlantReportData({
+                    location: selectedReportLocation,
+                    plant: filters.plant,
+                    startDate,
+                    endDate
+                });
+                if (!payload || !payload.list || payload.list.length === 0) {
                     setToast({ type: "error", message: "Print ke liye koi entry nahi mili. Filters check karo." });
                     return;
                 }
@@ -3381,7 +3736,6 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         };
                         window.addEventListener("afterprint", cleanup);
                         window.print();
-                        // Fallback if afterprint doesn't fire (some browsers)
                         setTimeout(cleanup, 1500);
                     });
                 });
@@ -3404,25 +3758,28 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             if (!currentUser) {
                 return (
                     <>
-                    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-white" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                        <div className="w-full max-w-md bg-white rounded-3xl p-8 border border-slate-200/60 shadow-2xl z-10" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
-                            <div className="flex flex-col items-center text-center mb-8">
-                                <div className="mb-4 flex items-center justify-center">
-                                    <div className="logo-no-vline">
-                                        <img src={PG_LOGO_BASE_64} className="h-20 w-auto object-contain" alt="PG Electroplast Logo" />
-                                    </div>
-                                </div>
-                                <h2
-                                    className="text-2xl font-extrabold tracking-[0.12em] mt-3"
-                                    style={{
-                                        background: "linear-gradient(90deg, #0369a1 0%, #0284c7 45%, #0ea5e9 100%)",
-                                        WebkitBackgroundClip: "text",
-                                        backgroundClip: "text",
-                                        color: "transparent",
-                                    }}
-                                >
-                                    UTILITY SENSE
-                                </h2>
+                    <div
+                        className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-slate-100 via-sky-50 to-slate-200"
+                        style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center'
+                        }}
+                    >
+                        {/* Subtle ambient blur circles */}
+                        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-sky-300/30 blur-3xl pointer-events-none" />
+                        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-emerald-300/20 blur-3xl pointer-events-none" />
+
+                        <div
+                            className="w-full max-w-md bg-white rounded-3xl p-8 border border-slate-200/80 shadow-[0_20px_50px_rgba(8,112,184,0.12)] z-10"
+                            style={{ position: 'relative' }}
+                        >
+                            <div className="flex flex-col items-center text-center mb-6">
+                                <img
+                                    src="/utilitysense-banner.png"
+                                    alt="UtilitySense - Monitor Today. Optimize Tomorrow."
+                                    className="w-full max-w-[360px] h-auto object-contain rounded-2xl shadow-sm mb-2"
+                                />
                             </div>
 
                             {loginError && (
@@ -4595,6 +4952,70 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         </div>
 
                                         <div className="flex flex-col">
+                                            <label className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">Range Filter</label>
+                                            <div className="flex items-center bg-slate-200/70 dark:bg-slate-800 p-0.5 rounded-lg h-8">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setReportRangeMode("custom")}
+                                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition border-none cursor-pointer ${reportRangeMode === "custom" ? "bg-white dark:bg-slate-700 text-sky-700 dark:text-sky-300 shadow-sm" : "bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900"}`}
+                                                >
+                                                    Custom Dates
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setReportRangeMode("month")}
+                                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition border-none cursor-pointer ${reportRangeMode === "month" ? "bg-white dark:bg-slate-700 text-sky-700 dark:text-sky-300 shadow-sm" : "bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900"}`}
+                                                >
+                                                    Month Range
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {reportRangeMode === "month" ? (
+                                            <React.Fragment>
+                                                <div className="flex flex-col">
+                                                    <label className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">From Month</label>
+                                                    <input
+                                                        type="month"
+                                                        value={reportFromMonth}
+                                                        onChange={(e) => setReportFromMonth(e.target.value)}
+                                                        className="h-8 border border-slate-200/90 dark:border-slate-800 rounded-lg px-2 text-[11px] bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500 font-semibold shadow-sm w-32"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <label className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">To Month</label>
+                                                    <input
+                                                        type="month"
+                                                        value={reportToMonth}
+                                                        onChange={(e) => setReportToMonth(e.target.value)}
+                                                        className="h-8 border border-slate-200/90 dark:border-slate-800 rounded-lg px-2 text-[11px] bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500 font-semibold shadow-sm w-32"
+                                                    />
+                                                </div>
+                                            </React.Fragment>
+                                        ) : (
+                                            <React.Fragment>
+                                                <div className="flex flex-col">
+                                                    <label className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">From Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={reportCustomStartDate || filters.startDate}
+                                                        onChange={(e) => setReportCustomStartDate(e.target.value)}
+                                                        className="h-8 border border-slate-200/90 dark:border-slate-800 rounded-lg px-2 text-[11px] bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500 font-semibold shadow-sm w-32"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <label className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">To Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={reportCustomEndDate || filters.endDate}
+                                                        onChange={(e) => setReportCustomEndDate(e.target.value)}
+                                                        className="h-8 border border-slate-200/90 dark:border-slate-800 rounded-lg px-2 text-[11px] bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:border-sky-500 font-semibold shadow-sm w-32"
+                                                    />
+                                                </div>
+                                            </React.Fragment>
+                                        )}
+
+                                        <div className="flex flex-col">
                                             <label className="text-[8px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">Select Report Type</label>
                                             <select
                                                 value={selectedReportType}
@@ -4823,13 +5244,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     <div>
                                         <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-1.5 uppercase">
                                             <span className="material-symbols-outlined text-[#0284c7]">settings</span>
-                                            <span>{selectedMasterTable === "users" ? "User Management" : selectedMasterTable === "multiply_factors" ? "Multiply Factor Settings" : selectedMasterTable === "tariff_rates" ? "Tariff Rates Settings" : "Master Configuration Settings"}</span>
+                                            <span>
+                                                {selectedMasterTable === "users" ? "User Management" :
+                                                 selectedMasterTable === "email_automation" ? "Automatic Monthly Email Reports" :
+                                                 selectedMasterTable === "audit_logs" ? "Security & Operations Audit Logs" :
+                                                 selectedMasterTable === "multiply_factors" ? "Multiply Factor Settings" :
+                                                 selectedMasterTable === "tariff_rates" ? "Tariff Rates Settings" : "Master Configuration Settings"}
+                                            </span>
                                         </h2>
-                                        <p className="text-xs text-slate-400 mt-0.5">{currentUser.role === "IT_ADMIN" ? "Manage corporate lists and operational variables directly in the sheet backend" : "Manage tariff rates and multiply factor for your assigned location/plant"}</p>
+                                        <p className="text-xs text-slate-400 mt-0.5">
+                                            {currentUser.role === "IT_ADMIN"
+                                                ? "Corporate governance, automated reports dispatch and audit traceability"
+                                                : "Manage tariff rates and multiply factor for your assigned location/plant"}
+                                        </p>
                                     </div>
 
                                     <div className="flex flex-wrap items-center gap-2">
-                                        {/* Theme Picker inside Master Settings */}
+                                        {/* Theme Picker */}
                                         <div className="relative">
                                             <button
                                                 onClick={() => { setThemePickerOpen(o => !o); setIdlePickerOpen(false); }}
@@ -4865,7 +5296,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             )}
                                         </div>
 
-                                        {/* Idle Screen Saver Selector inside Master Settings */}
+                                        {/* Idle Screen Saver Selector */}
                                         <div className="relative">
                                             <button
                                                 onClick={() => { setIdlePickerOpen(o => !o); setThemePickerOpen(false); }}
@@ -4910,6 +5341,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                         <option value="tariff_rates">Tariff Rates (₹)</option>
                                                         <option value="multiply_factors">Multiply Factor (MF)</option>
                                                         <option value="target_values">Target Values Settings</option>
+                                                        <option value="email_automation">Automatic Monthly Email Reports</option>
+                                                        <option value="audit_logs">Audit Logs (Security & Activity)</option>
                                                     </React.Fragment>
                                                 ) : (
                                                     <React.Fragment>
@@ -4921,36 +5354,25 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         )}
 
                                         {currentUser.role === "IT_ADMIN" && (
-                                            !isMasterDeleteMode ? (
-                                                <button
-                                                    onClick={() => setIsMasterDeleteMode(true)}
-                                                    className="flex items-center gap-1 px-3.5 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-                                                    title="Click to enable selection mode for deleting master records"
-                                                >
-                                                    <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
-                                                    <span>Bulk Delete</span>
-                                                </button>
-                                            ) : (
-                                                <div className="flex items-center gap-1.5">
-                                                    {selectedMasterRowKeys.size > 0 && (
-                                                        <button
-                                                            onClick={handleBulkDeleteMaster}
-                                                            className="flex items-center gap-1 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer"
-                                                            title={`Delete ${selectedMasterRowKeys.size} selected master records`}
-                                                        >
-                                                            <span className="material-symbols-outlined text-[16px]">delete</span>
-                                                            <span>Confirm Delete ({selectedMasterRowKeys.size})</span>
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => { setIsMasterDeleteMode(false); setSelectedMasterRowKeys(new Set()); }}
-                                                        className="flex items-center gap-1 px-3 py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-                                                        title="Cancel selection mode"
-                                                    >
-                                                        <span>Cancel</span>
-                                                    </button>
-                                                </div>
-                                            )
+                                            <button
+                                                onClick={() => setSelectedMasterTable(selectedMasterTable === "email_automation" ? "plants" : "email_automation")}
+                                                className={`flex items-center gap-1.5 h-9 px-3 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition ${selectedMasterTable === "email_automation" ? "bg-sky-50 border-sky-200 text-sky-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                                                title="Automatic Monthly Email Reports"
+                                            >
+                                                <span className="material-symbols-outlined text-[17px]">forward_to_inbox</span>
+                                                <span>Auto Email</span>
+                                            </button>
+                                        )}
+
+                                        {currentUser.role === "IT_ADMIN" && (
+                                            <button
+                                                onClick={() => setSelectedMasterTable(selectedMasterTable === "audit_logs" ? "plants" : "audit_logs")}
+                                                className={`flex items-center gap-1.5 h-9 px-3 border rounded-xl text-xs font-bold cursor-pointer shadow-sm transition ${selectedMasterTable === "audit_logs" ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                                                title="Tamper-Resistant Audit Logs"
+                                            >
+                                                <span className="material-symbols-outlined text-[17px]">history</span>
+                                                <span>Audit Logs</span>
+                                            </button>
                                         )}
 
                                         {currentUser.role === "IT_ADMIN" && (
@@ -4964,17 +5386,337 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             </button>
                                         )}
 
-                                        <button
-                                            onClick={() => openMasterForm()}
-                                            className="flex items-center gap-1 px-4 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold cursor-pointer transition border-none shadow-sm"
-                                        >
-                                            <span className="material-symbols-outlined text-[16px]">add</span>
-                                            <span>Add Record</span>
-                                        </button>
+                                        {selectedMasterTable !== "audit_logs" && selectedMasterTable !== "email_automation" && (
+                                            <React.Fragment>
+                                                {currentUser.role === "IT_ADMIN" && (
+                                                    !isMasterDeleteMode ? (
+                                                        <button
+                                                            onClick={() => setIsMasterDeleteMode(true)}
+                                                            className="flex items-center gap-1 px-3.5 py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                                                            title="Click to enable selection mode for deleting master records"
+                                                        >
+                                                            <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
+                                                            <span>Bulk Delete</span>
+                                                        </button>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1.5">
+                                                            {selectedMasterRowKeys.size > 0 && (
+                                                                <button
+                                                                    onClick={handleBulkDeleteMaster}
+                                                                    className="flex items-center gap-1 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer"
+                                                                    title={`Delete ${selectedMasterRowKeys.size} selected master records`}
+                                                                >
+                                                                    <span className="material-symbols-outlined text-[16px]">delete</span>
+                                                                    <span>Confirm Delete ({selectedMasterRowKeys.size})</span>
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => { setIsMasterDeleteMode(false); setSelectedMasterRowKeys(new Set()); }}
+                                                                className="flex items-center gap-1 px-3 py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                                                                title="Cancel selection mode"
+                                                            >
+                                                                <span>Cancel</span>
+                                                            </button>
+                                                        </div>
+                                                    )
+                                                )}
+
+                                                <button
+                                                    onClick={() => openMasterForm()}
+                                                    className="flex items-center gap-1 px-4 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold cursor-pointer transition border-none shadow-sm"
+                                                >
+                                                    <span className="material-symbols-outlined text-[16px]">add</span>
+                                                    <span>Add Record</span>
+                                                </button>
+                                            </React.Fragment>
+                                        )}
                                     </div>
                                 </div>
 
-                                {/* Config Records Table */}
+                                {/* Config Records Table / Specialized Panels */}
+                                {selectedMasterTable === "email_automation" && currentUser.role === "IT_ADMIN" ? (
+                                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-6">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                                            <div>
+                                                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                                                    <span className="material-symbols-outlined text-sky-600">mail</span>
+                                                    <span>Automated Monthly Excel Report Dispatch</span>
+                                                </h3>
+                                                <p className="text-xs text-slate-500 mt-0.5">Configure scheduled monthly delivery of the exact Excel sheet report to Factory Heads and HODs</p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    disabled={isEmailSending}
+                                                    onClick={() => handleSendAutomatedMonthlyEmail({ isTest: true })}
+                                                    className="flex items-center gap-1.5 px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+                                                >
+                                                    {isEmailSending ? <span className="w-3.5 h-3.5 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" /> : <span className="material-symbols-outlined text-[16px]">send</span>}
+                                                    <span>Send Test Report Email</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={actionLoading}
+                                                    onClick={async () => {
+                                                        setActionLoading(true);
+                                                        try {
+                                                            const { error } = await supabase.from('email_automation_configs').upsert({
+                                                                ...emailAutoConfig,
+                                                                id: 'default_monthly_report',
+                                                                updated_at: new Date().toISOString()
+                                                            });
+                                                            if (error) throw error;
+                                                            recordAuditLog({
+                                                                action: "SETTINGS_CHANGE",
+                                                                module: "Email Automation",
+                                                                newValue: emailAutoConfig,
+                                                                status: "SUCCESS"
+                                                            });
+                                                            setToast({ type: "success", message: "Email automation settings saved successfully!" });
+                                                        } catch (err) {
+                                                            setToast({ type: "error", message: `Save failed: ${err.message}` });
+                                                        } finally {
+                                                            setActionLoading(false);
+                                                        }
+                                                    }}
+                                                    className="flex items-center gap-1.5 px-4 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer disabled:opacity-50"
+                                                >
+                                                    <span className="material-symbols-outlined text-[16px]">save</span>
+                                                    <span>Save Configuration</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                                            {/* Left Column: Triggers & Scope */}
+                                            <div className="space-y-4">
+                                                <div className="p-4 bg-slate-50/70 rounded-xl border border-slate-200/70 space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="font-bold text-slate-800">Automation Status</span>
+                                                        <label className="relative inline-flex items-center cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={emailAutoConfig.enabled}
+                                                                onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+                                                                className="sr-only peer"
+                                                            />
+                                                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                                                            <span className={`ml-2.5 font-bold ${emailAutoConfig.enabled ? "text-emerald-600" : "text-slate-400"}`}>
+                                                                {emailAutoConfig.enabled ? "ACTIVE (ON)" : "PAUSED (OFF)"}
+                                                            </span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Scheduled Dispatch Time</label>
+                                                    <input
+                                                        type="time"
+                                                        value={emailAutoConfig.schedule_time || "10:00"}
+                                                        onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, schedule_time: e.target.value }))}
+                                                        className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
+                                                    />
+                                                    <p className="text-[10px] text-slate-400 mt-1">Dispatches on the 1st day of every month at scheduled time.</p>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Target Location</label>
+                                                        <select
+                                                            value={emailAutoConfig.location || "all"}
+                                                            onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, location: e.target.value }))}
+                                                            className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
+                                                        >
+                                                            <option value="all">All Locations</option>
+                                                            {Array.from(new Set(plants.map(p => p.location.toUpperCase()))).map(loc => (
+                                                                <option key={loc} value={loc}>{loc}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Target Plant</label>
+                                                        <select
+                                                            value={emailAutoConfig.plants || "all"}
+                                                            onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, plants: e.target.value }))}
+                                                            className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
+                                                        >
+                                                            <option value="all">All Plants</option>
+                                                            {plants.map(p => (
+                                                                <option key={p.plant_code} value={p.plant_code}>{p.plant_name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Recipients (Comma Separated)</label>
+                                                    <textarea
+                                                        rows={2}
+                                                        placeholder="factory.head@pgel.in, hod.utility@pgel.in, gm.ops@pgel.in"
+                                                        value={emailAutoConfig.recipients || ""}
+                                                        onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, recipients: e.target.value }))}
+                                                        className="w-full border border-slate-200 rounded-xl p-2.5 bg-white text-slate-800 font-medium focus:outline-none focus:border-sky-500 shadow-sm resize-none"
+                                                    />
+                                                    <p className="text-[10px] text-slate-400 mt-0.5">Valid company emails ending with @pgel.in</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Right Column: Template & Preview */}
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Email Subject Template</label>
+                                                    <input
+                                                        type="text"
+                                                        value={emailAutoConfig.subject_template || ""}
+                                                        onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, subject_template: e.target.value }))}
+                                                        placeholder="Monthly UtilitySense Report - {Plant} ({Month})"
+                                                        className="w-full h-9 border border-slate-200 rounded-xl px-3 bg-white text-slate-800 font-bold focus:outline-none focus:border-sky-500 shadow-sm"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Email Body Message</label>
+                                                    <textarea
+                                                        rows={5}
+                                                        value={emailAutoConfig.body_template || ""}
+                                                        onChange={(e) => setEmailAutoConfig(prev => ({ ...prev, body_template: e.target.value }))}
+                                                        placeholder="Dear Sir,\n\nPlease find attached the monthly UtilitySense report for {Location} - {Plant} for {Month}."
+                                                        className="w-full border border-slate-200 rounded-xl p-2.5 bg-white text-slate-800 font-mono text-xs focus:outline-none focus:border-sky-500 shadow-sm"
+                                                    />
+                                                </div>
+
+                                                <div className="bg-sky-50/60 border border-sky-100 rounded-xl p-3 text-[11px] text-sky-800 space-y-1">
+                                                    <span className="font-bold">Dynamic Variables:</span>
+                                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                                        {['{Location}', '{Plant}', '{Month}', '{Report Month}', '{Report Date}'].map(tag => (
+                                                            <code key={tag} className="px-1.5 py-0.5 bg-white border border-sky-200 rounded text-sky-700 font-mono text-[10px]">
+                                                                {tag}
+                                                            </code>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : selectedMasterTable === "audit_logs" && currentUser.role === "IT_ADMIN" ? (
+                                    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden space-y-0">
+                                        {/* Audit Log Controls Bar */}
+                                        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
+                                            <div className="flex items-center gap-2 flex-1">
+                                                <div className="relative flex-1 max-w-xs">
+                                                    <span className="material-symbols-outlined absolute left-2.5 top-2 text-slate-400 text-[18px]">search</span>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search audit logs by user, action, module..."
+                                                        value={auditSearchQuery}
+                                                        onChange={(e) => setAuditSearchQuery(e.target.value)}
+                                                        className="w-full h-8 pl-8 pr-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-sky-500 shadow-sm"
+                                                    />
+                                                </div>
+                                                <select
+                                                    value={auditModuleFilter}
+                                                    onChange={(e) => setAuditModuleFilter(e.target.value)}
+                                                    className="h-8 border border-slate-200 rounded-xl px-2.5 text-xs bg-white text-slate-700 font-bold focus:outline-none shadow-sm"
+                                                >
+                                                    <option value="all">All Modules</option>
+                                                    <option value="Daily Operations">Daily Operations</option>
+                                                    <option value="Reports">Reports</option>
+                                                    <option value="Email Automation">Email Automation</option>
+                                                    <option value="Auth">Authentication</option>
+                                                    <option value="plants">Plants Node</option>
+                                                    <option value="tariff_rates">Tariff Rates</option>
+                                                    <option value="multiply_factors">Multiply Factors</option>
+                                                    <option value="users">User Management</option>
+                                                </select>
+                                            </div>
+                                            <div className="text-[11px] text-slate-400 font-semibold">
+                                                Total Records: <span className="text-slate-700 font-bold">{auditLogs.length}</span> (Read-Only & Tamper-Resistant)
+                                            </div>
+                                        </div>
+
+                                        {/* Audit Logs Table */}
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full border-collapse text-left text-xs">
+                                                <thead>
+                                                    <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider text-[9px] bg-slate-50/70">
+                                                        <th className="py-3 px-4">Timestamp</th>
+                                                        <th className="py-3 px-4">User</th>
+                                                        <th className="py-3 px-4">Action</th>
+                                                        <th className="py-3 px-4">Module</th>
+                                                        <th className="py-3 px-4">Record / Target</th>
+                                                        <th className="py-3 px-4">Status</th>
+                                                        <th className="py-3 px-4 text-right">Details</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 text-slate-700">
+                                                    {(() => {
+                                                        const filtered = auditLogs.filter(log => {
+                                                            if (auditModuleFilter !== "all" && log.module !== auditModuleFilter) return false;
+                                                            if (auditSearchQuery) {
+                                                                const q = auditSearchQuery.toLowerCase();
+                                                                const text = `${log.user_email} ${log.user_name} ${log.action} ${log.module} ${log.record_id} ${log.location} ${log.plant}`.toLowerCase();
+                                                                if (!text.includes(q)) return false;
+                                                            }
+                                                            return true;
+                                                        });
+
+                                                        if (filtered.length === 0) {
+                                                            return (
+                                                                <tr>
+                                                                    <td colSpan={7} className="py-12 text-center text-slate-400 font-medium">
+                                                                        No audit logs recorded for this query.
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        }
+
+                                                        return filtered.slice(0, 100).map((log, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50/50 transition">
+                                                                <td className="py-2.5 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                                                                    {log.created_at ? new Date(log.created_at).toLocaleString("en-IN") : "—"}
+                                                                </td>
+                                                                <td className="py-2.5 px-4">
+                                                                    <div className="font-bold text-slate-800">{log.user_name || log.user_email}</div>
+                                                                    <div className="text-[10px] text-slate-400">{log.user_email}</div>
+                                                                </td>
+                                                                <td className="py-2.5 px-4">
+                                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                                                        log.action === "CREATE" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" :
+                                                                        log.action === "UPDATE" ? "bg-sky-50 text-sky-700 border border-sky-100" :
+                                                                        log.action === "DELETE" ? "bg-red-50 text-red-700 border border-red-100" :
+                                                                        log.action === "EXPORT" ? "bg-purple-50 text-purple-700 border border-purple-100" :
+                                                                        log.action.includes("LOGIN") ? "bg-indigo-50 text-indigo-700 border border-indigo-100" :
+                                                                        "bg-amber-50 text-amber-700 border border-amber-100"
+                                                                    }`}>
+                                                                        {log.action}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2.5 px-4 font-bold text-slate-700 text-[11px]">{log.module}</td>
+                                                                <td className="py-2.5 px-4 font-mono text-[11px] text-slate-600">
+                                                                    {log.plant ? `${log.plant} (${log.location || ""})` : log.record_id || "—"}
+                                                                </td>
+                                                                <td className="py-2.5 px-4">
+                                                                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${log.status === "SUCCESS" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                                                                        {log.status}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2.5 px-4 text-right">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setSelectedAuditDetail(log)}
+                                                                        className="px-2.5 py-1 text-[10px] font-extrabold text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-lg cursor-pointer border-none transition"
+                                                                    >
+                                                                        Inspect
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        ));
+                                                    })()}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                ) : (
                                 <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
                                     <div className="overflow-x-auto">
                                         <table className="w-full border-collapse text-left text-xs">
@@ -5074,6 +5816,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         </table>
                                     </div>
                                 </div>
+                                )}
                             </div>
                         )}
 
@@ -5119,7 +5862,19 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                                 <div>
                                                     <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Date</label>
-                                                    <input type="date" required value={entryFormValues.date} onChange={(e) => updateFormCalculations({ date: e.target.value })} className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition" />
+                                                    <input
+                                                        type="date"
+                                                        required
+                                                        value={entryFormValues.date}
+                                                        onChange={(e) => updateFormCalculations({ date: e.target.value })}
+                                                        className={`w-full h-9 rounded-lg border px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 transition ${isDuplicateDateEntry ? "border-red-400 focus:ring-red-500/30 text-red-700 bg-red-50/40" : "border-slate-300 focus:ring-sky-500/30 focus:border-sky-400"}`}
+                                                    />
+                                                    {isDuplicateDateEntry && (
+                                                        <p className="mt-1 text-[10px] font-bold text-red-600 flex items-center gap-1 leading-tight animate-pulse">
+                                                            <span className="material-symbols-outlined text-[13px] shrink-0">warning</span>
+                                                            <span>An entry already exists for this date. Duplicate entries are not allowed.</span>
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <div>
                                                     <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Location</label>
@@ -5492,7 +6247,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             </button>
                                             <button
                                                 type="submit"
-                                                disabled={actionLoading}
+                                                disabled={actionLoading || isDuplicateDateEntry}
                                                 className="flex items-center gap-1.5 px-4 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-lg text-xs font-semibold transition shadow-sm cursor-pointer disabled:opacity-50 border-none"
                                             >
                                                 {actionLoading && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
@@ -5954,6 +6709,108 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+
+                    {/* Audit Log Details Inspection Modal */}
+                    {selectedAuditDetail && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                            <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-2xl flex flex-col max-h-[85vh]">
+                                <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/70">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="h-8 w-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                                            <span className="material-symbols-outlined text-[18px]">manage_search</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-bold text-slate-800">
+                                                Audit Event Details
+                                            </h3>
+                                            <p className="text-[10px] text-slate-400">
+                                                {selectedAuditDetail.created_at ? new Date(selectedAuditDetail.created_at).toLocaleString("en-IN") : "—"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedAuditDetail(null)}
+                                        className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition border-none bg-transparent cursor-pointer"
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">close</span>
+                                    </button>
+                                </div>
+
+                                <div className="p-6 overflow-y-auto space-y-4 text-xs">
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200/70">
+                                        <div>
+                                            <span className="text-[9px] font-bold uppercase text-slate-400">Action</span>
+                                            <p className="font-bold text-slate-800 mt-0.5">{selectedAuditDetail.action}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9px] font-bold uppercase text-slate-400">Module</span>
+                                            <p className="font-bold text-slate-800 mt-0.5">{selectedAuditDetail.module}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9px] font-bold uppercase text-slate-400">User</span>
+                                            <p className="font-bold text-slate-800 mt-0.5">{selectedAuditDetail.user_name || selectedAuditDetail.user_email}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-[9px] font-bold uppercase text-slate-400">Status</span>
+                                            <p className="font-bold text-emerald-600 mt-0.5">{selectedAuditDetail.status}</p>
+                                        </div>
+                                    </div>
+
+                                    {selectedAuditDetail.plant && (
+                                        <div className="grid grid-cols-2 gap-3 bg-sky-50/50 p-3 rounded-xl border border-sky-100 text-[11px]">
+                                            <div>
+                                                <span className="font-bold text-slate-500">Plant:</span> <span className="font-extrabold text-sky-800">{selectedAuditDetail.plant}</span>
+                                            </div>
+                                            <div>
+                                                <span className="font-bold text-slate-500">Location:</span> <span className="font-extrabold text-sky-800">{selectedAuditDetail.location || "—"}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedAuditDetail.old_value && (
+                                        <div>
+                                            <span className="block font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                                                <span className="material-symbols-outlined text-[14px] text-amber-500">history</span>
+                                                <span>Previous Value (Before Edit)</span>
+                                            </span>
+                                            <pre className="p-3 bg-slate-900 text-emerald-400 rounded-xl overflow-x-auto text-[11px] font-mono leading-relaxed">
+                                                {JSON.stringify(selectedAuditDetail.old_value, null, 2)}
+                                            </pre>
+                                        </div>
+                                    )}
+
+                                    {selectedAuditDetail.new_value && (
+                                        <div>
+                                            <span className="block font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                                                <span className="material-symbols-outlined text-[14px] text-sky-500">update</span>
+                                                <span>Updated / New Value</span>
+                                            </span>
+                                            <pre className="p-3 bg-slate-900 text-sky-300 rounded-xl overflow-x-auto text-[11px] font-mono leading-relaxed">
+                                                {JSON.stringify(selectedAuditDetail.new_value, null, 2)}
+                                            </pre>
+                                        </div>
+                                    )}
+
+                                    {selectedAuditDetail.ip_device && (
+                                        <div className="text-[10px] text-slate-400 border-t pt-2 font-mono truncate">
+                                            Client Agent: {selectedAuditDetail.ip_device}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedAuditDetail(null)}
+                                        className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold border-none cursor-pointer transition"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     )}
 
