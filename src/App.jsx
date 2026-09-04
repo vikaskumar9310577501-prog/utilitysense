@@ -281,7 +281,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
         // CALCULATION ENGINE FOR REDESIGNED DATA ENTRY
         // ----------------------------------------------------
         const DEFAULT_MF = 40;
-        const TARIFF_DEFAULTS = { electricity: 10.893945, solar: 10.893945, diesel: 90.62, water: 45, lpg: 85 };
+        const TARIFF_DEFAULTS = { electricity: 10.893945, solar: 10.893945, diesel: 90.62, water: 45, lpg: 85, png: 80, nitrogen: 50, oxygen: 60 };
 
         const CalculationEngine = {
             calculateMSEBUnits: (diff, factor = DEFAULT_MF) => diff * (Number(factor) || DEFAULT_MF),
@@ -958,6 +958,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 waste_hazardous: "",
                 waste_non_hazardous: "",
                 waste_recycled: "",
+                png_closing: "",
+                png_opening: "",
+                nitrogen_closing: "",
+                nitrogen_opening: "",
+                oxygen_closing: "",
+                oxygen_opening: "",
+                water_closing: "",
+                water_opening: "",
                 water: "",
                 gas: "",
                 air: "",
@@ -1068,6 +1076,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return resolveTariff(tariffs, "water", plantCode, location, date);
             }, [tariffs, dashboardRateContext]);
 
+            const activePngRate = useMemo(() => {
+                const { plantCode, location, date } = dashboardRateContext;
+                return resolveTariff(tariffs, "png", plantCode, location, date);
+            }, [tariffs, dashboardRateContext]);
+
+            const activeNitrogenRate = useMemo(() => {
+                const { plantCode, location, date } = dashboardRateContext;
+                return resolveTariff(tariffs, "nitrogen", plantCode, location, date);
+            }, [tariffs, dashboardRateContext]);
+
+            const activeOxygenRate = useMemo(() => {
+                const { plantCode, location, date } = dashboardRateContext;
+                return resolveTariff(tariffs, "oxygen", plantCode, location, date);
+            }, [tariffs, dashboardRateContext]);
+
             const activeLpgRate = useMemo(() => {
                 const { plantCode, location, date } = dashboardRateContext;
                 return resolveTariff(tariffs, "lpg", plantCode, location, date);
@@ -1122,6 +1145,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 solar_utilization_pct: 100,
                 diesel_used: "",
                 diesel_cost: 0,
+                png_opening: 0,
+                png_closing: "",
+                png_consumption: 0,
+                png_cost: 0,
+                nitrogen_opening: 0,
+                nitrogen_closing: "",
+                nitrogen_consumption: 0,
+                nitrogen_cost: 0,
+                oxygen_opening: 0,
+                oxygen_closing: "",
+                oxygen_consumption: 0,
+                oxygen_cost: 0,
+                water_opening: 0,
+                water_closing: "",
+                water_consumption: 0,
+                water_cost: 0,
                 total_cost: 0,
                 odu: "",
                 idu: "",
@@ -1146,6 +1185,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     electRate,
                     solarRate: resolveTariff(tariffs, "solar", entryFormValues.plant, location, date) || electRate,
                     dieselRate: resolveTariff(tariffs, "diesel", entryFormValues.plant, location, date),
+                    pngRate: resolveTariff(tariffs, "png", entryFormValues.plant, location, date),
+                    nitrogenRate: resolveTariff(tariffs, "nitrogen", entryFormValues.plant, location, date),
+                    oxygenRate: resolveTariff(tariffs, "oxygen", entryFormValues.plant, location, date),
+                    waterRate: resolveTariff(tariffs, "water", entryFormValues.plant, location, date),
                     gridLabel: getGridProviderLabel(location),
                 };
             }, [entryFormValues.plant, entryFormValues.location, entryFormValues.date, plants, multiplyFactors, tariffs]);
@@ -1938,6 +1981,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     waste_hazardous: "",
                     waste_non_hazardous: "",
                     waste_recycled: "",
+                    png_closing: "",
+                    png_opening: "",
+                    nitrogen_closing: "",
+                    nitrogen_opening: "",
+                    oxygen_closing: "",
+                    oxygen_opening: "",
+                    water_closing: "",
+                    water_opening: "",
                     water: "",
                     gas: "",
                     air: "",
@@ -1957,7 +2008,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         mappings.location = original;
                     } else if (!mappings.plant && (c === "plant" || c === "plantname" || c === "plantcode" || c === "unit" || c === "factory" || c === "division")) {
                         mappings.plant = original;
-                    } else if (!mappings.electricity_opening && (c.includes("opening") || c.includes("prevreading") || c.includes("msebopening"))) {
+                    } else if (!mappings.electricity_opening && (c.includes("electricityopening") || c.includes("msebopening") || (c.includes("opening") && (c.includes("power") || c.includes("elect") || c.includes("mseb"))))) {
                         mappings.electricity_opening = original;
                     } else if (!mappings.electricity_closing && (c.includes("electricity") || c.includes("mseb") || c.includes("power") || c.includes("energy") || c === "kwh" || c.includes("closing") || c.includes("grid"))) {
                         mappings.electricity_closing = original;
@@ -1965,6 +2016,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         mappings.solar = original;
                     } else if (!mappings.diesel && (c.includes("diesel") || c.includes("dg") || c.includes("hsd") || c.includes("fuel"))) {
                         mappings.diesel = original;
+                    } else if (!mappings.png_opening && (c.includes("pngprev") || c.includes("pngopening") || c.includes("prevpng") || (c.includes("png") && c.includes("open")))) {
+                        mappings.png_opening = original;
+                    } else if (!mappings.png_closing && (c.includes("png") || c.includes("pnggas") || c.includes("pngreading") || c.includes("pngclose") || c.includes("pngdaily"))) {
+                        mappings.png_closing = original;
+                    } else if (!mappings.nitrogen_opening && (c.includes("nitrogenprev") || c.includes("nitrogenopening") || c.includes("prevnitrogen") || c.includes("n2prev") || c.includes("n2opening"))) {
+                        mappings.nitrogen_opening = original;
+                    } else if (!mappings.nitrogen_closing && (c.includes("nitrogen") || c.includes("nitrogengas") || c.includes("n2") || c.includes("nitrogenreading") || c.includes("nitrogenclose") || c.includes("nitrogendaily"))) {
+                        mappings.nitrogen_closing = original;
+                    } else if (!mappings.oxygen_opening && (c.includes("oxygenprev") || c.includes("oxygenopening") || c.includes("prevoxygen") || c.includes("o2prev") || c.includes("o2opening"))) {
+                        mappings.oxygen_opening = original;
+                    } else if (!mappings.oxygen_closing && (c.includes("oxygen") || c.includes("oxygengas") || c.includes("o2") || c.includes("oxygenreading") || c.includes("oxygenclose") || c.includes("oxygendaily"))) {
+                        mappings.oxygen_closing = original;
+                    } else if (!mappings.water_opening && (c.includes("waterprev") || c.includes("wateropening") || c.includes("prevwater") || (c.includes("water") && c.includes("open")))) {
+                        mappings.water_opening = original;
+                    } else if (!mappings.water_closing && (c.includes("waterclosing") || c.includes("waterdaily") || c.includes("waterreading") || (c.includes("water") && (c.includes("kl") || c.includes("close") || c.includes("reading"))))) {
+                        mappings.water_closing = original;
                     } else if (!mappings.odu && (c.includes("odu") || c.includes("outdoor"))) {
                         mappings.odu = original;
                     } else if (!mappings.idu && (c.includes("idu") || c.includes("indoor"))) {
@@ -1979,7 +2046,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         mappings.waste_recycled = original;
                     } else if (!mappings.water && (c.includes("water") || c.includes("kl") || c.includes("ro"))) {
                         mappings.water = original;
-                    } else if (!mappings.gas && (c.includes("gas") || c.includes("png") || c.includes("lpg") || c.includes("scm"))) {
+                    } else if (!mappings.gas && (c.includes("gas") || c.includes("lpg") || c.includes("scm"))) {
                         mappings.gas = original;
                     } else if (!mappings.air && (c.includes("air") || c.includes("compressor") || c.includes("cfm"))) {
                         mappings.air = original;
@@ -2107,6 +2174,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const wasteHazRaw = currentMappings.waste_hazardous ? row[currentMappings.waste_hazardous] : 0;
                     const wasteNonHazRaw = currentMappings.waste_non_hazardous ? row[currentMappings.waste_non_hazardous] : 0;
                     const wasteRecycledRaw = currentMappings.waste_recycled ? row[currentMappings.waste_recycled] : 0;
+                    const pngClosingRaw = currentMappings.png_closing ? row[currentMappings.png_closing] : (currentMappings.gas ? row[currentMappings.gas] : 0);
+                    const pngOpeningRaw = currentMappings.png_opening ? row[currentMappings.png_opening] : 0;
+                    const nitrogenClosingRaw = currentMappings.nitrogen_closing ? row[currentMappings.nitrogen_closing] : 0;
+                    const nitrogenOpeningRaw = currentMappings.nitrogen_opening ? row[currentMappings.nitrogen_opening] : 0;
+                    const oxygenClosingRaw = currentMappings.oxygen_closing ? row[currentMappings.oxygen_closing] : 0;
+                    const oxygenOpeningRaw = currentMappings.oxygen_opening ? row[currentMappings.oxygen_opening] : 0;
+                    const waterClosingRaw = currentMappings.water_closing ? row[currentMappings.water_closing] : (currentMappings.water ? row[currentMappings.water] : 0);
+                    const waterOpeningRaw = currentMappings.water_opening ? row[currentMappings.water_opening] : 0;
                     const remarksRaw = currentMappings.remarks ? String(row[currentMappings.remarks] || "") : "";
                     const operatorRaw = currentMappings.operator ? String(row[currentMappings.operator] || "") : (currentUser?.name || "IT Admin");
 
@@ -2114,21 +2189,54 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const electOpening = cleanNum(electOpeningRaw);
                     const solarGen = cleanNum(solarRaw);
                     const dieselUsed = cleanNum(dieselRaw);
+                    const pngClosing = cleanNum(pngClosingRaw);
+                    const pngOpening = cleanNum(pngOpeningRaw);
+                    const nitrogenClosing = cleanNum(nitrogenClosingRaw);
+                    const nitrogenOpening = cleanNum(nitrogenOpeningRaw);
+                    const oxygenClosing = cleanNum(oxygenClosingRaw);
+                    const oxygenOpening = cleanNum(oxygenOpeningRaw);
+                    const waterClosing = cleanNum(waterClosingRaw);
+                    const waterOpening = cleanNum(waterOpeningRaw);
                     const odu = cleanNum(oduRaw);
                     const idu = cleanNum(iduRaw);
                     const sets = cleanNum(prodSetRaw) || CalculationEngine.calculateProductionSets(odu, idu);
+
+                    // Validate negative consumption
+                    if (electClosing < electOpening && electOpening > 0) {
+                        warnings.push(`Electricity Closing (${electClosing}) < Opening (${electOpening}).`);
+                    }
+                    if (pngClosing < pngOpening && pngOpening > 0) {
+                        warnings.push(`PNG Gas Closing (${pngClosing}) < Opening (${pngOpening}).`);
+                    }
+                    if (nitrogenClosing < nitrogenOpening && nitrogenOpening > 0) {
+                        warnings.push(`Nitrogen Gas Closing (${nitrogenClosing}) < Opening (${nitrogenOpening}).`);
+                    }
+                    if (oxygenClosing < oxygenOpening && oxygenOpening > 0) {
+                        warnings.push(`Oxygen Gas Closing (${oxygenClosing}) < Opening (${oxygenOpening}).`);
+                    }
+                    if (waterClosing < waterOpening && waterOpening > 0) {
+                        warnings.push(`Water Closing (${waterClosing}) < Opening (${waterOpening}).`);
+                    }
 
                     // 6. Calculations
                     let mf = 1;
                     let electTariff = 0;
                     let solarTariff = 0;
                     let dieselTariff = 0;
+                    let pngTariff = 0;
+                    let nitrogenTariff = 0;
+                    let oxygenTariff = 0;
+                    let waterTariff = 0;
 
                     if (resolvedPlant && resolvedDate) {
                         mf = resolveMultiplyFactor(multiplyFactors, resolvedPlant, resolvedLoc, resolvedDate);
                         electTariff = resolveTariff(tariffs, "electricity", resolvedPlant, resolvedLoc, resolvedDate);
                         solarTariff = resolveTariff(tariffs, "solar", resolvedPlant, resolvedLoc, resolvedDate) || electTariff;
                         dieselTariff = resolveTariff(tariffs, "diesel", resolvedPlant, resolvedLoc, resolvedDate);
+                        pngTariff = resolveTariff(tariffs, "png", resolvedPlant, resolvedLoc, resolvedDate);
+                        nitrogenTariff = resolveTariff(tariffs, "nitrogen", resolvedPlant, resolvedLoc, resolvedDate);
+                        oxygenTariff = resolveTariff(tariffs, "oxygen", resolvedPlant, resolvedLoc, resolvedDate);
+                        waterTariff = resolveTariff(tariffs, "water", resolvedPlant, resolvedLoc, resolvedDate);
                     }
 
                     const unitsDiff = electClosing > electOpening ? (electClosing - electOpening) : electClosing;
@@ -2136,6 +2244,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const electricityCost = CalculationEngine.calculateElectricityCost(msebUnits, electTariff);
                     const solarCost = CalculationEngine.calculateSolarCost(solarGen, solarTariff);
                     const dieselCost = CalculationEngine.calculateDieselCost(dieselUsed, dieselTariff);
+                    const pngCons = pngClosing > pngOpening ? (pngClosing - pngOpening) : pngClosing;
+                    const pngCost = pngCons * pngTariff;
+                    const nitrogenCons = nitrogenClosing > nitrogenOpening ? (nitrogenClosing - nitrogenOpening) : nitrogenClosing;
+                    const nitrogenCost = nitrogenCons * nitrogenTariff;
+                    const oxygenCons = oxygenClosing > oxygenOpening ? (oxygenClosing - oxygenOpening) : oxygenClosing;
+                    const oxygenCost = oxygenCons * oxygenTariff;
+                    const waterCons = waterClosing > waterOpening ? (waterClosing - waterOpening) : waterClosing;
+                    const waterCost = waterCons * waterTariff;
                     const totalCost = CalculationEngine.calculateTotalCost(electricityCost, solarCost, dieselCost);
                     const costPerSet = CalculationEngine.calculateCostPerSet(totalCost, sets);
                     const sec = sets > 0 ? msebUnits / sets : 0;
@@ -2161,6 +2277,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         solar_cost: solarCost,
                         diesel_used: dieselUsed,
                         diesel_cost: dieselCost,
+                        png_opening: pngOpening,
+                        png_closing: pngClosing,
+                        png_consumption: pngCons,
+                        png_cost: pngCost,
+                        nitrogen_opening: nitrogenOpening,
+                        nitrogen_closing: nitrogenClosing,
+                        nitrogen_consumption: nitrogenCons,
+                        nitrogen_cost: nitrogenCost,
+                        oxygen_opening: oxygenOpening,
+                        oxygen_closing: oxygenClosing,
+                        oxygen_consumption: oxygenCons,
+                        oxygen_cost: oxygenCost,
+                        water_opening: waterOpening,
+                        water_closing: waterClosing,
+                        water_consumption: waterCons,
+                        water_cost: waterCost,
                         total_cost: totalCost,
                         odu: odu,
                         idu: idu,
@@ -2294,6 +2426,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         solar_utilization_pct: 100,
                         diesel_used: r.diesel_used || 0,
                         diesel_cost: r.diesel_cost || 0,
+                        png_opening: r.png_opening || 0,
+                        png_closing: r.png_closing || 0,
+                        png_consumption: r.png_consumption || 0,
+                        png_cost: r.png_cost || 0,
+                        nitrogen_opening: r.nitrogen_opening || 0,
+                        nitrogen_closing: r.nitrogen_closing || 0,
+                        nitrogen_consumption: r.nitrogen_consumption || 0,
+                        nitrogen_cost: r.nitrogen_cost || 0,
+                        oxygen_opening: r.oxygen_opening || 0,
+                        oxygen_closing: r.oxygen_closing || 0,
+                        oxygen_consumption: r.oxygen_consumption || 0,
+                        oxygen_cost: r.oxygen_cost || 0,
+                        water_opening: r.water_opening || 0,
+                        water_closing: r.water_closing || 0,
+                        water_consumption: r.water_consumption || 0,
+                        water_cost: r.water_cost || 0,
                         total_cost: r.total_cost || 0,
                         odu: r.odu || 0,
                         idu: r.idu || 0,
@@ -2572,13 +2720,44 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const solGen = Number(entry.solar_generated) || 0;
                     const solCloseRaw = Number(entry.solar_closing);
                     const solarDaily = Number.isFinite(solCloseRaw) && solCloseRaw > 0 ? solCloseRaw : solGen;
-                    const prevSolarEntry = dailyEntries
+                    const prevEntry = dailyEntries
                         .filter(e => e.plant === entry.plant && e.date < entry.date && e.id !== entry.id)
                         .sort((a, b) => b.date.localeCompare(a.date))[0];
-                    const prevSolar = prevSolarEntry ? (Number(prevSolarEntry.solar_generated) || 0) : 0;
+                    const prevSolar = prevEntry ? (Number(prevEntry.solar_generated) || 0) : 0;
+                    const prevPng = prevEntry ? (Number(prevEntry.png_closing) || 0) : 0;
+                    const prevNitrogen = prevEntry ? (Number(prevEntry.nitrogen_closing) || 0) : 0;
+                    const prevOxygen = prevEntry ? (Number(prevEntry.oxygen_closing) || 0) : 0;
+                    const prevWater = prevEntry ? (Number(prevEntry.water_closing) || 0) : 0;
+
                     const solarCost = CalculationEngine.calculateSolarCost(solarDaily, resolveTariff(tariffs, "solar", entry.plant, entry.location, entry.date) || resolveTariff(tariffs, "electricity", entry.plant, entry.location, entry.date));
                     const dieselCost = CalculationEngine.calculateDieselCost(Number(entry.diesel_used) || 0, resolveTariff(tariffs, "diesel", entry.plant, entry.location, entry.date));
                     const electCost = Number(entry.electricity_cost) || 0;
+
+                    const pngRate = resolveTariff(tariffs, "png", entry.plant, entry.location, entry.date);
+                    const nitrogenRate = resolveTariff(tariffs, "nitrogen", entry.plant, entry.location, entry.date);
+                    const oxygenRate = resolveTariff(tariffs, "oxygen", entry.plant, entry.location, entry.date);
+                    const waterRate = resolveTariff(tariffs, "water", entry.plant, entry.location, entry.date);
+
+                    const pngOpen = entry.png_opening !== undefined && entry.png_opening !== null ? Number(entry.png_opening) : prevPng;
+                    const pngClose = entry.png_closing !== undefined && entry.png_closing !== null ? entry.png_closing : "";
+                    const pngCons = entry.png_consumption !== undefined && entry.png_consumption !== null ? Number(entry.png_consumption) : (pngClose !== "" ? Math.max(0, Number(pngClose) - pngOpen) : 0);
+                    const pngCost = entry.png_cost !== undefined && entry.png_cost !== null ? Number(entry.png_cost) : (pngCons * pngRate);
+
+                    const nOpen = entry.nitrogen_opening !== undefined && entry.nitrogen_opening !== null ? Number(entry.nitrogen_opening) : prevNitrogen;
+                    const nClose = entry.nitrogen_closing !== undefined && entry.nitrogen_closing !== null ? entry.nitrogen_closing : "";
+                    const nCons = entry.nitrogen_consumption !== undefined && entry.nitrogen_consumption !== null ? Number(entry.nitrogen_consumption) : (nClose !== "" ? Math.max(0, Number(nClose) - nOpen) : 0);
+                    const nCost = entry.nitrogen_cost !== undefined && entry.nitrogen_cost !== null ? Number(entry.nitrogen_cost) : (nCons * nitrogenRate);
+
+                    const oOpen = entry.oxygen_opening !== undefined && entry.oxygen_opening !== null ? Number(entry.oxygen_opening) : prevOxygen;
+                    const oClose = entry.oxygen_closing !== undefined && entry.oxygen_closing !== null ? entry.oxygen_closing : "";
+                    const oCons = entry.oxygen_consumption !== undefined && entry.oxygen_consumption !== null ? Number(entry.oxygen_consumption) : (oClose !== "" ? Math.max(0, Number(oClose) - oOpen) : 0);
+                    const oCost = entry.oxygen_cost !== undefined && entry.oxygen_cost !== null ? Number(entry.oxygen_cost) : (oCons * oxygenRate);
+
+                    const wOpen = entry.water_opening !== undefined && entry.water_opening !== null ? Number(entry.water_opening) : prevWater;
+                    const wClose = entry.water_closing !== undefined && entry.water_closing !== null ? entry.water_closing : "";
+                    const wCons = entry.water_consumption !== undefined && entry.water_consumption !== null ? Number(entry.water_consumption) : (wClose !== "" ? Math.max(0, Number(wClose) - wOpen) : 0);
+                    const wCost = entry.water_cost !== undefined && entry.water_cost !== null ? Number(entry.water_cost) : (wCons * waterRate);
+
                     setEntryFormValues({
                         ...entry,
                         meter_changed: entry.meter_changed === true || String(entry.meter_changed) === "true",
@@ -2589,6 +2768,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         solar_utilized: solarDaily,
                         solar_cost: solarCost,
                         diesel_cost: dieselCost,
+                        png_opening: pngOpen,
+                        png_closing: pngClose,
+                        png_consumption: pngCons,
+                        png_cost: pngCost,
+                        nitrogen_opening: nOpen,
+                        nitrogen_closing: nClose,
+                        nitrogen_consumption: nCons,
+                        nitrogen_cost: nCost,
+                        oxygen_opening: oOpen,
+                        oxygen_closing: oClose,
+                        oxygen_consumption: oCons,
+                        oxygen_cost: oCost,
+                        water_opening: wOpen,
+                        water_closing: wClose,
+                        water_consumption: wCons,
+                        water_cost: wCost,
                         total_cost: CalculationEngine.calculateTotalCost(electCost, solarCost, dieselCost),
                     });
                     // Auto-expand the waste section if the record being edited already has waste data
@@ -2622,6 +2817,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         solar_utilization_pct: 100,
                         diesel_used: "",
                         diesel_cost: 0,
+                        png_opening: 0,
+                        png_closing: "",
+                        png_consumption: 0,
+                        png_cost: 0,
+                        nitrogen_opening: 0,
+                        nitrogen_closing: "",
+                        nitrogen_consumption: 0,
+                        nitrogen_cost: 0,
+                        oxygen_opening: 0,
+                        oxygen_closing: "",
+                        oxygen_consumption: 0,
+                        oxygen_cost: 0,
+                        water_opening: 0,
+                        water_closing: "",
+                        water_consumption: 0,
+                        water_cost: 0,
                         total_cost: 0,
                         odu: "",
                         idu: "",
@@ -2770,6 +2981,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     .sort((a, b) => b.date.localeCompare(a.date));
                 const prevReading = sortedPrev.length > 0 ? Number(sortedPrev[0].electricity_closing) || 0 : 0;
                 const prevSolar = sortedPrev.length > 0 ? Number(sortedPrev[0].solar_generated) || 0 : 0;
+                const prevPng = sortedPrev.length > 0 ? Number(sortedPrev[0].png_closing) || 0 : 0;
+                const prevNitrogen = sortedPrev.length > 0 ? Number(sortedPrev[0].nitrogen_closing) || 0 : 0;
+                const prevOxygen = sortedPrev.length > 0 ? Number(sortedPrev[0].oxygen_closing) || 0 : 0;
+                const prevWater = sortedPrev.length > 0 ? Number(sortedPrev[0].water_closing) || 0 : 0;
 
                 if (productionExcelData) {
                     const match = findExcelDataByDateAndPlant(date, plant);
@@ -2782,6 +2997,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                 solar_opening: prevSolar,
                                 solar_closing: match.solar_generated,
                                 diesel_used: match.diesel_used,
+                                png_opening: prevPng,
+                                nitrogen_opening: prevNitrogen,
+                                oxygen_opening: prevOxygen,
+                                water_opening: prevWater,
                                 odu: match.odu,
                                 idu: match.idu
                             });
@@ -2798,10 +3017,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                             solar_opening: prevSolar,
                             solar_closing: "",
                             diesel_used: "",
+                            png_opening: prevPng,
+                            nitrogen_opening: prevNitrogen,
+                            oxygen_opening: prevOxygen,
+                            water_opening: prevWater
                         });
                     }
                 } else {
-                    updateFormCalculations({ electricity_opening: prevReading, solar_opening: prevSolar });
+                    updateFormCalculations({
+                        electricity_opening: prevReading,
+                        solar_opening: prevSolar,
+                        png_opening: prevPng,
+                        nitrogen_opening: prevNitrogen,
+                        oxygen_opening: prevOxygen,
+                        water_opening: prevWater
+                    });
                 }
 
             }, [entryFormValues.date, entryFormValues.plant, isFormOpen, productionExcelData]);
@@ -2816,6 +3046,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const electTariff = resolveTariff(tariffs, "electricity", next.plant, loc, next.date);
                     const solarRate = resolveTariff(tariffs, "solar", next.plant, loc, next.date) || electTariff;
                     const dieselRate = resolveTariff(tariffs, "diesel", next.plant, loc, next.date);
+                    const pngRate = resolveTariff(tariffs, "png", next.plant, loc, next.date);
+                    const nitrogenRate = resolveTariff(tariffs, "nitrogen", next.plant, loc, next.date);
+                    const oxygenRate = resolveTariff(tariffs, "oxygen", next.plant, loc, next.date);
+                    const waterRate = resolveTariff(tariffs, "water", next.plant, loc, next.date);
 
                     const opening = Number(next.electricity_opening) || 0;
                     const closing = Number(next.electricity_closing) || 0;
@@ -2841,6 +3075,34 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     next.diesel_used = Number(next.diesel_used) || 0;
                     next.diesel_cost = CalculationEngine.calculateDieselCost(next.diesel_used, dieselRate);
 
+                    // PNG Gas calculation (kg)
+                    const pngOpen = Number(next.png_opening) || 0;
+                    const pngClose = next.png_closing !== "" && next.png_closing !== null && next.png_closing !== undefined ? Number(next.png_closing) : "";
+                    const pngCons = pngClose !== "" ? Math.max(0, pngClose - pngOpen) : 0;
+                    next.png_consumption = pngCons;
+                    next.png_cost = pngCons * pngRate;
+
+                    // Nitrogen Gas calculation (kg)
+                    const nOpen = Number(next.nitrogen_opening) || 0;
+                    const nClose = next.nitrogen_closing !== "" && next.nitrogen_closing !== null && next.nitrogen_closing !== undefined ? Number(next.nitrogen_closing) : "";
+                    const nCons = nClose !== "" ? Math.max(0, nClose - nOpen) : 0;
+                    next.nitrogen_consumption = nCons;
+                    next.nitrogen_cost = nCons * nitrogenRate;
+
+                    // Oxygen Gas calculation (kg)
+                    const oOpen = Number(next.oxygen_opening) || 0;
+                    const oClose = next.oxygen_closing !== "" && next.oxygen_closing !== null && next.oxygen_closing !== undefined ? Number(next.oxygen_closing) : "";
+                    const oCons = oClose !== "" ? Math.max(0, oClose - oOpen) : 0;
+                    next.oxygen_consumption = oCons;
+                    next.oxygen_cost = oCons * oxygenRate;
+
+                    // Water calculation (kL)
+                    const wOpen = Number(next.water_opening) || 0;
+                    const wClose = next.water_closing !== "" && next.water_closing !== null && next.water_closing !== undefined ? Number(next.water_closing) : "";
+                    const wCons = wClose !== "" ? Math.max(0, wClose - wOpen) : 0;
+                    next.water_consumption = wCons;
+                    next.water_cost = wCons * waterRate;
+
                     const totalCost = CalculationEngine.calculateTotalCost(next.electricity_cost, next.solar_cost, next.diesel_cost);
                     next.total_cost = totalCost;
 
@@ -2865,7 +3127,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 });
             };
 
-            // Auto lookup previous day's closing reading
+            // Auto lookup previous day's closing reading on date/plant change
             useEffect(() => {
                 if (!isFormOpen) return;
                 const { date, plant } = entryFormValues;
@@ -2880,8 +3142,19 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     .sort((a, b) => b.date.localeCompare(a.date));
                 const prevReading = sortedPrev.length > 0 ? Number(sortedPrev[0].electricity_closing) || 0 : 0;
                 const prevSolar = sortedPrev.length > 0 ? Number(sortedPrev[0].solar_generated) || 0 : 0;
+                const prevPng = sortedPrev.length > 0 ? Number(sortedPrev[0].png_closing) || 0 : 0;
+                const prevNitrogen = sortedPrev.length > 0 ? Number(sortedPrev[0].nitrogen_closing) || 0 : 0;
+                const prevOxygen = sortedPrev.length > 0 ? Number(sortedPrev[0].oxygen_closing) || 0 : 0;
+                const prevWater = sortedPrev.length > 0 ? Number(sortedPrev[0].water_closing) || 0 : 0;
 
-                updateFormCalculations({ electricity_opening: prevReading, solar_opening: prevSolar });
+                updateFormCalculations({
+                    electricity_opening: prevReading,
+                    solar_opening: prevSolar,
+                    png_opening: prevPng,
+                    nitrogen_opening: prevNitrogen,
+                    oxygen_opening: prevOxygen,
+                    water_opening: prevWater
+                });
 
             }, [entryFormValues.date, entryFormValues.plant, isFormOpen]);
 
@@ -2990,12 +3263,42 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     return;
                 }
 
+                if (entryFormValues.png_closing !== "" && entryFormValues.png_closing !== null && Number(entryFormValues.png_closing) < Number(entryFormValues.png_opening)) {
+                    setToast({ type: "error", message: "PNG Gas Daily Reading cannot be lower than Previous Reading." });
+                    setActionLoading(false);
+                    return;
+                }
+
+                if (entryFormValues.nitrogen_closing !== "" && entryFormValues.nitrogen_closing !== null && Number(entryFormValues.nitrogen_closing) < Number(entryFormValues.nitrogen_opening)) {
+                    setToast({ type: "error", message: "Nitrogen Gas Daily Reading cannot be lower than Previous Reading." });
+                    setActionLoading(false);
+                    return;
+                }
+
+                if (entryFormValues.oxygen_closing !== "" && entryFormValues.oxygen_closing !== null && Number(entryFormValues.oxygen_closing) < Number(entryFormValues.oxygen_opening)) {
+                    setToast({ type: "error", message: "Oxygen Gas Daily Reading cannot be lower than Previous Reading." });
+                    setActionLoading(false);
+                    return;
+                }
+
+                if (entryFormValues.water_closing !== "" && entryFormValues.water_closing !== null && Number(entryFormValues.water_closing) < Number(entryFormValues.water_opening)) {
+                    setToast({ type: "error", message: "Water Daily Reading cannot be lower than Previous Reading." });
+                    setActionLoading(false);
+                    return;
+                }
+
                 const validKeys = [
                     "date", "plant", "location", "department", "shift", "operator_name",
                     "electricity_opening", "electricity_closing", "electricity_consumption", "electricity_cost",
                     "solar_generated", "solar_utilized", "solar_cost",
-                    "diesel_used", "diesel_cost", "total_cost", "odu", "idu",
-                    "production_qty", "remarks"
+                    "diesel_used", "diesel_cost",
+                    "png_opening", "png_closing", "png_consumption", "png_cost",
+                    "nitrogen_opening", "nitrogen_closing", "nitrogen_consumption", "nitrogen_cost",
+                    "oxygen_opening", "oxygen_closing", "oxygen_consumption", "oxygen_cost",
+                    "water_opening", "water_closing", "water_consumption", "water_cost",
+                    "total_cost", "odu", "idu",
+                    "production_qty", "remarks",
+                    "waste_hazardous", "waste_non_hazardous", "waste_recycled"
                 ];
                 const payload = {};
                 validKeys.forEach(k => {
@@ -3003,8 +3306,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         const numericFields = [
                             "electricity_opening", "electricity_closing", "electricity_consumption", "electricity_cost",
                             "solar_generated", "solar_utilized", "solar_cost",
-                            "diesel_used", "diesel_cost", "total_cost", "odu", "idu",
-                            "production_qty"
+                            "diesel_used", "diesel_cost",
+                            "png_opening", "png_closing", "png_consumption", "png_cost",
+                            "nitrogen_opening", "nitrogen_closing", "nitrogen_consumption", "nitrogen_cost",
+                            "oxygen_opening", "oxygen_closing", "oxygen_consumption", "oxygen_cost",
+                            "water_opening", "water_closing", "water_consumption", "water_cost",
+                            "total_cost", "odu", "idu",
+                            "production_qty", "waste_hazardous", "waste_non_hazardous", "waste_recycled"
                         ];
                         if (numericFields.includes(k)) {
                             payload[k] = entryFormValues[k] === "" || entryFormValues[k] === null ? null : Number(entryFormValues[k]);
@@ -3018,10 +3326,44 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const saveLoc = entryFormValues.location || plants.find((p) => p.plant_code === entryFormValues.plant)?.location || "";
                 const saveSolarRate = resolveTariff(tariffs, "solar", entryFormValues.plant, saveLoc, entryFormValues.date) || resolveTariff(tariffs, "electricity", entryFormValues.plant, saveLoc, entryFormValues.date);
                 const saveDieselRate = resolveTariff(tariffs, "diesel", entryFormValues.plant, saveLoc, entryFormValues.date);
+                const savePngRate = resolveTariff(tariffs, "png", entryFormValues.plant, saveLoc, entryFormValues.date);
+                const saveNitrogenRate = resolveTariff(tariffs, "nitrogen", entryFormValues.plant, saveLoc, entryFormValues.date);
+                const saveOxygenRate = resolveTariff(tariffs, "oxygen", entryFormValues.plant, saveLoc, entryFormValues.date);
+                const saveWaterRate = resolveTariff(tariffs, "water", entryFormValues.plant, saveLoc, entryFormValues.date);
+
                 payload.solar_generated = solarUnits;
                 payload.solar_utilized = solarUnits;
                 payload.solar_cost = CalculationEngine.calculateSolarCost(solarUnits, saveSolarRate);
                 payload.diesel_cost = CalculationEngine.calculateDieselCost(Number(payload.diesel_used) || 0, saveDieselRate);
+
+                const pngCloseVal = entryFormValues.png_closing !== "" && entryFormValues.png_closing !== null ? Number(entryFormValues.png_closing) : null;
+                const pngOpenVal = Number(entryFormValues.png_opening) || 0;
+                payload.png_opening = pngOpenVal;
+                payload.png_closing = pngCloseVal;
+                payload.png_consumption = pngCloseVal !== null ? Math.max(0, pngCloseVal - pngOpenVal) : 0;
+                payload.png_cost = (payload.png_consumption || 0) * savePngRate;
+
+                const nCloseVal = entryFormValues.nitrogen_closing !== "" && entryFormValues.nitrogen_closing !== null ? Number(entryFormValues.nitrogen_closing) : null;
+                const nOpenVal = Number(entryFormValues.nitrogen_opening) || 0;
+                payload.nitrogen_opening = nOpenVal;
+                payload.nitrogen_closing = nCloseVal;
+                payload.nitrogen_consumption = nCloseVal !== null ? Math.max(0, nCloseVal - nOpenVal) : 0;
+                payload.nitrogen_cost = (payload.nitrogen_consumption || 0) * saveNitrogenRate;
+
+                const oCloseVal = entryFormValues.oxygen_closing !== "" && entryFormValues.oxygen_closing !== null ? Number(entryFormValues.oxygen_closing) : null;
+                const oOpenVal = Number(entryFormValues.oxygen_opening) || 0;
+                payload.oxygen_opening = oOpenVal;
+                payload.oxygen_closing = oCloseVal;
+                payload.oxygen_consumption = oCloseVal !== null ? Math.max(0, oCloseVal - oOpenVal) : 0;
+                payload.oxygen_cost = (payload.oxygen_consumption || 0) * saveOxygenRate;
+
+                const wCloseVal = entryFormValues.water_closing !== "" && entryFormValues.water_closing !== null ? Number(entryFormValues.water_closing) : null;
+                const wOpenVal = Number(entryFormValues.water_opening) || 0;
+                payload.water_opening = wOpenVal;
+                payload.water_closing = wCloseVal;
+                payload.water_consumption = wCloseVal !== null ? Math.max(0, wCloseVal - wOpenVal) : 0;
+                payload.water_cost = (payload.water_consumption || 0) * saveWaterRate;
+
                 payload.total_cost = CalculationEngine.calculateTotalCost(
                     Number(payload.electricity_cost) || 0,
                     payload.solar_cost,
@@ -3738,7 +4080,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     acc.solarGenerated += Number(cur.solar_generated) || 0;
                     acc.solarUtilized += Number(cur.solar_utilized) || 0;
                     acc.solarCost += Number(cur.solar_cost) || 0;
-                    acc.water += Number(cur.water_consumption) || 0;
+                    acc.png += Number(cur.png_consumption) || (cur.png_closing && cur.png_opening ? Math.max(0, Number(cur.png_closing) - Number(cur.png_opening)) : 0);
+                    acc.pngCost += Number(cur.png_cost) || 0;
+                    acc.nitrogen += Number(cur.nitrogen_consumption) || (cur.nitrogen_closing && cur.nitrogen_opening ? Math.max(0, Number(cur.nitrogen_closing) - Number(cur.nitrogen_opening)) : 0);
+                    acc.nitrogenCost += Number(cur.nitrogen_cost) || 0;
+                    acc.oxygen += Number(cur.oxygen_consumption) || (cur.oxygen_closing && cur.oxygen_opening ? Math.max(0, Number(cur.oxygen_closing) - Number(cur.oxygen_opening)) : 0);
+                    acc.oxygenCost += Number(cur.oxygen_cost) || 0;
+                    acc.water += Number(cur.water_consumption) || (cur.water_closing && cur.water_opening ? Math.max(0, Number(cur.water_closing) - Number(cur.water_opening)) : (Number(cur.water) || 0));
                     acc.waterCost += Number(cur.water_cost) || 0;
                     acc.air += Number(cur.air_consumption) || 0;
                     acc.diesel += Number(cur.diesel_used) || 0;
@@ -3754,6 +4102,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     return acc;
                 }, {
                     electricity: 0, electricityCost: 0, solarGenerated: 0, solarUtilized: 0, solarCost: 0,
+                    png: 0, pngCost: 0, nitrogen: 0, nitrogenCost: 0, oxygen: 0, oxygenCost: 0,
                     water: 0, waterCost: 0, air: 0, diesel: 0, dieselCost: 0, lpg: 0, lpgCost: 0,
                     production: 0, odu: 0, idu: 0, wasteHaz: 0, wasteNHaz: 0, wasteRec: 0
                 });
@@ -3763,14 +4112,20 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const electRate = Number(activeElectRate) || 10.89;
                 const solarRate = Number(activeSolarRate) || electRate;
                 const dieselRate = Number(activeDieselRate) || 90.62;
+                const pngRate = Number(activePngRate) || 80;
+                const nitrogenRate = Number(activeNitrogenRate) || 50;
+                const oxygenRate = Number(activeOxygenRate) || 60;
                 const lpgRate = Number(activeLpgRate) || 85;
                 const waterRate = Number(activeWaterRate) || 45;
 
                 const electricityCost = kpiTotals.electricityCost;
                 const solarCost = kpiTotals.solarCost;
                 const dieselCost = kpiTotals.dieselCost;
+                const pngCost = kpiTotals.pngCost || (kpiTotals.png * pngRate);
+                const nitrogenCost = kpiTotals.nitrogenCost || (kpiTotals.nitrogen * nitrogenRate);
+                const oxygenCost = kpiTotals.oxygenCost || (kpiTotals.oxygen * oxygenRate);
                 const lpgCost = kpiTotals.lpgCost;
-                const energyCost = electricityCost + solarCost + dieselCost + lpgCost;
+                const energyCost = electricityCost + solarCost + dieselCost + pngCost + nitrogenCost + oxygenCost + lpgCost;
                 const waterCost = kpiTotals.waterCost || (kpiTotals.water * waterRate);
                 const totalCost = energyCost + waterCost;
                 const totalConsumption = kpiTotals.electricity + kpiTotals.solarGenerated;
@@ -3788,9 +4143,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     electricityCost,
                     solarCost,
                     dieselCost,
+                    pngCost,
+                    nitrogenCost,
+                    oxygenCost,
                     lpgCost,
                 };
-            }, [kpiTotals, activeElectRate, activeSolarRate, activeDieselRate, activeLpgRate, activeWaterRate]);
+            }, [kpiTotals, activeElectRate, activeSolarRate, activeDieselRate, activePngRate, activeNitrogenRate, activeOxygenRate, activeLpgRate, activeWaterRate]);
 
             // Trend datasets for Recharts
             const dailyTrendsData = useMemo(() => {
@@ -5053,31 +5411,32 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     </div>
                                 )}
 
-                                 {/* 13 KPI Metric Row — locked to exactly one line, frozen (sticky) below the top nav while the page scrolls */}
+                                 {/* 16 KPI Metric Rows — locked to responsive grid, sticky below top nav */}
                                 {kpiLayout === "grid" ? (
                                     <div className="w-full flex flex-col gap-2 no-print" style={{ position: 'sticky', top: '64px', zIndex: 15, background: 'var(--bg)', paddingTop: '0px', paddingBottom: '4px' }}>
-                                        {/* Row 1: 8 Primary Cards */}
+                                        {/* Row 1: 8 Primary Energy & Production Cards */}
                                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
                                             <KpiCard label="Electricity (kWh)" value={fmtNum(kpiTotals.electricity)} icon="electric_bolt" tone="blue" compact={true} />
                                             <KpiCard label="Solar Gen (kWh)" value={fmtNum(kpiTotals.solarGenerated)} icon="wb_sunny" tone="amber" compact={true} />
                                             <KpiCard label="Total Consumption" value={fmtNum(aggregatedCosts.totalConsumption)} sub={`${dashboardGridLabel} + Solar (filter)`} icon="bolt" tone="orange" compact={true} />
-                                            <KpiCard label="Water Consumption (KL)" value={fmtNum(displayWaterConsumption)} icon="water_drop" tone="teal" compact={true} />
-                                            <KpiCard label="Diesel Consumption" value={`${fmtNum(kpiTotals.diesel)} L`} icon="local_gas_station" tone="red" compact={true} />
+                                            <KpiCard label="Water (KL)" value={fmtNum(kpiTotals.water || displayWaterConsumption)} icon="water_drop" tone="teal" compact={true} />
+                                            <KpiCard label="Diesel (L)" value={`${fmtNum(kpiTotals.diesel)} L`} icon="local_gas_station" tone="red" compact={true} />
                                             <KpiCard label="Energy Cost" value={fmtINR(aggregatedCosts.energyCost, { compact: true })} sub={`Tariff ₹ ${Number(aggregatedCosts.electRate || 0).toFixed(2)}/unit`} icon="currency_rupee" tone="purple" compact={true} />
                                             <KpiCard label="Water Cost" value={fmtINR(displayWaterCost, { compact: true })} icon="payments" tone="teal" compact={true} />
                                             <ProductionKpiCard production={kpiTotals.production} odu={kpiTotals.odu} idu={kpiTotals.idu} compact={true} />
                                         </div>
                                         
-                                        {/* Row 2: 5 Secondary Collapsible Cards */}
-                                        {canMonitor && (
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 transition-all duration-300">
-                                                <KpiCard label="Compressed Air" value={`${fmtNum(kpiTotals.air)} units`} icon="air" tone="indigo" compact={true} />
-                                                <KpiCard label="LPG/PNG Used" value={`${fmtNum(kpiTotals.lpg)} kg`} icon="propane_tank" tone="pink" compact={true} />
-                                                <KpiCard label="Waste Haz" value={`${fmtNum(kpiTotals.wasteHaz)} kg`} icon="delete_forever" tone="red" compact={true} />
-                                                <KpiCard label="Waste Non-Haz" value={`${fmtNum(kpiTotals.wasteNHaz)} kg`} icon="delete" tone="gray" compact={true} />
-                                                <KpiCard label="Waste Recycled" value={`${fmtNum(kpiTotals.wasteRec)} kg`} sub={`${kpiTotals.wasteNHaz > 0 ? (kpiTotals.wasteRec / (kpiTotals.wasteHaz + kpiTotals.wasteNHaz) * 100).toFixed(0) : 0}% recovery`} icon="recycling" tone="emerald" compact={true} />
-                                            </div>
-                                        )}
+                                        {/* Row 2: 8 Gas, Auxiliary Utilities & Waste Cards */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 transition-all duration-300">
+                                            <KpiCard label="PNG Gas (kg)" value={`${fmtNum(kpiTotals.png)} kg`} icon="propane_tank" tone="pink" compact={true} />
+                                            <KpiCard label="Nitrogen Gas (kg)" value={`${fmtNum(kpiTotals.nitrogen)} kg`} icon="bubble_chart" tone="teal" compact={true} />
+                                            <KpiCard label="Oxygen Gas (kg)" value={`${fmtNum(kpiTotals.oxygen)} kg`} icon="air" tone="blue" compact={true} />
+                                            <KpiCard label="Compressed Air" value={`${fmtNum(kpiTotals.air)} units`} icon="air" tone="indigo" compact={true} />
+                                            <KpiCard label="LPG Used" value={`${fmtNum(kpiTotals.lpg)} kg`} icon="propane_tank" tone="amber" compact={true} />
+                                            <KpiCard label="Waste Haz" value={`${fmtNum(kpiTotals.wasteHaz)} kg`} icon="delete_forever" tone="red" compact={true} />
+                                            <KpiCard label="Waste Non-Haz" value={`${fmtNum(kpiTotals.wasteNHaz)} kg`} icon="delete" tone="gray" compact={true} />
+                                            <KpiCard label="Waste Recycled" value={`${fmtNum(kpiTotals.wasteRec)} kg`} sub={`${kpiTotals.wasteNHaz > 0 ? (kpiTotals.wasteRec / (kpiTotals.wasteHaz + kpiTotals.wasteNHaz) * 100).toFixed(0) : 0}% recovery`} icon="recycling" tone="emerald" compact={true} />
+                                        </div>
                                     </div>
                                 ) : (
                                     <section
@@ -5087,21 +5446,19 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         <KpiCard label="Electricity (kWh)" value={fmtNum(kpiTotals.electricity)} icon="electric_bolt" tone="blue" />
                                         <KpiCard label="Solar Gen (kWh)" value={fmtNum(kpiTotals.solarGenerated)} icon="wb_sunny" tone="amber" />
                                         <KpiCard label="Total Consumption" value={fmtNum(aggregatedCosts.totalConsumption)} sub={`${dashboardGridLabel} + Solar (filter)`} icon="bolt" tone="orange" />
-                                        <KpiCard label="Water Consumption (KL)" value={fmtNum(displayWaterConsumption)} icon="water_drop" tone="teal" />
-                                        <KpiCard label="Diesel Consumption" value={`${fmtNum(kpiTotals.diesel)} L`} icon="local_gas_station" tone="red" />
+                                        <KpiCard label="Water (KL)" value={fmtNum(kpiTotals.water || displayWaterConsumption)} icon="water_drop" tone="teal" />
+                                        <KpiCard label="Diesel (L)" value={`${fmtNum(kpiTotals.diesel)} L`} icon="local_gas_station" tone="red" />
                                         <KpiCard label="Energy Cost" value={fmtINR(aggregatedCosts.energyCost, { compact: true })} sub={`Tariff ₹ ${Number(aggregatedCosts.electRate || 0).toFixed(2)}/unit`} icon="currency_rupee" tone="purple" />
                                         <KpiCard label="Water Cost" value={fmtINR(displayWaterCost, { compact: true })} icon="payments" tone="teal" />
                                         <ProductionKpiCard production={kpiTotals.production} odu={kpiTotals.odu} idu={kpiTotals.idu} />
-                                        
-                                        {canMonitor && (
-                                            <React.Fragment>
-                                                <KpiCard label="Compressed Air" value={`${fmtNum(kpiTotals.air)} units`} icon="air" tone="indigo" />
-                                                <KpiCard label="LPG/PNG Used" value={`${fmtNum(kpiTotals.lpg)} kg`} icon="propane_tank" tone="pink" />
-                                                <KpiCard label="Waste Haz" value={`${fmtNum(kpiTotals.wasteHaz)} kg`} icon="delete_forever" tone="red" />
-                                                <KpiCard label="Waste Non-Haz" value={`${fmtNum(kpiTotals.wasteNHaz)} kg`} icon="delete" tone="gray" />
-                                                <KpiCard label="Waste Recycled" value={`${fmtNum(kpiTotals.wasteRec)} kg`} sub={`${kpiTotals.wasteNHaz > 0 ? (kpiTotals.wasteRec / (kpiTotals.wasteHaz + kpiTotals.wasteNHaz) * 100).toFixed(0) : 0}% recovery`} icon="recycling" tone="emerald" />
-                                            </React.Fragment>
-                                        )}
+                                        <KpiCard label="PNG Gas (kg)" value={`${fmtNum(kpiTotals.png)} kg`} icon="propane_tank" tone="pink" />
+                                        <KpiCard label="Nitrogen Gas (kg)" value={`${fmtNum(kpiTotals.nitrogen)} kg`} icon="bubble_chart" tone="teal" />
+                                        <KpiCard label="Oxygen Gas (kg)" value={`${fmtNum(kpiTotals.oxygen)} kg`} icon="air" tone="blue" />
+                                        <KpiCard label="Compressed Air" value={`${fmtNum(kpiTotals.air)} units`} icon="air" tone="indigo" />
+                                        <KpiCard label="LPG Used" value={`${fmtNum(kpiTotals.lpg)} kg`} icon="propane_tank" tone="amber" />
+                                        <KpiCard label="Waste Haz" value={`${fmtNum(kpiTotals.wasteHaz)} kg`} icon="delete_forever" tone="red" />
+                                        <KpiCard label="Waste Non-Haz" value={`${fmtNum(kpiTotals.wasteNHaz)} kg`} icon="delete" tone="gray" />
+                                        <KpiCard label="Waste Recycled" value={`${fmtNum(kpiTotals.wasteRec)} kg`} sub={`${kpiTotals.wasteNHaz > 0 ? (kpiTotals.wasteRec / (kpiTotals.wasteHaz + kpiTotals.wasteNHaz) * 100).toFixed(0) : 0}% recovery`} icon="recycling" tone="emerald" />
                                     </section>
                                 )}
 
@@ -6979,7 +7336,162 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             </div>
                                         </div>
 
-                                        {/* Section 5: Waste Management (collapsible, closed by default) */}
+                                        {/* Section 5: Gas Consumption (PNG, Nitrogen, Oxygen) */}
+                                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                            <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-pink-50/50">
+                                                <span className="material-symbols-outlined text-[16px] text-pink-600">propane_tank</span>
+                                                <span className="text-[11px] font-semibold text-slate-700">Gas Consumption (kg)</span>
+                                            </div>
+                                            <div className="p-4 space-y-4">
+                                                {/* PNG Gas */}
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                                                            <span className="h-2 w-2 rounded-full bg-pink-500"></span>
+                                                            PNG Gas
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 font-medium">
+                                                            Rate: ₹{entryRateContext.pngRate || 80}/kg · Consumption: <strong className="text-pink-600 font-bold">{fmtNum(entryFormValues.png_consumption || 0)} kg</strong> (₹{fmtNum(entryFormValues.png_cost || 0)})
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kg)</label>
+                                                            <input
+                                                                type="number"
+                                                                readOnly
+                                                                disabled
+                                                                value={entryFormValues.png_opening || 0}
+                                                                className="w-full h-9 rounded-lg border border-slate-200 px-2.5 bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Daily Reading (kg)</label>
+                                                            <input
+                                                                type="number"
+                                                                step="any"
+                                                                min="0"
+                                                                placeholder="Enter PNG reading"
+                                                                value={entryFormValues.png_closing}
+                                                                onChange={(e) => updateFormCalculations({ png_closing: e.target.value })}
+                                                                className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 transition"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Nitrogen Gas */}
+                                                <div className="pt-3 border-t border-slate-100">
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                                                            <span className="h-2 w-2 rounded-full bg-teal-500"></span>
+                                                            Nitrogen Gas
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 font-medium">
+                                                            Rate: ₹{entryRateContext.nitrogenRate || 50}/kg · Consumption: <strong className="text-teal-600 font-bold">{fmtNum(entryFormValues.nitrogen_consumption || 0)} kg</strong> (₹{fmtNum(entryFormValues.nitrogen_cost || 0)})
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kg)</label>
+                                                            <input
+                                                                type="number"
+                                                                readOnly
+                                                                disabled
+                                                                value={entryFormValues.nitrogen_opening || 0}
+                                                                className="w-full h-9 rounded-lg border border-slate-200 px-2.5 bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Daily Reading (kg)</label>
+                                                            <input
+                                                                type="number"
+                                                                step="any"
+                                                                min="0"
+                                                                placeholder="Enter Nitrogen reading"
+                                                                value={entryFormValues.nitrogen_closing}
+                                                                onChange={(e) => updateFormCalculations({ nitrogen_closing: e.target.value })}
+                                                                className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 transition"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Oxygen Gas */}
+                                                <div className="pt-3 border-t border-slate-100">
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                                                            <span className="h-2 w-2 rounded-full bg-sky-500"></span>
+                                                            Oxygen Gas
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 font-medium">
+                                                            Rate: ₹{entryRateContext.oxygenRate || 60}/kg · Consumption: <strong className="text-sky-600 font-bold">{fmtNum(entryFormValues.oxygen_consumption || 0)} kg</strong> (₹{fmtNum(entryFormValues.oxygen_cost || 0)})
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kg)</label>
+                                                            <input
+                                                                type="number"
+                                                                readOnly
+                                                                disabled
+                                                                value={entryFormValues.oxygen_opening || 0}
+                                                                className="w-full h-9 rounded-lg border border-slate-200 px-2.5 bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Daily Reading (kg)</label>
+                                                            <input
+                                                                type="number"
+                                                                step="any"
+                                                                min="0"
+                                                                placeholder="Enter Oxygen reading"
+                                                                value={entryFormValues.oxygen_closing}
+                                                                onChange={(e) => updateFormCalculations({ oxygen_closing: e.target.value })}
+                                                                className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Section 6: Water Consumption */}
+                                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                            <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-cyan-50/50">
+                                                <span className="material-symbols-outlined text-[16px] text-cyan-600">water_drop</span>
+                                                <span className="text-[11px] font-semibold text-slate-700">Water Consumption (kL)</span>
+                                                <span className="ml-auto text-[10px] text-slate-400 font-medium">
+                                                    Rate: ₹{entryRateContext.waterRate || 45}/kL · Consumption: <strong className="text-cyan-600 font-bold">{fmtNum(entryFormValues.water_consumption || 0)} kL</strong>
+                                                </span>
+                                            </div>
+                                            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Previous Reading (kL)</label>
+                                                    <input
+                                                        type="number"
+                                                        readOnly
+                                                        disabled
+                                                        value={entryFormValues.water_opening || 0}
+                                                        className="w-full h-9 rounded-lg border border-slate-200 px-2.5 bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Daily Reading (kL)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        min="0"
+                                                        placeholder="Enter water reading"
+                                                        value={entryFormValues.water_closing}
+                                                        onChange={(e) => updateFormCalculations({ water_closing: e.target.value })}
+                                                        className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-400 transition"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Section 7: Waste Management (collapsible, closed by default) */}
                                         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                                             <button
                                                 type="button"
@@ -7087,7 +7599,31 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                         <span className="text-slate-500">Diesel Cost</span>
                                                         <span className="text-slate-800 font-medium">₹ {fmtNum(entryFormValues.diesel_cost)}</span>
                                                     </div>
-                                                    <p className="text-[9px] text-slate-400 pt-1">Rate: Grid: ₹{entryRateContext.electRate}/unit · Solar: ₹{entryRateContext.solarRate}/unit · Diesel: ₹{entryRateContext.dieselRate}/liter</p>
+                                                    {(Number(entryFormValues.png_cost) > 0 || Number(entryFormValues.png_consumption) > 0) && (
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-slate-500">PNG Gas Cost</span>
+                                                            <span className="text-pink-600 font-medium">₹ {fmtNum(entryFormValues.png_cost)}</span>
+                                                        </div>
+                                                    )}
+                                                    {(Number(entryFormValues.nitrogen_cost) > 0 || Number(entryFormValues.nitrogen_consumption) > 0) && (
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-slate-500">Nitrogen Gas Cost</span>
+                                                            <span className="text-teal-600 font-medium">₹ {fmtNum(entryFormValues.nitrogen_cost)}</span>
+                                                        </div>
+                                                    )}
+                                                    {(Number(entryFormValues.oxygen_cost) > 0 || Number(entryFormValues.oxygen_consumption) > 0) && (
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-slate-500">Oxygen Gas Cost</span>
+                                                            <span className="text-sky-600 font-medium">₹ {fmtNum(entryFormValues.oxygen_cost)}</span>
+                                                        </div>
+                                                    )}
+                                                    {(Number(entryFormValues.water_cost) > 0 || Number(entryFormValues.water_consumption) > 0) && (
+                                                        <div className="flex justify-between items-center">
+                                                            <span className="text-slate-500">Water Cost</span>
+                                                            <span className="text-cyan-600 font-medium">₹ {fmtNum(entryFormValues.water_cost)}</span>
+                                                        </div>
+                                                    )}
+                                                    <p className="text-[9px] text-slate-400 pt-1">Rate: Grid: ₹{entryRateContext.electRate}/unit · Solar: ₹{entryRateContext.solarRate}/unit · Diesel: ₹{entryRateContext.dieselRate}/liter · PNG: ₹{entryRateContext.pngRate || 80}/kg</p>
                                                 </div>
 
                                                 {/* Total cost */}
@@ -7201,6 +7737,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             <DetailField label="Solar Cost" value={"₹ " + fmtNum(viewingRecord.solar_cost)} />
                                             <DetailField label="Diesel Used (L)" value={fmtNum(viewingRecord.diesel_used)} />
                                             <DetailField label="Diesel Cost" value={"₹ " + fmtNum(viewingRecord.diesel_cost)} />
+                                            <DetailField label="PNG Gas (kg)" value={fmtNum(viewingRecord.png_consumption) + " kg"} />
+                                            <DetailField label="PNG Cost" value={"₹ " + fmtNum(viewingRecord.png_cost)} />
+                                            <DetailField label="Nitrogen Gas (kg)" value={fmtNum(viewingRecord.nitrogen_consumption) + " kg"} />
+                                            <DetailField label="Nitrogen Cost" value={"₹ " + fmtNum(viewingRecord.nitrogen_cost)} />
+                                            <DetailField label="Oxygen Gas (kg)" value={fmtNum(viewingRecord.oxygen_consumption) + " kg"} />
+                                            <DetailField label="Oxygen Cost" value={"₹ " + fmtNum(viewingRecord.oxygen_cost)} />
+                                            <DetailField label="Water Consumed (kL)" value={fmtNum(viewingRecord.water_consumption) + " kL"} />
+                                            <DetailField label="Water Cost" value={"₹ " + fmtNum(viewingRecord.water_cost)} />
                                             <DetailField label="ODU Count" value={fmtNum(Number(viewingRecord.odu) || 0)} />
                                             <DetailField label="IDU Count" value={fmtNum(Number(viewingRecord.idu) || 0)} />
                                             <DetailField label="Production Sets" value={fmtNum(viewingRecord.production_set) + " Sets"} highlight />

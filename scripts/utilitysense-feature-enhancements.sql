@@ -103,3 +103,26 @@ CREATE TABLE IF NOT EXISTS import_history (
 
 CREATE INDEX IF NOT EXISTS idx_import_history_created_at ON import_history(created_at DESC);
 
+-- 6) Safe & Non-Destructive Extension: Gas Consumption (PNG, Nitrogen, Oxygen) & Water Consumption
+-- Additive columns only - does not affect or alter any existing electricity, solar, diesel, waste, or ODU records.
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS png_opening DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS png_closing DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS png_consumption DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS png_cost DOUBLE PRECISION DEFAULT 0;
+
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS nitrogen_opening DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS nitrogen_closing DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS nitrogen_consumption DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS nitrogen_cost DOUBLE PRECISION DEFAULT 0;
+
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS oxygen_opening DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS oxygen_closing DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS oxygen_consumption DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS oxygen_cost DOUBLE PRECISION DEFAULT 0;
+
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS water_opening DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS water_closing DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS water_consumption DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE public.daily_entries ADD COLUMN IF NOT EXISTS water_cost DOUBLE PRECISION DEFAULT 0;
+
+
