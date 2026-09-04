@@ -7234,10 +7234,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                     <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Previous Reading (kWh)</label>
                                                     <input
                                                         type="number"
-                                                        readOnly
-                                                        disabled
-                                                        value={entryFormValues.solar_opening || 0}
-                                                        className="w-full h-9 rounded-lg border border-slate-200 px-2.5 bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                                                        step="any"
+                                                        min="0"
+                                                        placeholder="0"
+                                                        value={entryFormValues.solar_opening}
+                                                        onChange={(e) => updateFormCalculations({ solar_opening: e.target.value })}
+                                                        className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-400 transition"
                                                     />
                                                 </div>
                                                 <div>
@@ -7359,10 +7361,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kg)</label>
                                                             <input
                                                                 type="number"
-                                                                readOnly
-                                                                disabled
-                                                                value={entryFormValues.png_opening || 0}
-                                                                className="w-full h-9 rounded-lg border border-slate-200 px-2.5 bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                                                                step="any"
+                                                                min="0"
+                                                                placeholder="0"
+                                                                value={entryFormValues.png_opening}
+                                                                onChange={(e) => updateFormCalculations({ png_opening: e.target.value })}
+                                                                className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-pink-500/30 focus:border-pink-400 transition"
                                                             />
                                                         </div>
                                                         <div>
@@ -7396,10 +7400,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kg)</label>
                                                             <input
                                                                 type="number"
-                                                                readOnly
-                                                                disabled
-                                                                value={entryFormValues.nitrogen_opening || 0}
-                                                                className="w-full h-9 rounded-lg border border-slate-200 px-2.5 bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                                                                step="any"
+                                                                min="0"
+                                                                placeholder="0"
+                                                                value={entryFormValues.nitrogen_opening}
+                                                                onChange={(e) => updateFormCalculations({ nitrogen_opening: e.target.value })}
+                                                                className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 transition"
                                                             />
                                                         </div>
                                                         <div>
@@ -7433,10 +7439,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kg)</label>
                                                             <input
                                                                 type="number"
-                                                                readOnly
-                                                                disabled
-                                                                value={entryFormValues.oxygen_opening || 0}
-                                                                className="w-full h-9 rounded-lg border border-slate-200 px-2.5 bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                                                                step="any"
+                                                                min="0"
+                                                                placeholder="0"
+                                                                value={entryFormValues.oxygen_opening}
+                                                                onChange={(e) => updateFormCalculations({ oxygen_opening: e.target.value })}
+                                                                className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition"
                                                             />
                                                         </div>
                                                         <div>
@@ -7470,10 +7478,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                     <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Previous Reading (kL)</label>
                                                     <input
                                                         type="number"
-                                                        readOnly
-                                                        disabled
-                                                        value={entryFormValues.water_opening || 0}
-                                                        className="w-full h-9 rounded-lg border border-slate-200 px-2.5 bg-slate-100 text-slate-500 cursor-not-allowed select-none"
+                                                        step="any"
+                                                        min="0"
+                                                        placeholder="0"
+                                                        value={entryFormValues.water_opening}
+                                                        onChange={(e) => updateFormCalculations({ water_opening: e.target.value })}
+                                                        className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-400 transition"
                                                     />
                                                 </div>
                                                 <div>
