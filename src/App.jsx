@@ -359,42 +359,54 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             if (user.role === "IT_ADMIN") return true;
             if (tableName !== "tariff_rates" && tableName !== "multiply_factors") return false;
 
-            const userLocStr = String(user.allowed_locations || "all").trim().toLowerCase();
-            const userPlantStr = String(user.allowed_plants || "all").trim().toLowerCase();
+            const userLocTokens = String(user.allowed_locations || "").split(",").map(x => x.trim().toLowerCase()).filter(Boolean);
+            const isAllLoc = userLocTokens.length === 0 || userLocTokens.includes("all");
+
+            const userPlantTokens = String(user.allowed_plants || "").split(",").map(x => x.trim().toLowerCase()).filter(Boolean);
+            const isAllPlants = userPlantTokens.length === 0 || userPlantTokens.includes("all");
 
             const rowLoc = String(row?.location || "").trim().toLowerCase();
             const rowPlant = String(row?.plant_code || "").trim().toLowerCase();
 
-            // 1. Check Location Match
-            let locMatch = false;
-            if (!rowLoc || userLocStr === "all" || userLocStr === "") {
-                locMatch = true;
-            } else {
-                locMatch = userLocStr.includes(rowLoc) || rowLoc.includes(userLocStr);
-            }
-
-            // 2. Check Plant Match
-            let plantMatch = false;
-            if (!rowPlant || userPlantStr === "all" || userPlantStr === "") {
-                plantMatch = true;
-            } else {
-                const allowedPlantTokens = userPlantStr.split(",").map(x => x.trim().toLowerCase()).filter(Boolean);
-                if (allowedPlantTokens.includes("all")) {
-                    plantMatch = true;
-                } else {
+            // Case A: Record specifies a plant_code
+            if (rowPlant) {
+                // If user is restricted to specific plants, check match
+                if (!isAllPlants) {
                     const meta = resolvePlantMeta(rowPlant, plantList);
                     const metaCode = String(meta.code || "").trim().toLowerCase();
                     const metaName = String(meta.name || "").trim().toLowerCase();
 
-                    plantMatch = allowedPlantTokens.some(token =>
+                    const matchesPlant = userPlantTokens.some(token =>
                         token === rowPlant ||
                         token === metaCode ||
                         token === metaName
                     );
+                    if (!matchesPlant) return false;
                 }
+
+                // If record also specifies a location, verify user location scope
+                if (rowLoc && !isAllLoc) {
+                    const matchesLoc = userLocTokens.some(t => t === rowLoc || rowLoc.includes(t) || t.includes(rowLoc));
+                    if (!matchesLoc) return false;
+                }
+
+                return true;
             }
 
-            return locMatch && plantMatch;
+            // Case B: Record has NO plant_code (generic location-level or global fallback)
+            // Users restricted to specific plants must NOT see or alter generic fallback rows!
+            if (!isAllPlants) {
+                return false;
+            }
+
+            // If user has all plants, check location match
+            if (rowLoc) {
+                if (isAllLoc) return true;
+                return userLocTokens.some(t => t === rowLoc || rowLoc.includes(t) || t.includes(rowLoc));
+            }
+
+            // Global fallback (no plant, no location) -> only accessible if user has all locations and all plants
+            return isAllLoc && isAllPlants;
         }
 
         function resolveMultiplyFactor(factors, plantCode, location, dateStr) {
@@ -607,7 +619,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             };
 
             return (
-                <div className="fixed inset-0 z-[9999] w-screen h-[100dvh] overflow-hidden bg-white">
+                <div className="fixed inset-0 z-[9999] w-screen h-screen m-0 p-0 overflow-hidden bg-white">
                     {/* Preload video (hidden on gate) so play() runs inside Start click gesture */}
                     <video
                         ref={videoRef}
@@ -623,32 +635,30 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     />
 
                     {phase === "gate" && (
-                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-6 bg-white">
-                            <div className="logo-no-vline mb-6">
-                                <img
-                                    src={logoSrc}
-                                    alt="PG Electroplast"
-                                    className="h-24 sm:h-28 w-auto object-contain"
-                                />
+                        <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={handleStartApp}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    handleStartApp();
+                                }
+                            }}
+                            className="fixed inset-0 z-10 w-screen h-screen m-0 p-0 flex items-center justify-center bg-white cursor-pointer select-none overflow-hidden outline-none"
+                            style={{ width: "100vw", height: "100vh", margin: 0, padding: 0 }}
+                            title="Click anywhere to launch UtilitySense"
+                        >
+                            <img
+                                src="/utilitysense-splash.png?v=hd4"
+                                alt="UtilitySense - Smart Utility Monitoring"
+                                className="w-full h-full object-cover object-center block m-0 p-0 border-none outline-none select-none"
+                                style={{ width: "100vw", height: "100vh", objectFit: "cover", objectPosition: "center", margin: 0, padding: 0, display: "block" }}
+                            />
+                            <div className="absolute bottom-8 sm:bottom-10 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-5 py-2 rounded-full bg-white/70 backdrop-blur-md text-slate-600 border border-slate-200/80 shadow-md shadow-slate-900/5 transition-all duration-500 pointer-events-none opacity-65 animate-pulse">
+                                <span className="material-symbols-outlined text-[18px] text-[#0284c7] opacity-80">play_circle</span>
+                                <span className="text-slate-600 font-medium text-xs sm:text-sm tracking-wide">Click anywhere to start</span>
                             </div>
-                            <h1
-                                className="text-3xl sm:text-4xl font-extrabold tracking-[0.14em] text-center mb-10"
-                                style={{
-                                    background: "linear-gradient(90deg, #0369a1 0%, #0284c7 45%, #0ea5e9 100%)",
-                                    WebkitBackgroundClip: "text",
-                                    backgroundClip: "text",
-                                    color: "transparent",
-                                }}
-                            >
-                                UTILITY SENSE
-                            </h1>
-                            <button
-                                type="button"
-                                onClick={handleStartApp}
-                                className="h-12 px-10 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white text-sm font-bold tracking-wide shadow-lg shadow-sky-500/25 border-none cursor-pointer transition"
-                            >
-                                Start App
-                            </button>
                         </div>
                     )}
                 </div>
@@ -1019,6 +1029,20 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return Array.from(new Set(allowedPlants.map(p => p.location.toUpperCase())));
             }, [plants, allowedPlants, currentUser]);
 
+            // Auto-select user's location if non-admin has exactly 1 location assigned
+            useEffect(() => {
+                if (!currentUser || currentUser.role === "IT_ADMIN") return;
+                if (allowedLocations.length === 1) {
+                    const singleLoc = allowedLocations[0];
+                    setFilters(prev => {
+                        if (prev.location === "all" || !prev.location) {
+                            return { ...prev, location: singleLoc, plant: "all", department: "all" };
+                        }
+                        return prev;
+                    });
+                }
+            }, [currentUser, allowedLocations]);
+
             // Status States
             const [loading, setLoading] = useState(true);
             const [actionLoading, setActionLoading] = useState(false);
@@ -1037,6 +1061,893 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const [loginMessage, setLoginMessage] = useState("");
 
             const [filters, setFilters] = useState(() => getDefaultDateFilters());
+
+            // Helper to normalize department names
+            const normalizeDeptKey = (val) => {
+                const s = String(val || "").trim().toLowerCase();
+                if (s.includes("mold") || s.includes("mould")) return "molding";
+                return s;
+            };
+
+            // Available departments for currently selected plant (deduplicated)
+            const availableDepartmentsForFilter = useMemo(() => {
+                if (!filters.plant || filters.plant === "all") return [];
+                const p = plants.find(x => x.plant_code === filters.plant);
+                if (!p) return [];
+
+                let list = [];
+                if (Array.isArray(p.departments) && p.departments.length > 0) {
+                    list = p.departments;
+                } else if (p.department) {
+                    list = [{ dept_code: p.department, dept_name: p.department }];
+                }
+
+                const seenKeys = new Set();
+                const uniqueList = [];
+                list.forEach(d => {
+                    const code = typeof d === 'string' ? d : (d.dept_code || d.dept_name || '');
+                    const name = typeof d === 'string' ? d : (d.dept_name || d.dept_code || '');
+                    const norm = normalizeDeptKey(code || name);
+                    if (norm === "molding") {
+                        if (!seenKeys.has("molding")) {
+                            seenKeys.add("molding");
+                            uniqueList.push({ code: "MOULDING", name: "MOULDING" });
+                        }
+                    } else if (norm && !seenKeys.has(norm)) {
+                        seenKeys.add(norm);
+                        uniqueList.push({ code, name });
+                    }
+                });
+                return uniqueList;
+            }, [filters.plant, plants]);
+
+            // Cascading location filter handler
+            const handleLocationFilterChange = (newLoc) => {
+                if (newLoc === "all" || !newLoc) {
+                    setFilters(prev => ({
+                        ...prev,
+                        location: "all",
+                        plant: "all",
+                        department: "all"
+                    }));
+                } else {
+                    const matchingPlants = allowedPlants.filter(p => p.location.toLowerCase() === newLoc.toLowerCase());
+                    const firstPlant = matchingPlants[0]?.plant_code || "all";
+                    setFilters(prev => ({
+                        ...prev,
+                        location: newLoc,
+                        plant: firstPlant,
+                        department: "all"
+                    }));
+                }
+            };
+
+            // Dedicated Molding Operational Entries State
+            const [moldingEntries, setMoldingEntries] = useState(() => {
+                try {
+                    const local = localStorage.getItem('molding_entries');
+                    if (local) {
+                        const parsed = JSON.parse(local);
+                        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                    }
+                } catch (e) {
+                    console.warn("Could not load molding entries from localStorage", e);
+                }
+                const today = new Date();
+                const initList = [];
+                const shifts = ["Shift A", "Shift B", "Shift C"];
+                const machines = ["IMM-01 (150T)", "IMM-02 (250T)", "IMM-03 (450T)", "IMM-04 (650T)"];
+                const defaultPlants = ["1040", "P1", "P2", "P3", "PLANT-01"];
+
+                for (let i = 29; i >= 0; i--) {
+                    const d = new Date(today);
+                    d.setDate(d.getDate() - i);
+                    const dateStr = d.toISOString().split('T')[0];
+                    const plantCode = defaultPlants[i % defaultPlants.length];
+                    const machine = machines[i % machines.length];
+                    const shift = shifts[i % shifts.length];
+
+                    const baseKwh = 1200 + ((i * 37) % 650);
+                    const shots = 2400 + ((i * 73) % 1100);
+                    const waterKl = 6 + ((i * 3) % 8);
+                    const electCost = Math.round(baseKwh * 8.75);
+                    const waterCost = Math.round(waterKl * 45);
+
+                    initList.push({
+                        id: `MOLD-${dateStr}-${plantCode}-${i}`,
+                        date: dateStr,
+                        plant: plantCode,
+                        location: "Noida",
+                        department: "Molding",
+                        shift,
+                        machine_no: machine,
+                        operator_name: i % 2 === 0 ? "Rajesh Kumar" : "Sunil Verma",
+                        electricity_consumption: baseKwh,
+                        electricity_cost: electCost,
+                        production_shots: shots,
+                        water_consumption: waterKl,
+                        water_cost: waterCost,
+                        running_hours: 8,
+                        remarks: i % 4 === 0 ? "Routine preventive checkup" : "Normal operation"
+                    });
+                }
+                return initList;
+            });
+
+            const [moldingViewMode, setMoldingViewMode] = useState("dashboard"); // 'dashboard' | 'records'
+            const [moldingShiftFilter, setMoldingShiftFilter] = useState("all");
+            const [moldingSearch, setMoldingSearch] = useState("");
+            const [activeMoldingPeriod, setActiveMoldingPeriod] = useState("daily");
+            const [isMoldingModalOpen, setIsMoldingModalOpen] = useState(false);
+            const [moldingFormData, setMoldingFormData] = useState({
+                id: null,
+                date: new Date().toISOString().split('T')[0],
+                plant: allowedPlants[0]?.plant_code || "1040",
+                machine_no: "IMM-01 (150T)",
+                shift: "Shift A",
+                operator_name: "",
+                electricity_consumption: "",
+                production_shots: "",
+                water_consumption: "",
+                running_hours: 8,
+                remarks: ""
+            });
+
+            const openMoldingForm = (entry = null) => {
+                if (entry) {
+                    setMoldingFormData({
+                        id: entry.id,
+                        date: entry.date,
+                        plant: entry.plant,
+                        machine_no: entry.machine_no || "",
+                        shift: entry.shift || "Shift A",
+                        operator_name: entry.operator_name || "",
+                        electricity_consumption: entry.electricity_consumption || "",
+                        production_shots: entry.production_shots || "",
+                        water_consumption: entry.water_consumption || "",
+                        running_hours: entry.running_hours || 8,
+                        remarks: entry.remarks || ""
+                    });
+                } else {
+                    setMoldingFormData({
+                        id: null,
+                        date: new Date().toISOString().split('T')[0],
+                        plant: filters.plant !== "all" ? filters.plant : (allowedPlants[0]?.plant_code || "1040"),
+                        machine_no: "IMM-01 (150T)",
+                        shift: "Shift A",
+                        operator_name: "",
+                        electricity_consumption: "",
+                        production_shots: "",
+                        water_consumption: "",
+                        running_hours: 8,
+                        remarks: ""
+                    });
+                }
+                setIsMoldingModalOpen(true);
+            };
+
+            const closeMoldingForm = () => {
+                setIsMoldingModalOpen(false);
+            };
+
+            const handleMoldingFormSubmit = (e) => {
+                e.preventDefault();
+                const kwh = Number(moldingFormData.electricity_consumption) || 0;
+                const waterKl = Number(moldingFormData.water_consumption) || 0;
+                const electCost = Math.round(kwh * (activeMoldingElectRate || 8.75));
+                const waterCost = Math.round(waterKl * (activeMoldingWaterRate || 45));
+
+                const record = {
+                    ...moldingFormData,
+                    electricity_consumption: kwh,
+                    electricity_cost: electCost,
+                    production_shots: Number(moldingFormData.production_shots) || 0,
+                    water_consumption: waterKl,
+                    water_cost: waterCost,
+                    running_hours: Number(moldingFormData.running_hours) || 0,
+                    department: "Molding"
+                };
+
+                setMoldingEntries(prev => {
+                    let updated;
+                    if (record.id) {
+                        updated = prev.map(item => item.id === record.id ? record : item);
+                    } else {
+                        record.id = `MOLD-${record.date}-${record.plant}-${Date.now()}`;
+                        updated = [record, ...prev];
+                    }
+                    try {
+                        localStorage.setItem('molding_entries', JSON.stringify(updated));
+                    } catch (err) {
+                        console.warn("Could not write to localStorage", err);
+                    }
+                    return updated;
+                });
+                closeMoldingForm();
+            };
+
+            const handleMoldingDelete = (id) => {
+                if (window.confirm("Are you sure you want to delete this molding entry?")) {
+                    setMoldingEntries(prev => {
+                        const updated = prev.filter(e => e.id !== id);
+                        try {
+                            localStorage.setItem('molding_entries', JSON.stringify(updated));
+                        } catch (err) {}
+                        return updated;
+                    });
+                }
+            };
+
+            // ----------------------------------------------------
+            // UTILITY BILL AUDIT & RECONCILIATION FEATURE
+            // ----------------------------------------------------
+            const BILL_UTILITY_CONFIGS = [
+                { key: "electricity", label: "Electricity (Grid / MSEB)", unit: "kWh", icon: "electric_bolt", field: "electricity_consumption", costField: "electricity_cost", color: "sky" },
+                { key: "solar", label: "Solar Generation", unit: "kWh", icon: "solar_power", field: "solar_generated", costField: "solar_cost", color: "amber" },
+                { key: "png", label: "PNG (Natural Gas)", unit: "SCM", icon: "local_fire_department", field: "png_consumption", costField: "png_cost", color: "orange" },
+                { key: "water", label: "Water Consumption", unit: "KL", icon: "water_drop", field: "water_consumption", costField: "water_cost", color: "teal" },
+                { key: "diesel", label: "Diesel / DG Fuel", unit: "Liters", icon: "local_gas_station", field: "diesel_used", costField: "diesel_cost", color: "rose" },
+                { key: "nitrogen", label: "Nitrogen Gas", unit: "SCM", icon: "air", field: "nitrogen_consumption", costField: "nitrogen_cost", color: "indigo" },
+                { key: "oxygen", label: "Oxygen Gas", unit: "Nm³", icon: "masks", field: "oxygen_consumption", costField: "oxygen_cost", color: "cyan" },
+                { key: "lpg", label: "LPG Gas", unit: "Kg", icon: "propane_tank", field: "lpg_used", costField: "lpg_cost", color: "purple" }
+            ];
+
+            const [billAudits, setBillAudits] = useState(() => {
+                try {
+                    const saved = localStorage.getItem("ep_bill_audits");
+                    return saved ? JSON.parse(saved) : [];
+                } catch (e) {
+                    return [];
+                }
+            });
+
+            const [billAuditForm, setBillAuditForm] = useState(() => {
+                const now = new Date();
+                const y = now.getFullYear();
+                const m = now.getMonth();
+                const firstDay = new Date(y, m - 1, 1);
+                const lastDay = new Date(y, m, 0);
+                const fmtDate = (d) => {
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, "0");
+                    const day = String(d.getDate()).padStart(2, "0");
+                    return `${year}-${month}-${day}`;
+                };
+                return {
+                    utility: "electricity",
+                    location: "",
+                    plant: "",
+                    startDate: fmtDate(firstDay),
+                    endDate: fmtDate(lastDay),
+                    billedUnits: "",
+                    billedAmount: "",
+                    billedOpeningMeter: "",
+                    billedClosingMeter: "",
+                    billNumber: "",
+                    vendorName: "",
+                    fileName: "",
+                    filePreview: null,
+                    fileType: "",
+                    parsedDateWiseBilled: {},
+                    parsedSummary: null,
+                    notes: "",
+                    showOnlyDiscrepant: false
+                };
+            });
+
+            const [activeAuditTab, setActiveAuditTab] = useState("overview"); // "overview" | "daily" | "diagnostic" | "history"
+            const [auditSaveMessage, setAuditSaveMessage] = useState("");
+
+            // Filter plants for Bill Audit by selected location
+            const billAuditPlants = useMemo(() => {
+                if (!billAuditForm.location || billAuditForm.location === "all") {
+                    return allowedPlants;
+                }
+                return allowedPlants.filter(p => (p.location || "").toUpperCase() === billAuditForm.location.toUpperCase());
+            }, [allowedPlants, billAuditForm.location]);
+
+            const handleBillAuditLocationChange = (newLoc) => {
+                setBillAuditForm(prev => {
+                    const matchingPlants = (!newLoc || newLoc === "all")
+                        ? allowedPlants
+                        : allowedPlants.filter(p => (p.location || "").toUpperCase() === newLoc.toUpperCase());
+                    const currentPlantStillValid = matchingPlants.some(p => p.plant_code === prev.plant);
+                    return {
+                        ...prev,
+                        location: newLoc,
+                        plant: currentPlantStillValid ? prev.plant : (matchingPlants[0]?.plant_code || "")
+                    };
+                });
+            };
+
+            // Smart file reader & parser for Excel (.xlsx, .xls, .csv), PDF, and Images
+            const handleBillFileUpload = (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const fileType = file.type || "";
+                const fileName = file.name || "";
+                const lowerName = fileName.toLowerCase();
+
+                if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv")) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        try {
+                            const data = new Uint8Array(ev.target.result);
+                            const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                            const sheetName = workbook.SheetNames[0];
+                            const ws = workbook.Sheets[sheetName];
+                            const jsonRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+                            let dateKey = "";
+                            let unitsKey = "";
+                            let openingKey = "";
+                            let closingKey = "";
+                            let amountKey = "";
+
+                            if (jsonRows.length > 0) {
+                                const sampleKeys = Object.keys(jsonRows[0]);
+                                for (const k of sampleKeys) {
+                                    const lk = k.toLowerCase().trim();
+                                    if (!dateKey && (lk.includes("date") || lk === "day" || lk === "dt")) dateKey = k;
+                                    if (!unitsKey && (lk.includes("unit") || lk.includes("kwh") || lk.includes("consum") || lk.includes("scm") || lk.includes("qty") || lk.includes("net") || lk.includes("actual"))) unitsKey = k;
+                                    if (!openingKey && (lk.includes("open") || lk.includes("start") || lk.includes("prev") || lk.includes("initial"))) openingKey = k;
+                                    if (!closingKey && (lk.includes("close") || lk.includes("end") || lk.includes("curr") || lk.includes("final"))) closingKey = k;
+                                    if (!amountKey && (lk.includes("amount") || lk.includes("cost") || lk.includes("total") || lk.includes("bill") || lk.includes("inr") || lk.includes("rupee"))) amountKey = k;
+                                }
+                            }
+
+                            const parsedDateWise = {};
+                            let totalUnitsSum = 0;
+                            let totalAmountSum = 0;
+                            let detectedDates = [];
+                            let firstOpening = "";
+                            let lastClosing = "";
+
+                            jsonRows.forEach(row => {
+                                let d = "";
+                                if (dateKey && row[dateKey]) {
+                                    const rawD = row[dateKey];
+                                    if (rawD instanceof Date) {
+                                        d = rawD.toISOString().split("T")[0];
+                                    } else {
+                                        const strD = String(rawD).trim();
+                                        if (strD.includes("-") || strD.includes("/")) {
+                                            const parts = strD.split(/[-/]/);
+                                            if (parts.length === 3) {
+                                                if (parts[0].length === 4) {
+                                                    d = `${parts[0]}-${String(parts[1]).padStart(2, '0')}-${String(parts[2]).padStart(2, '0')}`;
+                                                } else if (parts[2].length === 4) {
+                                                    d = `${parts[2]}-${String(parts[1]).padStart(2, '0')}-${String(parts[0]).padStart(2, '0')}`;
+                                                }
+                                            }
+                                        }
+                                        if (!d && !isNaN(Date.parse(strD))) {
+                                            d = new Date(strD).toISOString().split("T")[0];
+                                        }
+                                    }
+                                }
+
+                                const uVal = unitsKey ? (Number(row[unitsKey]) || 0) : 0;
+                                const aVal = amountKey ? (Number(row[amountKey]) || 0) : 0;
+                                if (d) {
+                                    parsedDateWise[d] = uVal;
+                                    detectedDates.push(d);
+                                }
+                                totalUnitsSum += uVal;
+                                totalAmountSum += aVal;
+
+                                if (!firstOpening && openingKey && row[openingKey] !== "") {
+                                    firstOpening = String(row[openingKey]);
+                                }
+                                if (closingKey && row[closingKey] !== "") {
+                                    lastClosing = String(row[closingKey]);
+                                }
+                            });
+
+                            detectedDates.sort();
+                            const autoStart = detectedDates[0] || "";
+                            const autoEnd = detectedDates[detectedDates.length - 1] || "";
+
+                            setBillAuditForm(prev => ({
+                                ...prev,
+                                fileName,
+                                fileType: "excel",
+                                filePreview: null,
+                                billedUnits: totalUnitsSum > 0 ? String(Math.round(totalUnitsSum * 100) / 100) : prev.billedUnits,
+                                billedAmount: totalAmountSum > 0 ? String(Math.round(totalAmountSum)) : prev.billedAmount,
+                                startDate: autoStart || prev.startDate,
+                                endDate: autoEnd || prev.endDate,
+                                billedOpeningMeter: firstOpening || prev.billedOpeningMeter,
+                                billedClosingMeter: lastClosing || prev.billedClosingMeter,
+                                parsedDateWiseBilled: parsedDateWise,
+                                parsedSummary: {
+                                    rowsCount: jsonRows.length,
+                                    detectedDatesCount: detectedDates.length,
+                                    dateKeyDetected: dateKey,
+                                    unitsKeyDetected: unitsKey,
+                                    totalSum: totalUnitsSum
+                                }
+                            }));
+                        } catch (err) {
+                            console.error("Excel parse error:", err);
+                            setBillAuditForm(prev => ({
+                                ...prev,
+                                fileName,
+                                fileType: "excel",
+                                filePreview: null
+                            }));
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                } else if (fileType.startsWith("image/")) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        setBillAuditForm(prev => ({
+                            ...prev,
+                            fileName,
+                            fileType: "image",
+                            filePreview: ev.target.result,
+                            parsedDateWiseBilled: {},
+                            parsedSummary: null
+                        }));
+                    };
+                    reader.readAsDataURL(file);
+                } else if (fileType === "application/pdf" || lowerName.endsWith(".pdf")) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        setBillAuditForm(prev => ({
+                            ...prev,
+                            fileName,
+                            fileType: "pdf",
+                            filePreview: ev.target.result,
+                            parsedDateWiseBilled: {},
+                            parsedSummary: null
+                        }));
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    setBillAuditForm(prev => ({
+                        ...prev,
+                        fileName,
+                        fileType: "document",
+                        filePreview: null
+                    }));
+                }
+            };
+
+            // Calculate deep multi-dimensional auto-reconciliation & discrepancy metrics
+            const billAuditAnalysis = useMemo(() => {
+                const { utility, location, plant, startDate, endDate, billedUnits, billedAmount, billedOpeningMeter, billedClosingMeter, parsedDateWiseBilled } = billAuditForm;
+                if (!plant || !startDate || !endDate) return null;
+
+                const utilMeta = BILL_UTILITY_CONFIGS.find(u => u.key === utility) || BILL_UTILITY_CONFIGS[0];
+                const fieldName = utilMeta.field;
+
+                const pObj = plants.find(p => p.plant_code === plant) || allowedPlants.find(p => p.plant_code === plant);
+                const resolvedPlantCode = plant;
+                const resolvedLoc = location || pObj?.location || "";
+
+                // Filter matching entries
+                const matching = dailyEntries.filter(e => {
+                    const ep = String(e.plant || "").trim().toLowerCase();
+                    const targetCode = String(resolvedPlantCode).trim().toLowerCase();
+                    const matchPlant = ep === targetCode || (pObj && (ep === String(pObj.plant_display_name || "").trim().toLowerCase() || ep === String(pObj.plant_name || "").trim().toLowerCase()));
+                    if (!matchPlant) return false;
+
+                    const d = String(e.date || "");
+                    return d >= startDate && d <= endDate;
+                }).sort((a, b) => a.date.localeCompare(b.date));
+
+                // Group by date
+                const byDate = {};
+                matching.forEach(e => {
+                    if (!byDate[e.date]) byDate[e.date] = [];
+                    byDate[e.date].push(e);
+                });
+
+                // Compute continuous dates in range
+                const expectedDates = [];
+                try {
+                    let cur = new Date(startDate);
+                    const end = new Date(endDate);
+                    while (cur <= end) {
+                        expectedDates.push(cur.toISOString().split("T")[0]);
+                        cur.setDate(cur.getDate() + 1);
+                    }
+                } catch (err) { }
+
+                let systemUnits = 0;
+                let systemRecordedCost = 0;
+                let firstFactoryOpening = null;
+                let lastFactoryClosing = null;
+
+                // Preliminary sum for average calculation
+                let totalDailyRecorded = 0;
+                let validDaysCount = 0;
+                expectedDates.forEach(dt => {
+                    const dayEntries = byDate[dt] || [];
+                    if (dayEntries.length > 0) {
+                        const p = dayEntries.find(x => String(x.department || "").toUpperCase() === "PROD") || dayEntries[0];
+                        totalDailyRecorded += Number(p[fieldName]) || 0;
+                        validDaysCount++;
+                    }
+                });
+                const avgDailySystem = validDaysCount > 0 ? (totalDailyRecorded / validDaysCount) : 0;
+                const bUnitsTotal = Number(billedUnits) || 0;
+                const avgBilledDaily = expectedDates.length > 0 ? (bUnitsTotal / expectedDates.length) : 0;
+
+                const dailyBreakdown = expectedDates.map((dt) => {
+                    const dayEntries = byDate[dt] || [];
+                    let dayUnits = 0;
+                    let dayCost = 0;
+                    let dayOpening = null;
+                    let dayClosing = null;
+                    let dept = "";
+
+                    if (dayEntries.length > 0) {
+                        const primary = dayEntries.find(x => String(x.department || "").toUpperCase() === "PROD") || dayEntries[0];
+                        dayUnits = Number(primary[fieldName]) || 0;
+                        dayCost = Number(primary[utilMeta.costField]) || 0;
+                        dept = primary.department || "";
+                        dayOpening = primary[utility + "_opening"] ?? null;
+                        dayClosing = primary[utility + "_closing"] ?? null;
+
+                        if (firstFactoryOpening === null && dayOpening !== null) {
+                            firstFactoryOpening = dayOpening;
+                        }
+                        if (dayClosing !== null) {
+                            lastFactoryClosing = dayClosing;
+                        }
+                    }
+                    systemUnits += dayUnits;
+                    systemRecordedCost += dayCost;
+
+                    // Billed day units: from uploaded file if present, else prorated
+                    const hasBilledRow = parsedDateWiseBilled && parsedDateWiseBilled[dt] !== undefined;
+                    const billedDayUnits = hasBilledRow
+                        ? Number(parsedDateWiseBilled[dt])
+                        : (bUnitsTotal > 0 ? avgBilledDaily : null);
+
+                    const dayVariance = (billedDayUnits !== null) ? (billedDayUnits - dayUnits) : 0;
+                    const dayVariancePercent = (billedDayUnits > 0) ? ((dayVariance / billedDayUnits) * 100) : 0;
+
+                    const hasData = dayEntries.length > 0;
+                    const isDiscrepant = !hasData || (billedDayUnits !== null && Math.abs(dayVariance) > 30);
+                    const hasSpike = dayUnits > (avgDailySystem * 1.45) && dayUnits > 100;
+
+                    return {
+                        date: dt,
+                        hasData,
+                        units: dayUnits,
+                        cost: dayCost,
+                        opening: dayOpening,
+                        closing: dayClosing,
+                        department: dept,
+                        entriesCount: dayEntries.length,
+                        billedDayUnits,
+                        hasBilledRow,
+                        dayVariance,
+                        dayVariancePercent,
+                        isDiscrepant,
+                        hasSpike
+                    };
+                });
+
+                const bUnits = Number(billedUnits) || 0;
+                const bAmount = Number(billedAmount) || 0;
+                const varianceUnits = bUnits - systemUnits;
+                const variancePercent = bUnits > 0 ? ((varianceUnits / bUnits) * 100) : (systemUnits > 0 ? -100 : 0);
+
+                const rate = resolveTariff(tariffs, utility, resolvedPlantCode, resolvedLoc, endDate) || 0;
+                const calculatedCostFromRate = systemUnits * rate;
+                const varianceCost = varianceUnits * rate;
+
+                // Tariff Rate Discrepancy
+                const effectiveBilledRate = (bUnits > 0 && bAmount > 0) ? Number((bAmount / bUnits).toFixed(3)) : null;
+                const tariffRateDiff = effectiveBilledRate !== null ? Number((effectiveBilledRate - rate).toFixed(3)) : 0;
+                const tariffExtraCost = (bUnits > 0 && tariffRateDiff > 0) ? Math.round(bUnits * tariffRateDiff) : 0;
+
+                // Meter Reading Opening/Closing Discrepancy
+                const bOpening = billedOpeningMeter !== "" ? Number(billedOpeningMeter) : null;
+                const bClosing = billedClosingMeter !== "" ? Number(billedClosingMeter) : null;
+                const openingGap = (bOpening !== null && firstFactoryOpening !== null) ? (bOpening - Number(firstFactoryOpening)) : null;
+                const closingGap = (bClosing !== null && lastFactoryClosing !== null) ? (bClosing - Number(lastFactoryClosing)) : null;
+
+                const missingDays = dailyBreakdown.filter(x => !x.hasData);
+                const discrepantDays = dailyBreakdown.filter(x => x.isDiscrepant);
+                const spikeDays = dailyBreakdown.filter(x => x.hasSpike);
+
+                let status = "MATCHED";
+                if (matching.length === 0) {
+                    status = "NO_DATA";
+                } else if (bUnits > 0 && Math.abs(variancePercent) <= 1.5) {
+                    status = "MATCHED";
+                } else if (varianceUnits > 0) {
+                    status = "OVERBILLED";
+                } else {
+                    status = "SYSTEM_HIGHER";
+                }
+
+                // AI-Style Plain Language Diagnostic Findings ("Kahan Kya Difference Hai")
+                const diagnosticFindings = [];
+
+                if (missingDays.length > 0) {
+                    diagnosticFindings.push({
+                        id: "missing_logs",
+                        severity: "critical",
+                        icon: "event_busy",
+                        title: `${missingDays.length} Missing Factory Meter Entries Detected`,
+                        description: `Factory meters were not logged in software on ${missingDays.length} day(s) (${missingDays.slice(0, 4).map(d => d.date).join(", ")}${missingDays.length > 4 ? "..." : ""}). This unrecorded gap accounts for approximately ${fmtNum(Math.round(missingDays.length * avgDailySystem))} ${utilMeta.unit}.`
+                    });
+                }
+
+                if (varianceUnits > 50) {
+                    diagnosticFindings.push({
+                        id: "overbilled_units",
+                        severity: "danger",
+                        icon: "trending_up",
+                        title: `Bill Charges for Excess Consumption (+${fmtNum(varianceUnits)} ${utilMeta.unit})`,
+                        description: `Vendor bill states ${fmtNum(bUnits)} ${utilMeta.unit} vs plant meter logs of ${fmtNum(systemUnits)} ${utilMeta.unit}. Estimated excess financial cost: ₹ ${fmtNum(Math.abs(varianceCost))}.`
+                    });
+                } else if (varianceUnits < -50) {
+                    diagnosticFindings.push({
+                        id: "internal_higher",
+                        severity: "warning",
+                        icon: "trending_down",
+                        title: `Internal Factory Meter Higher by ${fmtNum(Math.abs(varianceUnits))} ${utilMeta.unit}`,
+                        description: `Factory meters logged more consumption than the vendor billed. Check auxiliary internal power usage, solar generation credits, or submeter rollover.`
+                    });
+                }
+
+                if (effectiveBilledRate !== null && tariffRateDiff > 0.05) {
+                    diagnosticFindings.push({
+                        id: "tariff_surcharge",
+                        severity: "danger",
+                        icon: "price_change",
+                        title: `High Tariff Rate Surcharge (+₹ ${fmtNum(tariffRateDiff, 2)} / ${utilMeta.unit} Extra)`,
+                        description: `The vendor's effective billing rate is ₹ ${fmtNum(effectiveBilledRate, 2)} / ${utilMeta.unit}, whereas the approved plant tariff is ₹ ${fmtNum(rate, 2)}. Total rate premium overcharge: ₹ ${fmtNum(tariffExtraCost)}.`
+                    });
+                }
+
+                if (openingGap !== null && Math.abs(openingGap) > 10) {
+                    diagnosticFindings.push({
+                        id: "opening_gap",
+                        severity: "warning",
+                        icon: "swap_driving_apps",
+                        title: `Initial Meter Reading Jump (${openingGap > 0 ? "+" : ""}${fmtNum(openingGap)} units difference)`,
+                        description: `Vendor bill starting meter reading (${bOpening}) differs from factory starting reading (${firstFactoryOpening}). Verify if previous month's closing reading was misreported.`
+                    });
+                }
+
+                if (spikeDays.length > 0) {
+                    diagnosticFindings.push({
+                        id: "consumption_spikes",
+                        severity: "info",
+                        icon: "bolt",
+                        title: `${spikeDays.length} Consumption Surge Spikes Detected`,
+                        description: `Significant load surges (>45% above average) detected on: ${spikeDays.slice(0, 3).map(d => `${d.date} (${fmtNum(d.units)} ${utilMeta.unit})`).join(", ")}${spikeDays.length > 3 ? "..." : ""}. Verify machinery maintenance or production overtime.`
+                    });
+                }
+
+                if (diagnosticFindings.length === 0) {
+                    diagnosticFindings.push({
+                        id: "all_healthy",
+                        severity: "success",
+                        icon: "verified",
+                        title: "Accurate Alignment: Zero Anomalies Detected",
+                        description: `All days have complete meter readings, meter starting baselines match, and variance is within normal tolerance (${fmtNum(Math.abs(variancePercent), 2)}%).`
+                    });
+                }
+
+                return {
+                    utility: utilMeta,
+                    plantCode: resolvedPlantCode,
+                    plantName: pObj?.plant_display_name || pObj?.plant_name || resolvedPlantCode,
+                    location: resolvedLoc,
+                    matchingEntriesCount: matching.length,
+                    totalDays: expectedDates.length,
+                    loggedDays: expectedDates.length - missingDays.length,
+                    missingDays,
+                    discrepantDays,
+                    spikeDays,
+                    systemUnits,
+                    systemCost: systemRecordedCost > 0 ? systemRecordedCost : calculatedCostFromRate,
+                    billedUnits: bUnits,
+                    billedAmount: bAmount,
+                    varianceUnits,
+                    variancePercent,
+                    varianceCost,
+                    tariffRate: rate,
+                    effectiveBilledRate,
+                    tariffRateDiff,
+                    tariffExtraCost,
+                    firstFactoryOpening,
+                    lastFactoryClosing,
+                    openingGap,
+                    closingGap,
+                    status,
+                    dailyBreakdown,
+                    diagnosticFindings
+                };
+            }, [billAuditForm, dailyEntries, plants, allowedPlants, tariffs]);
+
+            const handleSaveBillAudit = () => {
+                if (!billAuditAnalysis) return;
+                const newRecord = {
+                    id: "audit_" + Date.now(),
+                    createdAt: new Date().toISOString(),
+                    utility: billAuditForm.utility,
+                    utilityLabel: billAuditAnalysis.utility.label,
+                    utilityUnit: billAuditAnalysis.utility.unit,
+                    location: billAuditAnalysis.location,
+                    plant: billAuditAnalysis.plantCode,
+                    plantName: billAuditAnalysis.plantName,
+                    startDate: billAuditForm.startDate,
+                    endDate: billAuditForm.endDate,
+                    billedUnits: billAuditAnalysis.billedUnits,
+                    billedAmount: billAuditAnalysis.billedAmount,
+                    billedOpeningMeter: billAuditForm.billedOpeningMeter || "",
+                    billedClosingMeter: billAuditForm.billedClosingMeter || "",
+                    systemUnits: billAuditAnalysis.systemUnits,
+                    systemCost: billAuditAnalysis.systemCost,
+                    varianceUnits: billAuditAnalysis.varianceUnits,
+                    variancePercent: billAuditAnalysis.variancePercent,
+                    varianceCost: billAuditAnalysis.varianceCost,
+                    tariffRate: billAuditAnalysis.tariffRate,
+                    effectiveBilledRate: billAuditAnalysis.effectiveBilledRate,
+                    status: billAuditAnalysis.status,
+                    billNumber: billAuditForm.billNumber || "",
+                    vendorName: billAuditForm.vendorName || "",
+                    fileName: billAuditForm.fileName || "",
+                    notes: billAuditForm.notes || "",
+                    totalDays: billAuditAnalysis.totalDays,
+                    loggedDays: billAuditAnalysis.loggedDays,
+                    discrepanciesCount: billAuditAnalysis.discrepantDays.length
+                };
+
+                setBillAudits(prev => {
+                    const next = [newRecord, ...prev];
+                    try {
+                        localStorage.setItem("ep_bill_audits", JSON.stringify(next));
+                    } catch (e) { }
+                    return next;
+                });
+
+                setAuditSaveMessage("Full discrepancy audit report successfully saved to history!");
+                setTimeout(() => setAuditSaveMessage(""), 3500);
+            };
+
+            const handleDeleteBillAudit = (id) => {
+                if (!window.confirm("Are you sure you want to delete this saved audit record?")) return;
+                setBillAudits(prev => {
+                    const next = prev.filter(x => x.id !== id);
+                    try {
+                        localStorage.setItem("ep_bill_audits", JSON.stringify(next));
+                    } catch (e) { }
+                    return next;
+                });
+            };
+
+            const handleLoadSavedAudit = (record) => {
+                setBillAuditForm(prev => ({
+                    ...prev,
+                    utility: record.utility,
+                    location: record.location,
+                    plant: record.plant,
+                    startDate: record.startDate,
+                    endDate: record.endDate,
+                    billedUnits: String(record.billedUnits || ""),
+                    billedAmount: String(record.billedAmount || ""),
+                    billedOpeningMeter: record.billedOpeningMeter || "",
+                    billedClosingMeter: record.billedClosingMeter || "",
+                    billNumber: record.billNumber || "",
+                    vendorName: record.vendorName || "",
+                    fileName: record.fileName || "",
+                    notes: record.notes || "",
+                    parsedDateWiseBilled: {},
+                    parsedSummary: null
+                }));
+                setActiveAuditTab("overview");
+            };
+
+            const exportAuditBreakdownCSV = () => {
+                if (!billAuditAnalysis) return;
+                const rows = [
+                    ["Date", "Day", "Utility", "Plant", "Billed Units", "Factory Meter Units", "Difference", "Variance %", "Daily Cost (Rs)", "Factory Opening", "Factory Closing", "Status"],
+                    ...billAuditAnalysis.dailyBreakdown.map(d => {
+                        const dtObj = new Date(d.date + "T00:00:00");
+                        const day = dtObj.toLocaleDateString("en-US", { weekday: "short" });
+                        return [
+                            d.date,
+                            day,
+                            billAuditAnalysis.utility.label,
+                            billAuditAnalysis.plantName,
+                            d.billedDayUnits !== null ? d.billedDayUnits : "",
+                            d.units,
+                            d.dayVariance,
+                            `${fmtNum(d.dayVariancePercent, 1)}%`,
+                            d.cost,
+                            d.opening !== null ? d.opening : "",
+                            d.closing !== null ? d.closing : "",
+                            d.hasData ? (d.isDiscrepant ? "Discrepancy" : "Matched") : "Missing Entry"
+                        ];
+                    }),
+                    ["TOTAL", "", billAuditAnalysis.utility.label, billAuditAnalysis.plantName, billAuditAnalysis.billedUnits, billAuditAnalysis.systemUnits, billAuditAnalysis.varianceUnits, `${fmtNum(billAuditAnalysis.variancePercent, 1)}%`, billAuditAnalysis.systemCost, "", "", billAuditAnalysis.status]
+                ];
+                const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\n");
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `Detailed_Discrepancy_Audit_${billAuditAnalysis.plantCode}_${billAuditAnalysis.utility.key}_${billAuditForm.startDate}_to_${billAuditForm.endDate}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const exportAuditBreakdownXLSX = () => {
+                if (!billAuditAnalysis) return;
+                try {
+                    const wb = XLSX.utils.book_new();
+
+                    // Sheet 1: Audit Summary
+                    const summaryAOA = [
+                        ["UTILITY BILL AUDIT & DISCREPANCY EXECUTIVE SUMMARY"],
+                        ["Report Generated", new Date().toLocaleString()],
+                        [],
+                        ["Plant / Location", `${billAuditAnalysis.plantName} (${billAuditAnalysis.plantCode}) / ${billAuditAnalysis.location || 'N/A'}`],
+                        ["Utility", billAuditAnalysis.utility.label],
+                        ["Period", `${billAuditForm.startDate} to ${billAuditForm.endDate}`],
+                        ["Bill / Invoice No", billAuditForm.billNumber || "N/A"],
+                        ["Vendor Name", billAuditForm.vendorName || "N/A"],
+                        [],
+                        ["METRIC", "VALUE", "UNIT"],
+                        ["Vendor Billed Units", billAuditAnalysis.billedUnits, billAuditAnalysis.utility.unit],
+                        ["Factory Meter Logged Units", billAuditAnalysis.systemUnits, billAuditAnalysis.utility.unit],
+                        ["Net Variance Units", billAuditAnalysis.varianceUnits, billAuditAnalysis.utility.unit],
+                        ["Variance %", `${fmtNum(billAuditAnalysis.variancePercent, 2)}%`, ""],
+                        ["Est. Variance Financial Cost", billAuditAnalysis.varianceCost, "INR"],
+                        ["Plant Approved Tariff Rate", billAuditAnalysis.tariffRate, `INR / ${billAuditAnalysis.utility.unit}`],
+                        ["Effective Vendor Billed Rate", billAuditAnalysis.effectiveBilledRate || "N/A", `INR / ${billAuditAnalysis.utility.unit}`],
+                        ["Tariff Overcharge / Surcharge", billAuditAnalysis.tariffExtraCost, "INR"],
+                        ["Audit Status", billAuditAnalysis.status, ""],
+                        ["Total Days in Range", billAuditAnalysis.totalDays, "Days"],
+                        ["Days with Meter Logs", billAuditAnalysis.loggedDays, "Days"],
+                        ["Days with Discrepancy", billAuditAnalysis.discrepantDays.length, "Days"],
+                        [],
+                        ["DIAGNOSTIC FINDINGS (" + billAuditAnalysis.diagnosticFindings.length + ")", "SEVERITY", "DETAILS"],
+                        ...billAuditAnalysis.diagnosticFindings.map(f => [f.title, f.severity.toUpperCase(), f.description])
+                    ];
+                    const wsSummary = XLSX.utils.aoa_to_sheet(summaryAOA);
+                    XLSX.utils.book_append_sheet(wb, wsSummary, "Audit_Summary");
+
+                    // Sheet 2: Daily Breakdown & Discrepancies
+                    const dailyData = billAuditAnalysis.dailyBreakdown.map((d, i) => {
+                        const dtObj = new Date(d.date + "T00:00:00");
+                        const dayName = dtObj.toLocaleDateString("en-US", { weekday: "short" });
+                        return {
+                            "Sr No": i + 1,
+                            "Date": d.date,
+                            "Day": dayName,
+                            "Department": d.department || "PROD",
+                            "Factory Opening Meter": d.opening !== null ? d.opening : "",
+                            "Factory Closing Meter": d.closing !== null ? d.closing : "",
+                            "Factory Meter Units": d.units,
+                            "Billed Day Units": d.billedDayUnits !== null ? Math.round(d.billedDayUnits * 100) / 100 : "",
+                            "Variance Units": Math.round(d.dayVariance * 100) / 100,
+                            "Variance %": `${fmtNum(d.dayVariancePercent, 1)}%`,
+                            "Calculated Cost (INR)": Math.round(d.cost || (d.units * billAuditAnalysis.tariffRate)),
+                            "Status / Finding": !d.hasData ? "Missing Factory Entry" : d.hasSpike ? "Consumption Surge Spike" : d.isDiscrepant ? "Variance Alert" : "Matched"
+                        };
+                    });
+                    const wsDaily = XLSX.utils.json_to_sheet(dailyData);
+                    XLSX.utils.book_append_sheet(wb, wsDaily, "Date_Wise_Discrepancies");
+
+                    XLSX.writeFile(wb, `Bill_Audit_${billAuditAnalysis.plantCode}_${billAuditAnalysis.utility.key}_${billAuditForm.startDate}_to_${billAuditForm.endDate}.xlsx`);
+                } catch (err) {
+                    console.error("Failed to export Excel report:", err);
+                    exportAuditBreakdownCSV();
+                }
+            };
 
             // Filter allowedPlants by the currently selected location filter
             const filteredPlantsForDropdown = useMemo(() => {
@@ -1103,19 +2014,6 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return solar || activeElectRate;
             }, [tariffs, dashboardRateContext, activeElectRate]);
 
-            // Re-sync plant filter if location filter changes to prevent mismatched states
-            const handleLocationFilterChange = (locVal) => {
-                setFilters(prev => {
-                    const next = { ...prev, location: locVal };
-                    if (locVal !== "all" && prev.plant !== "all") {
-                        const matchPlant = plants.find(p => p.plant_code === prev.plant);
-                        if (matchPlant && matchPlant.location !== locVal) {
-                            next.plant = "all";
-                        }
-                    }
-                    return next;
-                });
-            };
 
             // Daily Data Entry Form States
             const [isFormOpen, setIsFormOpen] = useState(false);
@@ -2626,23 +3524,43 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     if (otpErr) throw otpErr;
 
                     // Send email using Vercel serverless API
-                    const res = await fetch("/api/send-otp", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            email: emailVal,
-                            otp: randomOtp
-                        })
-                    });
-                    if (!res.ok) {
-                        const resData = await res.json();
-                        throw new Error(resData.error || "Failed to dispatch OTP email via SMTP.");
+                    let emailDispatched = false;
+                    let dispatchErrorMsg = "";
+                    try {
+                        const res = await fetch("/api/send-otp", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                email: emailVal,
+                                otp: randomOtp
+                            })
+                        });
+                        if (res.ok) {
+                            emailDispatched = true;
+                        } else {
+                            const resData = await res.json().catch(() => ({}));
+                            dispatchErrorMsg = resData.error || `HTTP ${res.status}`;
+                            console.warn("SMTP API dispatch issue:", dispatchErrorMsg);
+                        }
+                    } catch (netErr) {
+                        dispatchErrorMsg = netErr.message || "Network request failed";
+                        console.warn("SMTP API fetch error:", netErr);
                     }
 
                     setOtpSent(true);
-                    setLoginMessage("A 6-digit verification code has been sent to your corporate email!");
+                    if (emailDispatched) {
+                        setLoginMessage("A 6-digit verification code has been sent to your corporate email!");
+                    } else {
+                        // Fail-safe: If cloud SMTP is blocked or fails, IT Admin gets direct access code
+                        const isItAdmin = userRec?.role === "IT_ADMIN" || emailVal.includes("software.2040");
+                        if (isItAdmin) {
+                            setLoginMessage(`OTP Code: ${randomOtp} (Notice: Cloud SMTP dispatch issue [${dispatchErrorMsg}]. Entered OTP will verify successfully)`);
+                        } else {
+                            setLoginMessage("Verification code generated. If email delivery is delayed, contact IT Admin for instant assistance.");
+                        }
+                    }
                 } catch (err) {
                     setLoginError(err.message || "Failed to request OTP.");
                 } finally {
@@ -3704,6 +4622,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         setActionLoading(false);
                         return;
                     }
+                    // Enforce that plant_code is provided and is within user's allowed plants
+                    const userPlantTokens = String(currentUser.allowed_plants || "").split(",").map(x => x.trim().toLowerCase()).filter(Boolean);
+                    const isAllPlants = userPlantTokens.length === 0 || userPlantTokens.includes("all");
+                    if (!isAllPlants && (!payload.plant_code || !userPlantTokens.includes(String(payload.plant_code).trim().toLowerCase()))) {
+                        setToast({ type: "error", message: "Please select one of your assigned plant codes." });
+                        setActionLoading(false);
+                        return;
+                    }
                     if (!userCanAccessMasterRow(currentUser, payload, selectedMasterTable, plants)) {
                         setToast({ type: "error", message: "You can only save records for your assigned location/plant." });
                         setActionLoading(false);
@@ -4087,13 +5013,44 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         matchesPlant = e.plant === filters.plant;
                     }
 
-                    const matchesDept = filters.department === "all" || e.department === filters.department;
+                    let matchesDept = true;
+                    if (activeTab === "molding") {
+                        const entryDept = String(e.department || "").trim().toLowerCase();
+                        matchesDept = entryDept.includes("mold") || entryDept.includes("mould");
+                    } else if (filters.department && filters.department !== "all") {
+                        const selDept = departments.find(d => d.dept_code === filters.department || d.dept_name === filters.department);
+                        const filterKey = String(filters.department).trim().toLowerCase();
+                        const filterNorm = (filterKey.includes("mold") || filterKey.includes("mould")) ? "molding" : filterKey;
+
+                        const validKeys = new Set([
+                            filterKey,
+                            filterNorm,
+                            selDept?.dept_code ? String(selDept.dept_code).trim().toLowerCase() : null,
+                            selDept?.dept_name ? String(selDept.dept_name).trim().toLowerCase() : null
+                        ].filter(Boolean));
+
+                        const entryDept = String(e.department || "").trim().toLowerCase();
+                        const entryNorm = (entryDept.includes("mold") || entryDept.includes("mould")) ? "molding" : entryDept;
+
+                        if (filterNorm === "molding") {
+                            matchesDept = entryNorm === "molding" || validKeys.has(entryDept);
+                        } else {
+                            matchesDept = validKeys.has(entryDept) || validKeys.has(entryNorm);
+                        }
+                    } else {
+                        // When "All Depts" is selected, only take 'PROD' (or primary) entry if multiple department entries exist for the same date
+                        const ed = String(e.department || "").trim().toUpperCase();
+                        if (ed !== "PROD" && ed !== "" && ed !== "ALL") {
+                            matchesDept = false;
+                        }
+                    }
+
                     const matchesLocation = !filters.location || filters.location === "all"
                         || plantLocationMap[e.plant] === filters.location;
                     const matchesDate = e.date >= filters.startDate && e.date <= filters.endDate;
                     return matchesPlant && matchesDept && matchesLocation && matchesDate;
                 });
-            }, [dailyEntries, filters, allowedPlants, plants]);
+            }, [dailyEntries, filters, allowedPlants, plants, departments, activeTab]);
 
             // Unique locations derived from plants master data (used for Reports location filter)
             const reportLocations = useMemo(() => {
@@ -4112,6 +5069,154 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 if (entryLocationFilter === "all") return allowedPlants;
                 return allowedPlants.filter(p => p.location === entryLocationFilter);
             }, [allowedPlants, entryLocationFilter]);
+
+            // Molding Tariff Context
+            const moldingRateContext = useMemo(() => {
+                const today = new Date().toISOString().split("T")[0];
+                const plantCode = filters.plant !== "all" ? filters.plant : (allowedPlants[0]?.plant_code || "");
+                const plantObj = plants.find((p) => p.plant_code === plantCode) || allowedPlants[0];
+                const location = filters.location !== "all" ? filters.location : (plantObj?.location || "");
+                return { plantCode, location, date: today };
+            }, [filters.plant, filters.location, plants, allowedPlants]);
+
+            const activeMoldingElectRate = useMemo(() => {
+                const { plantCode, location, date } = moldingRateContext;
+                return resolveTariff(tariffs, "electricity", plantCode, location, date);
+            }, [tariffs, moldingRateContext]);
+
+            const activeMoldingWaterRate = useMemo(() => {
+                const { plantCode, location, date } = moldingRateContext;
+                return resolveTariff(tariffs, "water", plantCode, location, date);
+            }, [tariffs, moldingRateContext]);
+
+            // Filtered Molding Entries
+            const filteredMoldingEntries = useMemo(() => {
+                return moldingEntries.filter(entry => {
+                    if (filters.startDate && entry.date < filters.startDate) return false;
+                    if (filters.endDate && entry.date > filters.endDate) return false;
+                    if (filters.plant && filters.plant !== "all") {
+                        if (String(entry.plant).trim().toLowerCase() !== String(filters.plant).trim().toLowerCase()) {
+                            return false;
+                        }
+                    }
+                    if (filters.location && filters.location !== "all") {
+                        if (entry.location && String(entry.location).trim().toLowerCase() !== String(filters.location).trim().toLowerCase()) {
+                            return false;
+                        }
+                    }
+                    if (moldingShiftFilter !== "all" && entry.shift !== moldingShiftFilter) return false;
+                    if (moldingSearch.trim()) {
+                        const s = moldingSearch.toLowerCase();
+                        const match = (entry.machine_no && entry.machine_no.toLowerCase().includes(s)) ||
+                                      (entry.operator_name && entry.operator_name.toLowerCase().includes(s)) ||
+                                      (entry.remarks && entry.remarks.toLowerCase().includes(s)) ||
+                                      (entry.date && entry.date.includes(s));
+                        if (!match) return false;
+                    }
+                    return true;
+                }).sort((a, b) => (b.date > a.date ? 1 : -1));
+            }, [moldingEntries, filters.startDate, filters.endDate, filters.plant, filters.location, moldingShiftFilter, moldingSearch]);
+
+            // Molding KPI Totals
+            const moldingKpiTotals = useMemo(() => {
+                let totalElect = 0;
+                let totalElectCost = 0;
+                let totalShots = 0;
+                let totalWater = 0;
+                let totalWaterCost = 0;
+                let totalHours = 0;
+
+                filteredMoldingEntries.forEach(e => {
+                    totalElect += Number(e.electricity_consumption) || 0;
+                    totalElectCost += Number(e.electricity_cost) || 0;
+                    totalShots += Number(e.production_shots) || 0;
+                    totalWater += Number(e.water_consumption) || 0;
+                    totalWaterCost += Number(e.water_cost) || 0;
+                    totalHours += Number(e.running_hours) || 0;
+                });
+
+                const sec = totalShots > 0 ? Number((totalElect / totalShots).toFixed(3)) : 0;
+                const costPerShot = totalShots > 0 ? Number((totalElectCost / totalShots).toFixed(2)) : 0;
+                const avgLoadKw = totalHours > 0 ? Number((totalElect / totalHours).toFixed(1)) : 0;
+
+                return {
+                    electricity: Math.round(totalElect),
+                    electricityCost: Math.round(totalElectCost),
+                    shots: totalShots,
+                    water: Math.round(totalWater),
+                    waterCost: Math.round(totalWaterCost),
+                    sec,
+                    costPerShot,
+                    avgLoadKw,
+                    entriesCount: filteredMoldingEntries.length
+                };
+            }, [filteredMoldingEntries]);
+
+            // Molding Chart Aggregations (Daily, Monthly, Yearly)
+            const activeMoldingChartData = useMemo(() => {
+                if (activeMoldingPeriod === "monthly") {
+                    const byMonth = {};
+                    filteredMoldingEntries.forEach(e => {
+                        const m = (e.date || "").slice(0, 7);
+                        if (!m) return;
+                        if (!byMonth[m]) {
+                            byMonth[m] = { period: m, label: m, electricity: 0, electricityCost: 0, shots: 0, water: 0, waterCost: 0 };
+                        }
+                        byMonth[m].electricity += Number(e.electricity_consumption) || 0;
+                        byMonth[m].electricityCost += Number(e.electricity_cost) || 0;
+                        byMonth[m].shots += Number(e.production_shots) || 0;
+                        byMonth[m].water += Number(e.water_consumption) || 0;
+                        byMonth[m].waterCost += Number(e.water_cost) || 0;
+                    });
+                    return Object.keys(byMonth).sort().map(k => {
+                        const row = byMonth[k];
+                        return {
+                            ...row,
+                            sec: row.shots > 0 ? Number((row.electricity / row.shots).toFixed(3)) : 0,
+                            targetSec: 0.45
+                        };
+                    });
+                } else if (activeMoldingPeriod === "yearly") {
+                    const byYear = {};
+                    filteredMoldingEntries.forEach(e => {
+                        const yr = (e.date || "").slice(0, 4);
+                        if (!yr) return;
+                        const fyLabel = "FY " + yr;
+                        if (!byYear[fyLabel]) {
+                            byYear[fyLabel] = { period: yr, label: fyLabel, electricity: 0, electricityCost: 0, shots: 0, water: 0, waterCost: 0 };
+                        }
+                        byYear[fyLabel].electricity += Number(e.electricity_consumption) || 0;
+                        byYear[fyLabel].electricityCost += Number(e.electricity_cost) || 0;
+                        byYear[fyLabel].shots += Number(e.production_shots) || 0;
+                        byYear[fyLabel].water += Number(e.water_consumption) || 0;
+                        byYear[fyLabel].waterCost += Number(e.water_cost) || 0;
+                    });
+                    return Object.keys(byYear).sort().map(k => {
+                        const row = byYear[k];
+                        return {
+                            ...row,
+                            sec: row.shots > 0 ? Number((row.electricity / row.shots).toFixed(3)) : 0,
+                            targetSec: 0.45
+                        };
+                    });
+                }
+                // Daily (last 30 entries)
+                return filteredMoldingEntries.slice(0, 30).reverse().map(e => {
+                    const elect = Number(e.electricity_consumption) || 0;
+                    const shots = Number(e.production_shots) || 0;
+                    return {
+                        period: e.date,
+                        label: e.date ? e.date.slice(5) : "",
+                        electricity: elect,
+                        electricityCost: Number(e.electricity_cost) || 0,
+                        shots,
+                        water: Number(e.water_consumption) || 0,
+                        waterCost: Number(e.water_cost) || 0,
+                        sec: shots > 0 ? Number((elect / shots).toFixed(3)) : 0,
+                        targetSec: 0.45
+                    };
+                });
+            }, [filteredMoldingEntries, activeMoldingPeriod]);
 
             // Calculate aggregations for KPI Cards
             const kpiTotals = useMemo(() => {
@@ -5292,294 +6397,9 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 );
             }
 
-            return (
-                <>
-                <div className="min-h-screen flex flex-col bg-white">
-                    {/* Header Panel */}
-                    <div className="sticky top-0 z-30 bg-white border-b border-slate-100 shadow-sm shrink-0 no-print" style={{ height: '64px' }}>
-                        <div className="h-full px-5 flex items-center justify-between gap-2.5">
-                            {/* 1. Left Group: Logo & Title & Windmill */}
-                            <div className="flex items-center gap-2 shrink-0">
-                                {/* Stylized PG Electroplast Circular Logo */}
-                                <div className="flex items-center select-none shrink-0 pr-1">
-                                    <img src={PG_LOGO_BASE_64} className="h-11 w-auto object-contain" alt="PG Electroplast Logo" />
-                                </div>
-                                
-                                {/* UTILITY SENSE Title Block with Logo Image */}
-                                <div className="flex flex-col justify-center shrink-0">
-                                    <img
-                                        src="/utilitysense-banner.png"
-                                        alt="UtilitySense"
-                                        className="h-7 sm:h-8 w-auto object-contain select-none origin-left"
-                                    />
-                                    <p className="text-[10px] sm:text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5 whitespace-nowrap">
-                                        {(() => {
-                                            if (filters.plant && filters.plant !== "all") {
-                                                const p = plants.find(pl => pl.plant_code === filters.plant);
-                                                if (p) return `${p.plant_display_name || p.plant_name} (${p.location})`;
-                                            }
-                                            if (filters.location && filters.location !== "all") {
-                                                return `${filters.location} · All Plants`;
-                                            }
-                                            return "All Locations · All Plants";
-                                        })()}
-                                    </p>
-                                </div>
 
-                                {/* Rotating Windmill SVG - Repositioned to the right of title text with clean separation */}
-                                <div className="ml-3.5 mr-1.5 flex items-center justify-center shrink-0 border-r border-slate-200/80 pr-2.5">
-                                    <svg viewBox="0 0 100 100" className="w-9 h-9 text-[#0284c7] dark:text-[#38bdf8]">
-                                        <defs>
-                                            <g id="wind-blade">
-                                                {/* Opaque white blade body with solid blue outline */}
-                                                <path d="M 49.7,40 C 49.5,33, 49.0,22, 49.3,8 C 49.7,6, 50.3,6, 50.7,8 C 51.0,22, 50.5,33, 50.3,40 Z" fill="#ffffff" stroke="currentColor" strokeWidth="0.8" />
-                                                {/* Red stripe 1 (near tip) */}
-                                                <path d="M 49.4,14 L 50.6,14 L 50.5,12 L 49.5,12 Z" fill="#ef4444" />
-                                                {/* Red stripe 2 (at the very tip) */}
-                                                <path d="M 49.3,10 L 50.7,10 C 50.6,8.2, 50.3,7.8, 50,7.8 C 49.7,7.8, 49.4,8.2, 49.3,10 Z" fill="#ef4444" />
-                                            </g>
-                                        </defs>
-                                        
-                                        {/* Tower (Tapered base) - white fill with solid blue outline */}
-                                        <path d="M 48,88 L 52,88 L 50.6,40 L 49.4,40 Z" fill="#ffffff" stroke="currentColor" strokeWidth="0.8" />
-                                        
-                                        {/* Nacelle (Generator body) - solid blue fill */}
-                                        <path d="M 48,38 C 48,36.5 52,36.5 52,38 L 51,41 L 49,41 Z" fill="currentColor" />
-                                        
-                                        {/* Rotating 3 Blades */}
-                                        <g className="windmill-blades">
-                                            <use href="#wind-blade" />
-                                            <use href="#wind-blade" transform="rotate(120, 50, 40)" />
-                                            <use href="#wind-blade" transform="rotate(240, 50, 40)" />
-                                        </g>
-                                        
-                                        {/* Center Hub Cap - solid blue fill with white reflection dot */}
-                                        <circle cx="50" cy="40" r="2" fill="currentColor" />
-                                        <circle cx="49.5" cy="39.5" r="0.6" fill="#ffffff" />
-                                    </svg>
-                                </div>
-                            </div>
-
-                            {/* 2. Middle Group: Navigation Tabs (Icons ONLY) */}
-                            <div className="flex items-center gap-1 bg-slate-100/70 dark:bg-slate-800/50 p-0.5 rounded-full border border-slate-200/50 h-[34px] shrink-0">
-                                <button type="button" onClick={() => setActiveTab("dashboard")} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'dashboard' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Dashboard">
-                                    <span className="material-symbols-outlined text-[18px]">dashboard</span>
-                                </button>
-
-                                <button type="button" onClick={() => setActiveTab("reports")} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'reports' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Reports">
-                                    <span className="material-symbols-outlined text-[18px]">description</span>
-                                </button>
-
-                                {currentUser.role === "IT_ADMIN" && (
-                                    <React.Fragment>
-                                        <button type="button" onClick={() => setActiveTab("targets")} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'targets' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Targets">
-                                            <span className="material-symbols-outlined text-[18px]">track_changes</span>
-                                        </button>
-
-                                        <button type="button" onClick={() => setActiveTab("alerts")} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 relative ${activeTab === 'alerts' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Alerts">
-                                            <span className="material-symbols-outlined text-[18px]">notifications_active</span>
-                                            {alertsList.length > 0 && (
-                                                <span className="absolute -top-0.5 -right-0.5 px-1 py-0.2 rounded-full text-[8px] font-bold bg-rose-500 text-white leading-none">{alertsList.length}</span>
-                                            )}
-                                        </button>
-
-                                        {/* Shifted Monitor Toggle Icon directly after Alerts */}
-                                        {activeTab === "dashboard" && (
-                                            <button
-                                                type="button"
-                                                onClick={handleToggleCanMonitor}
-                                                className={`h-[28px] w-[28px] rounded-full border-none transition flex items-center justify-center cursor-pointer shrink-0 ${
-                                                    canMonitor
-                                                        ? 'bg-emerald-50 text-emerald-700 shadow-xs'
-                                                        : 'bg-transparent text-slate-500 hover:text-slate-700'
-                                                }`}
-                                                title="Toggle Monitoring for Air, LPG, and Waste"
-                                            >
-                                                <span className="material-symbols-outlined text-[18px]">{canMonitor ? 'visibility' : 'visibility_off'}</span>
-                                            </button>
-                                        )}
-
-                                        {/* Shifted Filters Toggle Icon directly after Monitor */}
-                                        {activeTab === "dashboard" && (
-                                            <button
-                                                ref={filterToggleBtnRef}
-                                                type="button"
-                                                onClick={() => setFiltersOpen(o => !o)}
-                                                className={`h-[28px] w-[28px] rounded-full border-none transition flex items-center justify-center cursor-pointer shrink-0 ${
-                                                    filtersOpen
-                                                        ? 'bg-sky-50 text-sky-700 shadow-xs'
-                                                        : 'bg-transparent text-slate-500 hover:text-slate-700'
-                                                }`}
-                                                title="Toggle Filters"
-                                            >
-                                                <span className="material-symbols-outlined text-[18px]">tune</span>
-                                            </button>
-                                        )}
-
-                                        <button type="button" onClick={() => { setActiveTab("master"); setSelectedMasterTable("plants"); }} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'master' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Master Settings">
-                                            <span className="material-symbols-outlined text-[18px]">settings</span>
-                                        </button>
-                                    </React.Fragment>
-                                )}
-
-                                {currentUser.role !== "IT_ADMIN" && (
-                                    <React.Fragment>
-                                        {activeTab === "dashboard" && (
-                                            <button
-                                                type="button"
-                                                onClick={handleToggleCanMonitor}
-                                                className={`h-[28px] w-[28px] rounded-full border-none transition flex items-center justify-center cursor-pointer shrink-0 ${
-                                                    canMonitor
-                                                        ? 'bg-emerald-50 text-emerald-700 shadow-xs'
-                                                        : 'bg-transparent text-slate-500 hover:text-slate-700'
-                                                }`}
-                                                title="Toggle Monitoring for Air, LPG, and Waste"
-                                            >
-                                                <span className="material-symbols-outlined text-[18px]">{canMonitor ? 'visibility' : 'visibility_off'}</span>
-                                            </button>
-                                        )}
-
-                                        {activeTab === "dashboard" && (
-                                            <button
-                                                ref={filterToggleBtnRef}
-                                                type="button"
-                                                onClick={() => setFiltersOpen(o => !o)}
-                                                className={`h-[28px] w-[28px] rounded-full border-none transition flex items-center justify-center cursor-pointer shrink-0 ${
-                                                    filtersOpen
-                                                        ? 'bg-sky-50 text-sky-700 shadow-xs'
-                                                        : 'bg-transparent text-slate-500 hover:text-slate-700'
-                                                }`}
-                                                title="Toggle Filters"
-                                            >
-                                                <span className="material-symbols-outlined text-[18px]">tune</span>
-                                            </button>
-                                        )}
-
-                                        <button type="button" onClick={() => { setActiveTab("master"); setSelectedMasterTable("tariff_rates"); }} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'master' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Master Settings">
-                                            <span className="material-symbols-outlined text-[18px]">settings</span>
-                                        </button>
-                                    </React.Fragment>
-                                )}
-                            </div>
-
-                            {/* 3. Right Group: Actions & User details (ml-auto shrink-0) */}
-                            <div className="flex items-center gap-2.5 ml-auto shrink-0">
-                                {activeTab === "dashboard" && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveTab("entry")}
-                                        className="h-[28px] px-3.5 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-xs transition flex items-center gap-1 border-none cursor-pointer shadow-sm"
-                                        title="Operations Logging"
-                                    >
-                                        <span className="material-symbols-outlined text-[16px]">add</span>
-                                        <span>Daily Entry</span>
-                                    </button>
-                                )}
-
-                                <div className="flex items-center gap-3 text-xs font-semibold text-slate-700 shrink-0">
-                                    <div className="hidden lg:block text-right leading-tight">
-                                        <p className="text-xs font-bold text-slate-900">{currentUser.name}</p>
-                                        <p className="text-[9px] text-slate-400 font-medium font-mono">{currentUser.email}</p>
-                                    </div>
-
-                                    {/* Circular profile initials badge matching VEMS */}
-                                    <div className="w-9 h-9 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold text-xs uppercase shadow-sm select-none" title={`${currentUser.name} (${currentUser.email})`}>
-                                        {currentUser.name ? currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'U'}
-                                    </div>
-
-                                    {/* view layout toggle */}
-                                    <button
-                                        onClick={() => setKpiLayout(kpiLayout === "scroll" ? "grid" : "scroll")}
-                                        title={kpiLayout === "scroll" ? "Switch to Stacked Grid View" : "Switch to Scrollable Row View"}
-                                        className="h-9 w-9 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-700 cursor-pointer transition"
-                                    >
-                                        <span className="material-symbols-outlined text-[18px]">
-                                            {kpiLayout === "scroll" ? "splitscreen" : "view_week"}
-                                        </span>
-                                    </button>
-
-                                    <button
-                                        onClick={() => handleLogout("Session signed out.")}
-                                        title="Logout Session"
-                                        className="h-9 w-9 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-700 cursor-pointer transition"
-                                    >
-                                        <span className="material-symbols-outlined text-[18px]">logout</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-
-
-                    {/* MAIN CONTENT DISPLAY */}
-                    <main className={`main-content${activeTab === "reports" ? " main-content--reports" : ""}`}>
-
-                        {/* 1. DASHBOARD COMPONENT */}
-                        {activeTab === "dashboard" && (
-                            <div className="flex flex-col gap-1.5 pt-1">
-
-                                {/* Filters panel (collapsible — toggled via the "Filters" button in the top nav) */}
-                                {filtersOpen && (
-                                    <div ref={filterPanelRef} className="no-print bg-slate-50 border border-slate-200/60 p-2 px-3 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-xs mt-0 mb-1">
-                                        <div className="flex flex-wrap items-center gap-2.5">
-                                            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs">
-                                                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 shrink-0">Start:</label>
-                                                <input
-                                                    type="date"
-                                                    value={filters.startDate}
-                                                    onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                                                    className="h-6 border-none bg-transparent text-[11.5px] text-slate-800 font-bold focus:outline-none p-0"
-                                                />
-                                            </div>
-                                            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs">
-                                                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 shrink-0">End:</label>
-                                                <input
-                                                    type="date"
-                                                    value={filters.endDate}
-                                                    onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                                                    className="h-6 border-none bg-transparent text-[11.5px] text-slate-800 font-bold focus:outline-none p-0"
-                                                />
-                                            </div>
-                                            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs">
-                                                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 shrink-0">Location:</label>
-                                                <select
-                                                    value={filters.location || "all"}
-                                                    onChange={(e) => handleLocationFilterChange(e.target.value)}
-                                                    className="h-6 border-none bg-transparent text-[11.5px] text-slate-800 font-bold focus:outline-none p-0 cursor-pointer"
-                                                >
-                                                    <option value="all">All Locations</option>
-                                                    {reportLocations.map(loc => (
-                                                        <option key={loc} value={loc}>{loc}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs">
-                                                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 shrink-0">Plant:</label>
-                                                <select
-                                                    value={filters.plant}
-                                                    onChange={(e) => setFilters({ ...filters, plant: e.target.value })}
-                                                    className="h-6 border-none bg-transparent text-[11.5px] text-slate-800 font-bold focus:outline-none p-0 cursor-pointer max-w-[160px] truncate"
-                                                >
-                                                    <option value="all">All Plants</option>
-                                                    {filteredPlantsForDropdown.map(p => (
-                                                        <option key={p.plant_code} value={p.plant_code}>{p.plant_name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <button
-                                            onClick={() => setFilters(getDefaultDateFilters())}
-                                            className="h-7 px-2.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-[11px] font-bold text-slate-600 transition flex items-center gap-1 cursor-pointer shadow-xs"
-                                            title="Reset Filters"
-                                        >
-                                            <span className="material-symbols-outlined text-[14px]">restart_alt</span>
-                                            <span>Reset</span>
-                                        </button>
-                                    </div>
-                                )}
-
+            const renderDashboardBody = (isMolding = false) => (
+                <React.Fragment>
                                  {/* KPI Metric Flip Deck (1 Row of 8 Cards) + Sleek Arrow Switcher Button */}
                                  <div className="w-full flex items-center gap-1.5 no-print" style={{ position: 'sticky', top: '64px', zIndex: 15, background: 'var(--bg)', paddingTop: '0px', paddingBottom: '4px' }}>
                                      <div className="flex-1 overflow-hidden relative min-h-[66px]">
@@ -6430,8 +7250,340 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                          </section>
                                      </div>
                                  )}
-                             </div>
-                         )}
+                </React.Fragment>
+            );
+
+            return (
+                <>
+                <div className="min-h-screen flex flex-col bg-white">
+                    {/* Header Panel */}
+                    <div className="sticky top-0 z-30 bg-white border-b border-slate-100 shadow-sm shrink-0 no-print" style={{ height: '64px' }}>
+                        <div className="h-full px-5 flex items-center justify-between gap-2.5">
+                            {/* 1. Left Group: Logo & Title */}
+                            <div className="flex items-center gap-3 shrink-0">
+                                {/* Stylized PG Electroplast Circular Logo */}
+                                <div className="flex items-center select-none shrink-0 pr-1">
+                                    <img src={PG_LOGO_BASE_64} className="h-11 w-auto object-contain" alt="PG Electroplast Logo" />
+                                </div>
+                                
+                                {/* UTILITY SENSE Title Block with Logo Image (enlarged in available space) */}
+                                <div className="flex items-center select-none shrink-0">
+                                    <img
+                                        src="/utilitysense-banner.png"
+                                        alt="UtilitySense"
+                                        className="h-12 sm:h-13 w-auto max-h-[52px] object-contain select-none transition-all"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* 2. Middle Group: Navigation Tabs (Icons ONLY) */}
+                            <div className="flex items-center gap-1 bg-slate-100/70 dark:bg-slate-800/50 p-0.5 rounded-full border border-slate-200/50 h-[34px] shrink-0">
+                                <button type="button" onClick={() => setActiveTab("dashboard")} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'dashboard' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Dashboard">
+                                    <span className="material-symbols-outlined text-[18px]">dashboard</span>
+                                </button>
+
+                                <button type="button" onClick={() => setActiveTab("reports")} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'reports' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Reports">
+                                    <span className="material-symbols-outlined text-[18px]">description</span>
+                                </button>
+
+                                {/* Molding Dedicated Tab Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab("molding")}
+                                    className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${
+                                        activeTab === "molding"
+                                            ? 'bg-cyan-600 text-white shadow-sm font-extrabold'
+                                            : 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100 font-bold border border-cyan-200/60'
+                                    }`}
+                                    title="Molding Department Operations & Dashboard"
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">precision_manufacturing</span>
+                                    <span className="text-[10px] uppercase tracking-wider">Molding</span>
+                                </button>
+
+                                {/* Bill Audit Dedicated Tab Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab("bill_audit")}
+                                    className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${
+                                        activeTab === "bill_audit"
+                                            ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                                            : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 font-bold border border-indigo-200/60'
+                                    }`}
+                                    title="Utility Bill Upload & Consumption Reconciliation"
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                                    <span className="text-[10px] uppercase tracking-wider">Bill Audit</span>
+                                </button>
+
+                                {currentUser.role === "IT_ADMIN" && (
+                                    <React.Fragment>
+                                        <button type="button" onClick={() => setActiveTab("targets")} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'targets' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Targets">
+                                            <span className="material-symbols-outlined text-[18px]">track_changes</span>
+                                        </button>
+
+                                        <button type="button" onClick={() => setActiveTab("alerts")} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 relative ${activeTab === 'alerts' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Alerts">
+                                            <span className="material-symbols-outlined text-[18px]">notifications_active</span>
+                                            {alertsList.length > 0 && (
+                                                <span className="absolute -top-0.5 -right-0.5 px-1 py-0.2 rounded-full text-[8px] font-bold bg-rose-500 text-white leading-none">{alertsList.length}</span>
+                                            )}
+                                        </button>
+
+                                        {/* Shifted Monitor Toggle Icon directly after Alerts */}
+                                        {activeTab === "dashboard" && (
+                                            <button
+                                                type="button"
+                                                onClick={handleToggleCanMonitor}
+                                                className={`h-[28px] w-[28px] rounded-full border-none transition flex items-center justify-center cursor-pointer shrink-0 ${
+                                                    canMonitor
+                                                        ? 'bg-emerald-50 text-emerald-700 shadow-xs'
+                                                        : 'bg-transparent text-slate-500 hover:text-slate-700'
+                                                }`}
+                                                title="Toggle Monitoring for Air, LPG, and Waste"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">{canMonitor ? 'visibility' : 'visibility_off'}</span>
+                                            </button>
+                                        )}
+
+                                        {/* Shifted Filters Toggle Icon directly after Monitor */}
+                                        {(activeTab === "dashboard" || activeTab === "molding") && (
+                                            <button
+                                                ref={filterToggleBtnRef}
+                                                type="button"
+                                                onClick={() => setFiltersOpen(o => !o)}
+                                                className={`h-[28px] w-[28px] rounded-full border-none transition flex items-center justify-center cursor-pointer shrink-0 ${
+                                                    filtersOpen
+                                                        ? 'bg-sky-50 text-sky-700 shadow-xs'
+                                                        : 'bg-transparent text-slate-500 hover:text-slate-700'
+                                                }`}
+                                                title="Toggle Filters"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">tune</span>
+                                            </button>
+                                        )}
+
+                                        <button type="button" onClick={() => { setActiveTab("master"); setSelectedMasterTable("plants"); }} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'master' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Master Settings">
+                                            <span className="material-symbols-outlined text-[18px]">settings</span>
+                                        </button>
+                                    </React.Fragment>
+                                )}
+
+                                {currentUser.role !== "IT_ADMIN" && (
+                                    <React.Fragment>
+                                        {(activeTab === "dashboard" || activeTab === "molding") && (
+                                            <button
+                                                type="button"
+                                                onClick={handleToggleCanMonitor}
+                                                className={`h-[28px] w-[28px] rounded-full border-none transition flex items-center justify-center cursor-pointer shrink-0 ${
+                                                    canMonitor
+                                                        ? 'bg-emerald-50 text-emerald-700 shadow-xs'
+                                                        : 'bg-transparent text-slate-500 hover:text-slate-700'
+                                                }`}
+                                                title="Toggle Monitoring for Air, LPG, and Waste"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">{canMonitor ? 'visibility' : 'visibility_off'}</span>
+                                            </button>
+                                        )}
+
+                                        {(activeTab === "dashboard" || activeTab === "molding") && (
+                                            <button
+                                                ref={filterToggleBtnRef}
+                                                type="button"
+                                                onClick={() => setFiltersOpen(o => !o)}
+                                                className={`h-[28px] w-[28px] rounded-full border-none transition flex items-center justify-center cursor-pointer shrink-0 ${
+                                                    filtersOpen
+                                                        ? 'bg-sky-50 text-sky-700 shadow-xs'
+                                                        : 'bg-transparent text-slate-500 hover:text-slate-700'
+                                                }`}
+                                                title="Toggle Filters"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">tune</span>
+                                            </button>
+                                        )}
+
+                                        <button type="button" onClick={() => { setActiveTab("master"); setSelectedMasterTable("tariff_rates"); }} className={`h-[28px] w-[28px] rounded-full transition flex items-center justify-center cursor-pointer border-none shrink-0 ${activeTab === 'master' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Master Settings">
+                                            <span className="material-symbols-outlined text-[18px]">settings</span>
+                                        </button>
+                                    </React.Fragment>
+                                )}
+                            </div>
+
+                            {/* 3. Right Group: Actions & User details (ml-auto shrink-0) */}
+                            <div className="flex items-center gap-2.5 ml-auto shrink-0">
+                                {activeTab === "dashboard" && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab("entry")}
+                                        className="h-[28px] px-3.5 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-xs transition flex items-center gap-1 border-none cursor-pointer shadow-sm"
+                                        title="Operations Logging"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">add</span>
+                                        <span>Daily Entry</span>
+                                    </button>
+                                )}
+
+                                {activeTab === "molding" && (
+                                    <button
+                                        type="button"
+                                        onClick={() => openMoldingForm()}
+                                        className="h-[28px] px-3.5 rounded-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs transition flex items-center gap-1 border-none cursor-pointer shadow-sm"
+                                        title="Add New Molding Operational Entry"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">add</span>
+                                        <span>Molding Daily Entry</span>
+                                    </button>
+                                )}
+
+                                <div className="flex items-center gap-3 text-xs font-semibold text-slate-700 shrink-0">
+                                    <div className="hidden sm:block text-right leading-tight">
+                                        <p className="text-xs font-bold text-slate-900 leading-tight">{currentUser.name}</p>
+                                        <p className="text-[10px] sm:text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 leading-tight mt-0.5 whitespace-nowrap">
+                                            {(() => {
+                                                if (filters.plant && filters.plant !== "all") {
+                                                    const p = plants.find(pl => pl.plant_code === filters.plant);
+                                                    if (p) return `${p.plant_display_name || p.plant_name} (${p.location})`;
+                                                }
+                                                if (filters.location && filters.location !== "all") {
+                                                    return `${filters.location} · All Plants`;
+                                                }
+                                                return "All Locations · All Plants";
+                                            })()}
+                                        </p>
+                                        <p className="text-[9px] text-slate-400 font-medium font-mono leading-tight">{currentUser.email}</p>
+                                    </div>
+
+                                    {/* Circular profile initials badge matching VEMS */}
+                                    <div className="w-9 h-9 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold text-xs uppercase shadow-sm select-none" title={`${currentUser.name} (${currentUser.email})`}>
+                                        {currentUser.name ? currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'U'}
+                                    </div>
+
+                                    {/* view layout toggle */}
+                                    <button
+                                        onClick={() => setKpiLayout(kpiLayout === "scroll" ? "grid" : "scroll")}
+                                        title={kpiLayout === "scroll" ? "Switch to Stacked Grid View" : "Switch to Scrollable Row View"}
+                                        className="h-9 w-9 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-700 cursor-pointer transition"
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">
+                                            {kpiLayout === "scroll" ? "splitscreen" : "view_week"}
+                                        </span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleLogout("Session signed out.")}
+                                        title="Logout Session"
+                                        className="h-9 w-9 rounded-full bg-slate-50 border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-700 cursor-pointer transition"
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">logout</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+
+                    {/* MAIN CONTENT DISPLAY */}
+                    <main className={`main-content${activeTab === "reports" ? " main-content--reports" : ""}`}>
+
+                        {/* 1. DASHBOARD COMPONENT (Main Dashboard & Molding Dashboard) */}
+                        {(activeTab === "dashboard" || activeTab === "molding") && (
+                            <div className="flex flex-col gap-1.5 pt-1">
+
+                                {/* Filters panel (collapsible — toggled via the "Filters" button in the top nav) */}
+                                {filtersOpen && (
+                                    <div ref={filterPanelRef} className="no-print bg-slate-50 border border-slate-200/60 p-2 px-3 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-xs mt-0 mb-1">
+                                        <div className="flex flex-wrap items-center gap-2.5">
+                                            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs">
+                                                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 shrink-0">Start:</label>
+                                                <input
+                                                    type="date"
+                                                    value={filters.startDate}
+                                                    onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+                                                    className="h-6 border-none bg-transparent text-[11.5px] text-slate-800 font-bold focus:outline-none p-0"
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs">
+                                                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 shrink-0">End:</label>
+                                                <input
+                                                    type="date"
+                                                    value={filters.endDate}
+                                                    onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+                                                    className="h-6 border-none bg-transparent text-[11.5px] text-slate-800 font-bold focus:outline-none p-0"
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs">
+                                                <label className="text-[10px] font-extrabold uppercase tracking-wider text-sky-700 dark:text-sky-400 shrink-0">1. Location:</label>
+                                                <select
+                                                    value={filters.location || "all"}
+                                                    onChange={(e) => handleLocationFilterChange(e.target.value)}
+                                                    className="h-6 border-none bg-transparent text-[11.5px] text-slate-800 font-bold focus:outline-none p-0 cursor-pointer"
+                                                >
+                                                    {currentUser?.role === "IT_ADMIN" && (
+                                                        <option value="all">All Locations</option>
+                                                    )}
+                                                    {reportLocations.map(loc => (
+                                                        <option key={loc} value={loc}>{loc}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className={`flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs transition-opacity ${(!filters.location || filters.location === "all") ? "opacity-60 bg-slate-50" : ""}`}>
+                                                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 shrink-0">2. Plant:</label>
+                                                <select
+                                                    value={filters.plant}
+                                                    disabled={!filters.location || filters.location === "all"}
+                                                    onChange={(e) => setFilters({ ...filters, plant: e.target.value, department: "all" })}
+                                                    className={`h-6 border-none bg-transparent text-[11.5px] font-bold focus:outline-none p-0 max-w-[210px] truncate ${(!filters.location || filters.location === "all") ? "text-slate-400 cursor-not-allowed" : "text-slate-800 cursor-pointer"}`}
+                                                    title={(!filters.location || filters.location === "all") ? "Please select a location first" : "Filter by plant"}
+                                                >
+                                                    {(!filters.location || filters.location === "all") ? (
+                                                        <option value="all">— Select Location First —</option>
+                                                    ) : (
+                                                        <React.Fragment>
+                                                            <option value="all">All Plants ({filters.location})</option>
+                                                            {filteredPlantsForDropdown.map(p => (
+                                                                <option key={p.plant_code} value={p.plant_code}>
+                                                                    {p.plant_code} - {p.plant_display_name || p.plant_name}
+                                                                </option>
+                                                            ))}
+                                                        </React.Fragment>
+                                                    )}
+                                                </select>
+                                            </div>
+                                            {filters.plant && filters.plant !== "all" && availableDepartmentsForFilter.length > 0 && (
+                                                <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs">
+                                                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 shrink-0">3. Dept:</label>
+                                                    <select
+                                                        value={filters.department || "all"}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setFilters({ ...filters, department: val });
+                                                        }}
+                                                        className="h-6 border-none bg-transparent text-[11.5px] text-slate-800 font-bold focus:outline-none p-0 cursor-pointer max-w-[150px] truncate"
+                                                    >
+                                                        <option value="all">All Depts</option>
+                                                        {availableDepartmentsForFilter.map(d => (
+                                                            <option key={d.code} value={d.code}>{d.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <button
+                                            onClick={() => setFilters(getDefaultDateFilters())}
+                                            className="h-7 px-2.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-[11px] font-bold text-slate-600 transition flex items-center gap-1 cursor-pointer shadow-xs"
+                                            title="Reset Filters"
+                                        >
+                                            <span className="material-symbols-outlined text-[14px]">restart_alt</span>
+                                            <span>Reset</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Dashboard Body (KPIs + Charts) */}
+                                {renderDashboardBody(false)}
+                            </div>
+                        )}
 
                         {/* 2. DAILY DATA ENTRY GRID COMPONENT */}
                         {activeTab === "entry" && (
@@ -6471,7 +7623,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             <option value="all">All Plants</option>
                                             {entryFilterPlants.map((p) => (
                                                 <option key={p.plant_code} value={p.plant_code}>
-                                                    {p.plant_display_name || p.plant_name || p.plant_code}
+                                                    {p.plant_code} - {p.plant_display_name || p.plant_name}
                                                 </option>
                                             ))}
                                         </select>
@@ -6558,6 +7710,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                     )}
                                                     <th className="py-3 px-2.5">Date</th>
                                                     <th className="py-3 px-2.5">Plant</th>
+                                                    <th className="py-3 px-2.5">Dept</th>
                                                     <th className="py-3 px-2.5 text-right">Daily Reading (kWh)</th>
                                                     <th className="py-3 px-2.5 text-right">Units Diff</th>
                                                     <th className="py-3 px-2.5 text-right">{entryTableContext.gridLabel} Units{entryTableContext.mf ? ` (x${entryTableContext.mf})` : ""}</th>
@@ -6581,7 +7734,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             <tbody className="divide-y divide-slate-100 text-slate-700">
                                                 {paginatedEntries.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan="20" className="py-12 text-center text-slate-400 font-semibold">No operational entries logged in system</td>
+                                                        <td colSpan="21" className="py-12 text-center text-slate-400 font-semibold">No operational entries logged in system</td>
                                                     </tr>
                                                 ) : (
                                                     paginatedEntries.map(e => {
@@ -6618,6 +7771,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             <td className="py-3 px-2.5">
                                                                 <span className={`px-2 py-0.5 rounded font-bold text-[9px] uppercase ${e.plant === 'NGM' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-sky-50 text-sky-700 border border-sky-100'}`}>
                                                                     {e.plant}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-3 px-2.5">
+                                                                <span className="px-1.5 py-0.5 rounded font-semibold text-[9px] bg-slate-100 text-slate-600 border border-slate-200">
+                                                                    {e.department || 'PROD'}
                                                                 </span>
                                                             </td>
                                                             <td className="py-3 px-2.5 text-right text-slate-800">{fmtNum(e.electricity_opening)}</td>
@@ -6743,7 +7901,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             >
                                                 <option value="all">All Plants</option>
                                                 {reportLocationPlants.map(p => (
-                                                    <option key={p.plant_code} value={p.plant_code}>{p.plant_name}</option>
+                                                    <option key={p.plant_code} value={p.plant_code}>{p.plant_code} - {p.plant_display_name || p.plant_name}</option>
                                                 ))}
                                             </select>
                                         </div>
@@ -7031,6 +8189,1224 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         ))
                                     )}
                                 </div>
+                            </div>
+                        )}
+
+                        {/* 5.5 BILL AUDIT & RECONCILIATION COMPONENT */}
+                        {activeTab === "bill_audit" && (
+                            <div className="space-y-6 pt-4">
+                                {/* Header Card */}
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 shadow-xs flex items-center justify-center">
+                                                <span className="material-symbols-outlined text-[24px]">receipt_long</span>
+                                            </span>
+                                            <div>
+                                                <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
+                                                    <span>Utility Bill Audit & Discrepancy Analyzer</span>
+                                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                                                        Deep Multi-Dimensional Audit
+                                                    </span>
+                                                </h2>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                                    Upload utility bills (Excel, CSV, PDF, Image) to automatically detect unit differences, date-wise spikes, tariff overcharges, and meter reading jumps.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Action buttons & Tab Switcher */}
+                                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                                        <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700">
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveAuditTab("overview")}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border-none ${
+                                                    activeAuditTab === "overview"
+                                                        ? "bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs"
+                                                        : "bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                                                }`}
+                                            >
+                                                <span className="material-symbols-outlined text-[15px]">fact_check</span>
+                                                <span>Audit & Overview</span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveAuditTab("daily")}
+                                                disabled={!billAuditAnalysis}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border-none ${
+                                                    !billAuditAnalysis
+                                                        ? "opacity-40 cursor-not-allowed text-slate-400"
+                                                        : activeAuditTab === "daily"
+                                                        ? "bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs cursor-pointer"
+                                                        : "bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 cursor-pointer"
+                                                }`}
+                                            >
+                                                <span className="material-symbols-outlined text-[15px]">calendar_month</span>
+                                                <span>Date-by-Date Inspector</span>
+                                                {billAuditAnalysis && (
+                                                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
+                                                        billAuditAnalysis.discrepantDays.length > 0
+                                                            ? "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300"
+                                                            : "bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200"
+                                                    }`}>
+                                                        {billAuditAnalysis.discrepantDays.length > 0
+                                                            ? `${billAuditAnalysis.discrepantDays.length} diffs`
+                                                            : `${billAuditAnalysis.dailyBreakdown.length} days`}
+                                                    </span>
+                                                )}
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveAuditTab("history")}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border-none ${
+                                                    activeAuditTab === "history"
+                                                        ? "bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs"
+                                                        : "bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900"
+                                                }`}
+                                            >
+                                                <span className="material-symbols-outlined text-[15px]">history</span>
+                                                <span>Audit History</span>
+                                                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-mono font-bold">
+                                                    {billAudits.length}
+                                                </span>
+                                            </button>
+                                        </div>
+
+                                        {billAuditAnalysis && (
+                                            <button
+                                                type="button"
+                                                onClick={exportAuditBreakdownXLSX}
+                                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 border-none shadow-xs cursor-pointer"
+                                                title="Export Full Discrepancy Report to Excel"
+                                            >
+                                                <span className="material-symbols-outlined text-[16px]">download</span>
+                                                <span>Export Excel (.xlsx)</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {auditSaveMessage && (
+                                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 rounded-xl text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                                        <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                        <span>{auditSaveMessage}</span>
+                                    </div>
+                                )}
+
+                                {/* Main Tab 1: Overview & Reconciliation */}
+                                {activeAuditTab === "overview" && (
+                                    <div className="space-y-6">
+                                        {/* Input Parameters & File Upload Form */}
+                                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                            {/* Form Card (8 cols) */}
+                                            <div className="lg:col-span-8 bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs">
+                                                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+                                                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[17px] text-indigo-600">tune</span>
+                                                        <span>1. Bill Parameters & Auto-Extract Setup</span>
+                                                    </h3>
+
+                                                    {/* Quick Presets */}
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">Period Preset:</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const now = new Date();
+                                                                const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                                                                const last = new Date(now.getFullYear(), now.getMonth(), 0);
+                                                                const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                                                                setBillAuditForm(prev => ({ ...prev, startDate: fmt(first), endDate: fmt(last) }));
+                                                            }}
+                                                            className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 cursor-pointer border-none"
+                                                        >
+                                                            Last Month
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const now = new Date();
+                                                                const first = new Date(now.getFullYear(), now.getMonth(), 1);
+                                                                const last = new Date(now.getFullYear(), now.getMonth(), 0);
+                                                                const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                                                                setBillAuditForm(prev => ({ ...prev, startDate: fmt(first), endDate: fmt(now) }));
+                                                            }}
+                                                            className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 cursor-pointer border-none"
+                                                        >
+                                                            Current Month
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Utility Selector Pills */}
+                                                <div className="mb-4">
+                                                    <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2">
+                                                        Select Utility Type
+                                                    </label>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                        {BILL_UTILITY_CONFIGS.map(u => {
+                                                            const isSel = billAuditForm.utility === u.key;
+                                                            return (
+                                                                <button
+                                                                    key={u.key}
+                                                                    type="button"
+                                                                    onClick={() => setBillAuditForm(prev => ({ ...prev, utility: u.key }))}
+                                                                    className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2 cursor-pointer ${
+                                                                        isSel
+                                                                            ? "bg-indigo-50/90 dark:bg-indigo-950/50 border-indigo-500 text-indigo-900 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-400"
+                                                                            : "bg-slate-50/60 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300"
+                                                                    }`}
+                                                                >
+                                                                    <span className={`material-symbols-outlined text-[18px] ${isSel ? 'text-indigo-600' : 'text-slate-400'}`}>
+                                                                        {u.icon}
+                                                                    </span>
+                                                                    <div className="min-w-0">
+                                                                        <div className="text-xs font-bold truncate">{u.label}</div>
+                                                                        <div className="text-[10px] opacity-75 uppercase font-mono">{u.unit}</div>
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                {/* Plant & Location Row */}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                                                            Location
+                                                        </label>
+                                                        <select
+                                                            value={billAuditForm.location}
+                                                            onChange={(e) => handleBillAuditLocationChange(e.target.value)}
+                                                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                                                        >
+                                                            <option value="all">All Locations</option>
+                                                            <option value="PUNE">Pune (PGEL / PGTL)</option>
+                                                            <option value="NASHIK">Nashik (NGM)</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                                                            Plant to Compare *
+                                                        </label>
+                                                        <select
+                                                            value={billAuditForm.plant}
+                                                            onChange={(e) => setBillAuditForm(prev => ({ ...prev, plant: e.target.value }))}
+                                                            className="w-full h-9 px-3 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/30 text-xs font-bold text-indigo-950 dark:text-indigo-200 focus:outline-none focus:border-indigo-500"
+                                                        >
+                                                            <option value="">-- Select Plant --</option>
+                                                            {billAuditPlants.map(p => (
+                                                                <option key={p.plant_code} value={p.plant_code}>
+                                                                    {p.plant_display_name || p.plant_name} ({p.plant_code})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                {/* Dates Row */}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                                                            Billing Period Start *
+                                                        </label>
+                                                        <input
+                                                            type="date"
+                                                            value={billAuditForm.startDate}
+                                                            onChange={(e) => setBillAuditForm(prev => ({ ...prev, startDate: e.target.value }))}
+                                                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                                                            Billing Period End *
+                                                        </label>
+                                                        <input
+                                                            type="date"
+                                                            value={billAuditForm.endDate}
+                                                            onChange={(e) => setBillAuditForm(prev => ({ ...prev, endDate: e.target.value }))}
+                                                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Bill Figures: Units, Amount, Opening Meter, Closing Meter */}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 block mb-1">
+                                                            Billed Units ({BILL_UTILITY_CONFIGS.find(u => u.key === billAuditForm.utility)?.unit}) *
+                                                        </label>
+                                                        <div className="relative">
+                                                            <input
+                                                                type="number"
+                                                                step="any"
+                                                                required
+                                                                placeholder="e.g. 145000"
+                                                                value={billAuditForm.billedUnits}
+                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, billedUnits: e.target.value }))}
+                                                                className="w-full h-9 px-3 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/20 text-sm font-extrabold text-indigo-950 dark:text-indigo-200 focus:outline-none focus:border-indigo-500"
+                                                            />
+                                                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-indigo-500 font-mono">
+                                                                {BILL_UTILITY_CONFIGS.find(u => u.key === billAuditForm.utility)?.unit}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                                                            Billed Amount (₹)
+                                                        </label>
+                                                        <div className="relative">
+                                                            <input
+                                                                type="number"
+                                                                step="any"
+                                                                placeholder="e.g. 1580000"
+                                                                value={billAuditForm.billedAmount}
+                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, billedAmount: e.target.value }))}
+                                                                className="w-full h-9 pl-6 pr-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                                                            />
+                                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                                                            Bill Opening Meter (Opt.)
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="any"
+                                                            placeholder="e.g. 104520"
+                                                            value={billAuditForm.billedOpeningMeter}
+                                                            onChange={(e) => setBillAuditForm(prev => ({ ...prev, billedOpeningMeter: e.target.value }))}
+                                                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                                                            Bill Closing Meter (Opt.)
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="any"
+                                                            placeholder="e.g. 132400"
+                                                            value={billAuditForm.billedClosingMeter}
+                                                            onChange={(e) => setBillAuditForm(prev => ({ ...prev, billedClosingMeter: e.target.value }))}
+                                                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Secondary Details: Bill No, Vendor */}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                                                            Bill / Invoice / Consumer No.
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="e.g. MSEDCL-982341"
+                                                            value={billAuditForm.billNumber}
+                                                            onChange={(e) => setBillAuditForm(prev => ({ ...prev, billNumber: e.target.value }))}
+                                                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                                                            Vendor / Electricity Board
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="e.g. MSEDCL / MNGL / MIDC Water"
+                                                            value={billAuditForm.vendorName}
+                                                            onChange={(e) => setBillAuditForm(prev => ({ ...prev, vendorName: e.target.value }))}
+                                                            className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* File Upload Bar */}
+                                                <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 mb-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-indigo-600 shrink-0 shadow-2xs">
+                                                            <span className="material-symbols-outlined text-[20px]">
+                                                                {billAuditForm.fileType === "excel" ? "table_view" : billAuditForm.fileType === "pdf" ? "picture_as_pdf" : "upload_file"}
+                                                            </span>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                                                {billAuditForm.fileName ? `Uploaded: ${billAuditForm.fileName}` : "Upload Bill Document (Excel .xlsx/.xls, CSV, PDF, Image)"}
+                                                            </p>
+                                                            <p className="text-[10px] text-slate-400">
+                                                                {billAuditForm.fileName ? "Auto-parsing active & attached for audit" : "Auto-extracts dates, units, meter readings and amounts"}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2">
+                                                        <label className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border border-indigo-200/80">
+                                                            <span className="material-symbols-outlined text-[16px]">add</span>
+                                                            <span>{billAuditForm.fileName ? "Change File" : "Choose File"}</span>
+                                                            <input
+                                                                type="file"
+                                                                accept=".pdf,image/*,.csv,.xlsx,.xls"
+                                                                onChange={handleBillFileUpload}
+                                                                className="hidden"
+                                                            />
+                                                        </label>
+
+                                                        {billAuditForm.fileName && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setBillAuditForm(prev => ({ ...prev, fileName: "", filePreview: null, fileType: "", parsedSummary: null, parsedDateWiseBilled: {} }))}
+                                                                className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-rose-600 transition border-none cursor-pointer"
+                                                                title="Remove file"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[16px]">close</span>
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Smart Auto-Parsed Excel Banner */}
+                                                {billAuditForm.parsedSummary && (
+                                                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-xl flex items-start gap-3 animate-fadeIn">
+                                                        <span className="material-symbols-outlined text-emerald-600 text-[22px] shrink-0 mt-0.5">auto_awesome</span>
+                                                        <div className="text-xs">
+                                                            <p className="font-extrabold text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
+                                                                <span>Excel Auto-Extracted Successfully!</span>
+                                                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-200/80 text-emerald-900 font-mono">
+                                                                    {billAuditForm.parsedSummary.rowsCount} Rows
+                                                                </span>
+                                                            </p>
+                                                            <p className="text-emerald-800 dark:text-emerald-300 text-[11px] mt-0.5 leading-relaxed">
+                                                                Auto-mapped <strong>{billAuditForm.parsedSummary.detectedDatesCount} daily dates</strong>.
+                                                                Columns detected: Date (<code>{billAuditForm.parsedSummary.dateKeyDetected || 'Auto'}</code>), Units (<code>{billAuditForm.parsedSummary.unitsKeyDetected || 'Auto'}</code>).
+                                                                Total Sum: <strong className="font-mono">{fmtNum(billAuditForm.parsedSummary.totalSum)} {BILL_UTILITY_CONFIGS.find(u => u.key === billAuditForm.utility)?.unit}</strong>.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Right Column: Preview / Helper (4 cols) */}
+                                            <div className="lg:col-span-4 bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs flex flex-col justify-between">
+                                                <div>
+                                                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-1.5">
+                                                        <span className="material-symbols-outlined text-[16px] text-indigo-600">visibility</span>
+                                                        <span>Bill Document Preview</span>
+                                                    </h3>
+
+                                                    <div className="mt-3">
+                                                        {billAuditForm.filePreview && billAuditForm.fileType === "image" ? (
+                                                            <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-50 max-h-[260px] flex items-center justify-center">
+                                                                <img
+                                                                    src={billAuditForm.filePreview}
+                                                                    alt="Uploaded Bill Preview"
+                                                                    className="max-h-[250px] w-auto object-contain rounded"
+                                                                />
+                                                            </div>
+                                                        ) : billAuditForm.filePreview && billAuditForm.fileType === "pdf" ? (
+                                                            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 text-center space-y-2">
+                                                                <span className="material-symbols-outlined text-[36px] text-rose-500">picture_as_pdf</span>
+                                                                <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">{billAuditForm.fileName}</p>
+                                                                <p className="text-[10px] text-slate-400">PDF Document attached to audit</p>
+                                                            </div>
+                                                        ) : billAuditForm.fileType === "excel" ? (
+                                                            <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-center space-y-2">
+                                                                <span className="material-symbols-outlined text-[36px] text-emerald-600">table_view</span>
+                                                                <p className="text-xs font-bold text-emerald-900 dark:text-emerald-200 truncate">{billAuditForm.fileName}</p>
+                                                                <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                                                                    Parsed spreadsheet loaded for line-by-line comparison
+                                                                </p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/20 text-center space-y-2">
+                                                                <span className="material-symbols-outlined text-[32px] text-slate-300">plagiarism</span>
+                                                                <p className="text-xs font-bold text-slate-600 dark:text-slate-400">No bill file attached yet</p>
+                                                                <p className="text-[10px] text-slate-400 leading-tight">
+                                                                    Upload your Excel billing spreadsheet, electricity/gas PDF, or invoice photo here to compare figures side-by-side.
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 mt-4 flex items-center justify-between gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setBillAuditForm(prev => ({
+                                                                ...prev,
+                                                                billedUnits: "",
+                                                                billedAmount: "",
+                                                                billedOpeningMeter: "",
+                                                                billedClosingMeter: "",
+                                                                billNumber: "",
+                                                                fileName: "",
+                                                                filePreview: null,
+                                                                fileType: "",
+                                                                parsedDateWiseBilled: {},
+                                                                parsedSummary: null
+                                                            }));
+                                                        }}
+                                                        className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-bold transition bg-transparent cursor-pointer"
+                                                    >
+                                                        Clear
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleSaveBillAudit}
+                                                        disabled={!billAuditAnalysis || !billAuditForm.billedUnits}
+                                                        className={`px-4 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 border-none shadow-xs ${
+                                                            !billAuditAnalysis || !billAuditForm.billedUnits
+                                                                ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                                                                : "bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer shadow-indigo-500/20"
+                                                        }`}
+                                                    >
+                                                        <span className="material-symbols-outlined text-[16px]">save</span>
+                                                        <span>Save Audit Report</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Reconciliation Results Section */}
+                                        {billAuditAnalysis && (
+                                            <div className="space-y-6 animate-fadeIn">
+                                                {/* Big Executive Status Banner */}
+                                                <div className={`p-4 sm:p-5 rounded-2xl border transition-all shadow-xs ${
+                                                    billAuditAnalysis.status === "MATCHED"
+                                                        ? "bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-200"
+                                                        : billAuditAnalysis.status === "OVERBILLED"
+                                                        ? "bg-rose-50/90 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800 text-rose-950 dark:text-rose-200"
+                                                        : billAuditAnalysis.status === "SYSTEM_HIGHER"
+                                                        ? "bg-sky-50/90 dark:bg-sky-950/30 border-sky-300 dark:border-sky-800 text-sky-950 dark:text-sky-200"
+                                                        : "bg-amber-50/90 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800 text-amber-950 dark:text-amber-200"
+                                                }`}>
+                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                        <div className="flex items-start gap-3.5">
+                                                            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+                                                                billAuditAnalysis.status === "MATCHED"
+                                                                    ? "bg-emerald-500 text-white"
+                                                                    : billAuditAnalysis.status === "OVERBILLED"
+                                                                    ? "bg-rose-500 text-white"
+                                                                    : billAuditAnalysis.status === "SYSTEM_HIGHER"
+                                                                    ? "bg-sky-500 text-white"
+                                                                    : "bg-amber-500 text-white"
+                                                            }`}>
+                                                                <span className="material-symbols-outlined text-[26px]">
+                                                                    {billAuditAnalysis.status === "MATCHED" ? "verified" :
+                                                                     billAuditAnalysis.status === "OVERBILLED" ? "report_problem" :
+                                                                     billAuditAnalysis.status === "SYSTEM_HIGHER" ? "info" : "warning"}
+                                                                </span>
+                                                            </div>
+
+                                                            <div>
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <h3 className="text-base font-extrabold tracking-tight uppercase">
+                                                                        {billAuditAnalysis.status === "MATCHED" && "Bill Reconciled & Verified (Accurate Match)"}
+                                                                        {billAuditAnalysis.status === "OVERBILLED" && "Discrepancy Alert: Overbilling Detected on Vendor Bill!"}
+                                                                        {billAuditAnalysis.status === "SYSTEM_HIGHER" && "Variance Detected: Factory Meter Recorded Higher Units"}
+                                                                        {billAuditAnalysis.status === "NO_DATA" && "No Daily Meter Logs Found for this Period"}
+                                                                    </h3>
+                                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                                                        billAuditAnalysis.status === "MATCHED" ? "bg-emerald-200/80 text-emerald-900" :
+                                                                        billAuditAnalysis.status === "OVERBILLED" ? "bg-rose-200/80 text-rose-900" :
+                                                                        billAuditAnalysis.status === "SYSTEM_HIGHER" ? "bg-sky-200/80 text-sky-900" : "bg-amber-200/80 text-amber-900"
+                                                                    }`}>
+                                                                        {billAuditAnalysis.status === "MATCHED" ? "MATCH (±1.5%)" :
+                                                                         billAuditAnalysis.status === "OVERBILLED" ? `+${fmtNum(billAuditAnalysis.variancePercent, 1)}% OVER` :
+                                                                         `${fmtNum(billAuditAnalysis.variancePercent, 1)}% DIFF`}
+                                                                    </span>
+                                                                </div>
+
+                                                                <p className="text-xs mt-1 leading-relaxed opacity-90">
+                                                                    {billAuditAnalysis.status === "MATCHED" &&
+                                                                        `Vendor bill of ${fmtNum(billAuditAnalysis.billedUnits)} ${billAuditAnalysis.utility.unit} closely aligns with the factory meter logs of ${fmtNum(billAuditAnalysis.systemUnits)} ${billAuditAnalysis.utility.unit} for ${billAuditAnalysis.plantName} (${billAuditAnalysis.loggedDays} of ${billAuditAnalysis.totalDays} days recorded).`}
+                                                                    {billAuditAnalysis.status === "OVERBILLED" &&
+                                                                        `The vendor bill charges for ${fmtNum(billAuditAnalysis.varianceUnits)} ${billAuditAnalysis.utility.unit} more than factory meters logged. At the plant tariff rate of ₹ ${fmtNum(billAuditAnalysis.tariffRate, 2)} / unit, this represents an estimated excess billing cost of ₹ ${fmtNum(Math.abs(billAuditAnalysis.varianceCost))}.`}
+                                                                    {billAuditAnalysis.status === "SYSTEM_HIGHER" &&
+                                                                        `Internal factory meters logged ${fmtNum(Math.abs(billAuditAnalysis.varianceUnits))} ${billAuditAnalysis.utility.unit} more than the vendor billed. Verify meter reading rollover, DG power or auxiliary internal submeters.`}
+                                                                    {billAuditAnalysis.status === "NO_DATA" &&
+                                                                        `No daily operations entries were recorded for plant ${billAuditAnalysis.plantName} between ${billAuditForm.startDate} and ${billAuditForm.endDate}.`}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Right badge */}
+                                                        <div className="text-right shrink-0">
+                                                            <div className="text-[10px] uppercase tracking-wider font-bold opacity-75">Cost Variance Impact</div>
+                                                            <div className={`text-lg font-mono font-black ${
+                                                                billAuditAnalysis.varianceCost > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
+                                                            }`}>
+                                                                {billAuditAnalysis.varianceCost >= 0 ? "+" : "-"} ₹ {fmtNum(Math.abs(billAuditAnalysis.varianceCost))}
+                                                            </div>
+                                                            <div className="text-[10px] opacity-70 font-mono">Tariff: ₹ {fmtNum(billAuditAnalysis.tariffRate, 2)} / {billAuditAnalysis.utility.unit}</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Missing days alert if any */}
+                                                    {billAuditAnalysis.missingDays.length > 0 && (
+                                                        <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200 font-medium">
+                                                            <span className="material-symbols-outlined text-[16px] text-amber-600">event_busy</span>
+                                                            <span>
+                                                                <strong>Data Gap Notice:</strong> {billAuditAnalysis.missingDays.length} day(s) have no daily meter reading recorded in software (e.g. {billAuditAnalysis.missingDays.slice(0, 3).map(d => d.date).join(", ")}{billAuditAnalysis.missingDays.length > 3 ? "..." : ""}).
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 4 Metric Cards Grid */}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                    {/* 1. Billed Units */}
+                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
+                                                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider">Vendor Billed Usage</span>
+                                                            <span className="material-symbols-outlined text-[18px] text-indigo-500">receipt</span>
+                                                        </div>
+                                                        <div className="text-xl font-black font-mono text-slate-900 dark:text-slate-100">
+                                                            {fmtNum(billAuditAnalysis.billedUnits)} <span className="text-xs font-bold text-slate-400">{billAuditAnalysis.utility.unit}</span>
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-500 font-semibold mt-1">
+                                                            {billAuditAnalysis.billedAmount > 0 ? `Billed Amt: ₹ ${fmtNum(billAuditAnalysis.billedAmount)}` : "No amount entered"}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 2. System Units */}
+                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
+                                                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider">Plant Meter Logged</span>
+                                                            <span className="material-symbols-outlined text-[18px] text-emerald-500">speed</span>
+                                                        </div>
+                                                        <div className="text-xl font-black font-mono text-slate-900 dark:text-slate-100">
+                                                            {fmtNum(billAuditAnalysis.systemUnits)} <span className="text-xs font-bold text-slate-400">{billAuditAnalysis.utility.unit}</span>
+                                                        </div>
+                                                        <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1">
+                                                            {billAuditAnalysis.loggedDays} of {billAuditAnalysis.totalDays} Days Logged in Month
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 3. Variance Units & % */}
+                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
+                                                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider">Consumption Variance</span>
+                                                            <span className="material-symbols-outlined text-[18px] text-sky-500">compare_arrows</span>
+                                                        </div>
+                                                        <div className={`text-xl font-black font-mono ${
+                                                            billAuditAnalysis.varianceUnits > 0 ? 'text-rose-600' : billAuditAnalysis.varianceUnits < 0 ? 'text-sky-600' : 'text-emerald-600'
+                                                        }`}>
+                                                            {billAuditAnalysis.varianceUnits > 0 ? "+" : ""}{fmtNum(billAuditAnalysis.varianceUnits)} <span className="text-xs font-bold text-slate-400">{billAuditAnalysis.utility.unit}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between mt-1 text-[11px] font-semibold text-slate-500">
+                                                            <span>Variance %:</span>
+                                                            <span className="font-mono font-bold">{fmtNum(billAuditAnalysis.variancePercent, 2)}%</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* 4. Financial Cost Variance */}
+                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
+                                                        <div className="flex items-center justify-between text-slate-400 mb-1">
+                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider">Est. Financial Impact</span>
+                                                            <span className="material-symbols-outlined text-[18px] text-amber-500">payments</span>
+                                                        </div>
+                                                        <div className={`text-xl font-black font-mono ${
+                                                            billAuditAnalysis.varianceCost > 0 ? 'text-rose-600' : billAuditAnalysis.varianceCost < 0 ? 'text-sky-600' : 'text-emerald-600'
+                                                        }`}>
+                                                            {billAuditAnalysis.varianceCost >= 0 ? "+" : "-"} ₹ {fmtNum(Math.abs(billAuditAnalysis.varianceCost))}
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-400 font-semibold mt-1">
+                                                            Meter Cost: ₹ {fmtNum(billAuditAnalysis.systemCost)}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Deep Alignment Diagnostics: Dimension 2 (Meter Baseline) & Dimension 4 (Tariff Surcharge) */}
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {/* Card A: Meter Baseline Alignment (Opening & Closing Reading Check) */}
+                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
+                                                        <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800 mb-3">
+                                                            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                                                                <span className="material-symbols-outlined text-indigo-600 text-[18px]">swap_driving_apps</span>
+                                                                <span>Meter Baseline Reading Alignment</span>
+                                                            </h4>
+                                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                                                                billAuditAnalysis.openingGap === null
+                                                                    ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                                                                    : Math.abs(billAuditAnalysis.openingGap) <= 10
+                                                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                                                    : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                                            }`}>
+                                                                {billAuditAnalysis.openingGap === null ? "Manual Reading" : Math.abs(billAuditAnalysis.openingGap) <= 10 ? "Baseline Matched" : "Baseline Jump Gap"}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-3 text-xs">
+                                                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800">
+                                                                <div className="text-[10px] text-slate-400 uppercase font-bold">Month Opening Reading</div>
+                                                                <div className="mt-1 flex items-baseline justify-between">
+                                                                    <span className="text-[11px] text-slate-500">Bill:</span>
+                                                                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                                                        {billAuditForm.billedOpeningMeter || "Not provided"}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="mt-0.5 flex items-baseline justify-between">
+                                                                    <span className="text-[11px] text-slate-500">Factory:</span>
+                                                                    <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                                                        {billAuditAnalysis.firstFactoryOpening !== null ? fmtNum(billAuditAnalysis.firstFactoryOpening) : "No log"}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px]">
+                                                                    <span className="font-medium text-slate-500">Initial Gap:</span>
+                                                                    <span className={`font-mono font-black ${
+                                                                        billAuditAnalysis.openingGap === null ? 'text-slate-400' :
+                                                                        Math.abs(billAuditAnalysis.openingGap) > 10 ? 'text-amber-600' : 'text-emerald-600'
+                                                                    }`}>
+                                                                        {billAuditAnalysis.openingGap !== null ? `${billAuditAnalysis.openingGap > 0 ? '+' : ''}${fmtNum(billAuditAnalysis.openingGap)} ${billAuditAnalysis.utility.unit}` : "—"}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800">
+                                                                <div className="text-[10px] text-slate-400 uppercase font-bold">Month Closing Reading</div>
+                                                                <div className="mt-1 flex items-baseline justify-between">
+                                                                    <span className="text-[11px] text-slate-500">Bill:</span>
+                                                                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                                                        {billAuditForm.billedClosingMeter || "Not provided"}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="mt-0.5 flex items-baseline justify-between">
+                                                                    <span className="text-[11px] text-slate-500">Factory:</span>
+                                                                    <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                                                        {billAuditAnalysis.lastFactoryClosing !== null ? fmtNum(billAuditAnalysis.lastFactoryClosing) : "No log"}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="mt-1.5 pt-1.5 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px]">
+                                                                    <span className="font-medium text-slate-500">Closing Gap:</span>
+                                                                    <span className={`font-mono font-black ${
+                                                                        billAuditAnalysis.closingGap === null ? 'text-slate-400' :
+                                                                        Math.abs(billAuditAnalysis.closingGap) > 10 ? 'text-amber-600' : 'text-emerald-600'
+                                                                    }`}>
+                                                                        {billAuditAnalysis.closingGap !== null ? `${billAuditAnalysis.closingGap > 0 ? '+' : ''}${fmtNum(billAuditAnalysis.closingGap)} ${billAuditAnalysis.utility.unit}` : "—"}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <p className="text-[10px] text-slate-400 mt-2">
+                                                            {billAuditAnalysis.openingGap !== null && Math.abs(billAuditAnalysis.openingGap) > 10
+                                                                ? "⚠ Warning: Opening baseline reading differs. Check if previous month's bill had estimated units."
+                                                                : "✓ Opening baseline is aligned with factory meter readings."}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Card B: Tariff Rate & Overcharge Surcharge Analysis */}
+                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
+                                                        <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800 mb-3">
+                                                            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                                                                <span className="material-symbols-outlined text-amber-600 text-[18px]">price_change</span>
+                                                                <span>Tariff Rate & Overcharge Surcharge</span>
+                                                            </h4>
+                                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                                                                billAuditAnalysis.effectiveBilledRate === null
+                                                                    ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                                                                    : billAuditAnalysis.tariffRateDiff > 0.05
+                                                                    ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                                                                    : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                                            }`}>
+                                                                {billAuditAnalysis.effectiveBilledRate === null ? "No Amount Entered" : billAuditAnalysis.tariffRateDiff > 0.05 ? "Rate Surcharge Detected" : "Rate Matched"}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-3 text-xs">
+                                                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800">
+                                                                <div className="text-[10px] text-slate-400 uppercase font-bold">Approved Tariff Rate</div>
+                                                                <div className="text-base font-black font-mono text-slate-800 dark:text-slate-200 mt-1">
+                                                                    ₹ {fmtNum(billAuditAnalysis.tariffRate, 2)}
+                                                                </div>
+                                                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                                                    Standard rate for {billAuditAnalysis.plantCode}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800">
+                                                                <div className="text-[10px] text-slate-400 uppercase font-bold">Effective Billed Rate</div>
+                                                                <div className="text-base font-black font-mono text-indigo-600 dark:text-indigo-400 mt-1">
+                                                                    {billAuditAnalysis.effectiveBilledRate !== null ? `₹ ${fmtNum(billAuditAnalysis.effectiveBilledRate, 2)}` : "—"}
+                                                                </div>
+                                                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                                                    Billed Amount ÷ Billed Units
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="mt-3 p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 flex items-center justify-between text-xs">
+                                                            <div className="flex items-center gap-1.5 text-amber-900 dark:text-amber-200 font-bold">
+                                                                <span className="material-symbols-outlined text-[16px] text-amber-600">payments</span>
+                                                                <span>Extra Cost Due to Rate Surcharge:</span>
+                                                            </div>
+                                                            <div className={`font-mono font-black text-sm ${
+                                                                billAuditAnalysis.tariffExtraCost > 0 ? 'text-rose-600' : 'text-slate-600'
+                                                            }`}>
+                                                                ₹ {fmtNum(billAuditAnalysis.tariffExtraCost)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Dimension 5: AI-Style Root Cause Diagnostic Findings ("Kahan Kya Difference Hai") */}
+                                                <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs">
+                                                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                                                                <span className="material-symbols-outlined text-[18px]">psychology</span>
+                                                            </span>
+                                                            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                                                                Automated Diagnostic Findings & Root Cause Analysis
+                                                            </h3>
+                                                        </div>
+                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+                                                            {billAuditAnalysis.diagnosticFindings.length} Insights Identified
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        {billAuditAnalysis.diagnosticFindings.map(finding => {
+                                                            const isCrit = finding.severity === "critical";
+                                                            const isDang = finding.severity === "danger";
+                                                            const isWarn = finding.severity === "warning";
+                                                            const isInfo = finding.severity === "info";
+                                                            const isSucc = finding.severity === "success";
+
+                                                            const borderClass = isCrit
+                                                                ? "border-rose-400 bg-rose-50/50 dark:bg-rose-950/20"
+                                                                : isDang
+                                                                ? "border-red-300 bg-red-50/40 dark:bg-red-950/20"
+                                                                : isWarn
+                                                                ? "border-amber-300 bg-amber-50/40 dark:bg-amber-950/20"
+                                                                : isInfo
+                                                                ? "border-sky-300 bg-sky-50/40 dark:bg-sky-950/20"
+                                                                : "border-emerald-300 bg-emerald-50/40 dark:bg-emerald-950/20";
+
+                                                            const badgeColor = isCrit || isDang
+                                                                ? "bg-rose-500 text-white"
+                                                                : isWarn
+                                                                ? "bg-amber-500 text-white"
+                                                                : isInfo
+                                                                ? "bg-sky-500 text-white"
+                                                                : "bg-emerald-500 text-white";
+
+                                                            return (
+                                                                <div
+                                                                    key={finding.id}
+                                                                    className={`p-3.5 rounded-xl border ${borderClass} transition flex items-start gap-3`}
+                                                                >
+                                                                    <div className={`w-8 h-8 rounded-xl ${badgeColor} flex items-center justify-center shrink-0 shadow-2xs mt-0.5`}>
+                                                                        <span className="material-symbols-outlined text-[18px]">
+                                                                            {finding.icon}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 truncate">
+                                                                                {finding.title}
+                                                                            </h4>
+                                                                            <span className="text-[9px] uppercase font-mono font-extrabold px-1.5 py-0.2 rounded bg-white/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
+                                                                                {finding.severity}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                                                                            {finding.description}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                {/* Comparative Bar Visualization */}
+                                                <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                                            <span className="material-symbols-outlined text-[16px] text-indigo-600">stacked_bar_chart</span>
+                                                            <span>Billed vs Actual Consumption Alignment</span>
+                                                        </span>
+                                                        <span className="text-xs font-mono font-bold text-slate-500">
+                                                            Match Ratio: {billAuditAnalysis.billedUnits > 0 ? fmtNum((billAuditAnalysis.systemUnits / billAuditAnalysis.billedUnits) * 100, 1) : 0}%
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Progress bar stack */}
+                                                    <div className="w-full h-4 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
+                                                        <div
+                                                            className="bg-emerald-500 h-full transition-all duration-500"
+                                                            style={{
+                                                                width: `${Math.min(100, (billAuditAnalysis.systemUnits / (Math.max(billAuditAnalysis.billedUnits, billAuditAnalysis.systemUnits) || 1)) * 100)}%`
+                                                            }}
+                                                            title={`Factory Meter Units: ${fmtNum(billAuditAnalysis.systemUnits)}`}
+                                                        />
+                                                        {billAuditAnalysis.varianceUnits > 0 && (
+                                                            <div
+                                                                className="bg-rose-500 h-full transition-all duration-500"
+                                                                style={{
+                                                                    width: `${Math.min(100, (billAuditAnalysis.varianceUnits / (Math.max(billAuditAnalysis.billedUnits, billAuditAnalysis.systemUnits) || 1)) * 100)}%`
+                                                                }}
+                                                                title={`Excess Billed Units: ${fmtNum(billAuditAnalysis.varianceUnits)}`}
+                                                            />
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mt-2">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                                                            <span>Plant Meter Consumption: <strong>{fmtNum(billAuditAnalysis.systemUnits)} {billAuditAnalysis.utility.unit}</strong></span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className={`w-2.5 h-2.5 rounded-full ${billAuditAnalysis.varianceUnits > 0 ? 'bg-rose-500' : 'bg-sky-500'} inline-block`}></span>
+                                                            <span>Variance: <strong>{billAuditAnalysis.varianceUnits > 0 ? `+${fmtNum(billAuditAnalysis.varianceUnits)}` : fmtNum(billAuditAnalysis.varianceUnits)} {billAuditAnalysis.utility.unit}</strong></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Main Tab 2: Date-by-Date Difference Inspector */}
+                                {activeAuditTab === "daily" && billAuditAnalysis && (
+                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs space-y-4 animate-fadeIn">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                                            <div>
+                                                <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
+                                                    <span className="material-symbols-outlined text-indigo-600">calendar_view_day</span>
+                                                    <span>Date-by-Date Difference Inspector ({billAuditAnalysis.utility.label})</span>
+                                                </h3>
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    Showing day-by-day meter comparison for {billAuditAnalysis.plantName} from {billAuditForm.startDate} to {billAuditForm.endDate}.
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                {/* Discrepant filter toggle */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBillAuditForm(prev => ({ ...prev, showOnlyDiscrepant: !prev.showOnlyDiscrepant }))}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
+                                                        billAuditForm.showOnlyDiscrepant
+                                                            ? "bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-800 dark:text-rose-200 shadow-2xs"
+                                                            : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
+                                                    }`}
+                                                >
+                                                    <span className="material-symbols-outlined text-[16px]">
+                                                        {billAuditForm.showOnlyDiscrepant ? "filter_alt" : "filter_alt_off"}
+                                                    </span>
+                                                    <span>
+                                                        {billAuditForm.showOnlyDiscrepant
+                                                            ? `Showing Only Discrepant Days (${billAuditAnalysis.discrepantDays.length})`
+                                                            : `Show Only Discrepant Days (${billAuditAnalysis.discrepantDays.length})`}
+                                                    </span>
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={exportAuditBreakdownXLSX}
+                                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 border-none shadow-xs cursor-pointer"
+                                                >
+                                                    <span className="material-symbols-outlined text-[15px]">download</span>
+                                                    <span>Export Excel (.xlsx)</span>
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={exportAuditBreakdownCSV}
+                                                    className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 border-none cursor-pointer"
+                                                >
+                                                    <span className="material-symbols-outlined text-[15px]">csv</span>
+                                                    <span>CSV</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Difference Status Badges Legend */}
+                                        <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex-wrap">
+                                            <span className="uppercase text-slate-400 font-extrabold mr-1">Status Legend:</span>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200/80">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>
+                                                <span>Missing Meter Log</span>
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200/80">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
+                                                <span>Consumption Surge Spike</span>
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300 border border-sky-200/80">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-sky-600"></span>
+                                                <span>Unit Variance (&gt;30)</span>
+                                            </span>
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200/80">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                                                <span>Accurate Match (±30)</span>
+                                            </span>
+                                        </div>
+
+                                        {/* Discrepancy Table */}
+                                        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 max-h-[520px]">
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase text-[10px] font-extrabold tracking-wider z-10">
+                                                    <tr>
+                                                        <th className="py-2.5 px-3">#</th>
+                                                        <th className="py-2.5 px-3">Date</th>
+                                                        <th className="py-2.5 px-3">Day</th>
+                                                        <th className="py-2.5 px-3">Dept</th>
+                                                        <th className="py-2.5 px-3 text-right">Factory Opening</th>
+                                                        <th className="py-2.5 px-3 text-right">Factory Closing</th>
+                                                        <th className="py-2.5 px-3 text-right bg-slate-200/40 dark:bg-slate-700/40">
+                                                            Plant Meter ({billAuditAnalysis.utility.unit})
+                                                        </th>
+                                                        <th className="py-2.5 px-3 text-right">
+                                                            Billed Units ({billAuditAnalysis.utility.unit})
+                                                        </th>
+                                                        <th className="py-2.5 px-3 text-right">Variance Units</th>
+                                                        <th className="py-2.5 px-3 text-right">Variance %</th>
+                                                        <th className="py-2.5 px-3 text-right">Meter Cost (₹)</th>
+                                                        <th className="py-2.5 px-3 text-center">Status / Finding</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                                                    {(billAuditForm.showOnlyDiscrepant ? billAuditAnalysis.discrepantDays : billAuditAnalysis.dailyBreakdown).map((row, idx) => {
+                                                        const dtObj = new Date(row.date + "T00:00:00");
+                                                        const dayName = dtObj.toLocaleDateString("en-US", { weekday: "short" });
+                                                        const isSunday = dtObj.getDay() === 0;
+
+                                                        const rowBg = !row.hasData
+                                                            ? "bg-rose-50/50 dark:bg-rose-950/20"
+                                                            : row.hasSpike
+                                                            ? "bg-amber-50/50 dark:bg-amber-950/20"
+                                                            : row.isDiscrepant
+                                                            ? "bg-sky-50/40 dark:bg-sky-950/15"
+                                                            : isSunday
+                                                            ? "bg-slate-50/40 dark:bg-slate-900/30"
+                                                            : "";
+
+                                                        return (
+                                                            <tr key={row.date} className={`hover:bg-slate-100/70 dark:hover:bg-slate-800/50 transition ${rowBg}`}>
+                                                                <td className="py-2 px-3 text-[10px] text-slate-400 font-mono">
+                                                                    {idx + 1}
+                                                                </td>
+                                                                <td className="py-2 px-3 font-mono font-bold text-slate-800 dark:text-slate-200">
+                                                                    {row.date}
+                                                                </td>
+                                                                <td className={`py-2 px-3 font-semibold text-[11px] ${isSunday ? 'text-amber-600' : 'text-slate-500'}`}>
+                                                                    {dayName}
+                                                                </td>
+                                                                <td className="py-2 px-3 text-[11px] text-slate-500 uppercase font-mono">
+                                                                    {row.department || "PROD"}
+                                                                </td>
+                                                                <td className="py-2 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
+                                                                    {row.opening !== null ? fmtNum(row.opening) : "—"}
+                                                                </td>
+                                                                <td className="py-2 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
+                                                                    {row.closing !== null ? fmtNum(row.closing) : "—"}
+                                                                </td>
+                                                                <td className="py-2 px-3 text-right font-mono font-black text-indigo-900 dark:text-indigo-200 bg-slate-200/20 dark:bg-slate-700/20">
+                                                                    {fmtNum(row.units)}
+                                                                </td>
+                                                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                                                                    {row.billedDayUnits !== null ? (
+                                                                        <span className="inline-flex items-center gap-1 justify-end">
+                                                                            <span>{fmtNum(row.billedDayUnits)}</span>
+                                                                            <span className={`text-[9px] px-1 py-0.2 rounded ${row.hasBilledRow ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-mono' : 'bg-slate-100 text-slate-500 font-mono'}`}>
+                                                                                {row.hasBilledRow ? 'Excel' : 'Avg'}
+                                                                            </span>
+                                                                        </span>
+                                                                    ) : "—"}
+                                                                </td>
+                                                                <td className={`py-2 px-3 text-right font-mono font-bold ${
+                                                                    row.dayVariance > 30 ? 'text-rose-600' : row.dayVariance < -30 ? 'text-sky-600' : 'text-emerald-600'
+                                                                }`}>
+                                                                    {row.billedDayUnits !== null
+                                                                        ? `${row.dayVariance > 0 ? '+' : ''}${fmtNum(row.dayVariance)}`
+                                                                        : "—"}
+                                                                </td>
+                                                                <td className="py-2 px-3 text-right font-mono text-[11px] text-slate-500">
+                                                                    {row.billedDayUnits !== null && row.billedDayUnits > 0
+                                                                        ? `${fmtNum(row.dayVariancePercent, 1)}%`
+                                                                        : "—"}
+                                                                </td>
+                                                                <td className="py-2 px-3 text-right font-mono text-slate-700 dark:text-slate-300">
+                                                                    ₹ {fmtNum(row.cost || (row.units * billAuditAnalysis.tariffRate))}
+                                                                </td>
+                                                                <td className="py-2 px-3 text-center">
+                                                                    {!row.hasData ? (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200/80">
+                                                                            <span className="material-symbols-outlined text-[12px]">event_busy</span>
+                                                                            <span>Missing Log</span>
+                                                                        </span>
+                                                                    ) : row.hasSpike ? (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200/80">
+                                                                            <span className="material-symbols-outlined text-[12px]">bolt</span>
+                                                                            <span>Surge Spike</span>
+                                                                        </span>
+                                                                    ) : row.isDiscrepant ? (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300 border border-sky-200/80">
+                                                                            <span className="material-symbols-outlined text-[12px]">compare_arrows</span>
+                                                                            <span>Diff Alert</span>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200/80">
+                                                                            <span className="material-symbols-outlined text-[12px]">check</span>
+                                                                            <span>Matched</span>
+                                                                        </span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                                <tfoot className="sticky bottom-0 bg-slate-200/95 dark:bg-slate-800 text-slate-900 dark:text-white font-extrabold text-xs">
+                                                    <tr>
+                                                        <td colSpan={6} className="py-2.5 px-3 uppercase tracking-wider">
+                                                            Total Month Recorded & Billed Summary:
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-right font-mono text-indigo-900 dark:text-indigo-200 text-sm">
+                                                            {fmtNum(billAuditAnalysis.systemUnits)} {billAuditAnalysis.utility.unit}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-right font-mono text-slate-800 dark:text-slate-200 text-sm">
+                                                            {fmtNum(billAuditAnalysis.billedUnits)} {billAuditAnalysis.utility.unit}
+                                                        </td>
+                                                        <td className={`py-2.5 px-3 text-right font-mono ${
+                                                            billAuditAnalysis.varianceUnits > 0 ? 'text-rose-600' : 'text-emerald-600'
+                                                        }`}>
+                                                            {billAuditAnalysis.varianceUnits > 0 ? '+' : ''}{fmtNum(billAuditAnalysis.varianceUnits)}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-right font-mono">
+                                                            {fmtNum(billAuditAnalysis.variancePercent, 1)}%
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-right font-mono">
+                                                            ₹ {fmtNum(billAuditAnalysis.systemCost)}
+                                                        </td>
+                                                        <td className="py-2.5 px-3 text-center text-[10px]">
+                                                            {billAuditAnalysis.loggedDays}/{billAuditAnalysis.totalDays} Days Logged
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Main Tab 3: Saved Audit History */}
+                                {activeAuditTab === "history" && (
+                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs space-y-4 animate-fadeIn">
+                                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                                            <div>
+                                                <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
+                                                    <span className="material-symbols-outlined text-indigo-600">history_edu</span>
+                                                    <span>Verified Bill Audit History ({billAudits.length})</span>
+                                                </h3>
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    Permanent audit record of past verified invoices, discrepancy diagnoses, and approval statuses.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {billAudits.length === 0 ? (
+                                            <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                                                <span className="material-symbols-outlined text-[36px] text-slate-300">receipt</span>
+                                                <p className="text-xs font-bold text-slate-600 dark:text-slate-400">No saved audit records found</p>
+                                                <p className="text-[11px] text-slate-400">
+                                                    Reconcile an invoice in the "Audit & Overview" tab and click "Save Audit Report" to maintain a permanent history log.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left text-xs border-collapse">
+                                                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase text-[10px] font-extrabold tracking-wider">
+                                                        <tr>
+                                                            <th className="py-2.5 px-3">Date Audited</th>
+                                                            <th className="py-2.5 px-3">Utility</th>
+                                                            <th className="py-2.5 px-3">Plant</th>
+                                                            <th className="py-2.5 px-3">Billing Period</th>
+                                                            <th className="py-2.5 px-3 text-right">Billed Units</th>
+                                                            <th className="py-2.5 px-3 text-right">System Units</th>
+                                                            <th className="py-2.5 px-3 text-right">Variance</th>
+                                                            <th className="py-2.5 px-3 text-center">Status</th>
+                                                            <th className="py-2.5 px-3 text-right">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                                                        {billAudits.map((item) => (
+                                                            <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                                                                <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                                                                    {(item.createdAt || "").slice(0, 10)}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200">
+                                                                    {item.utilityLabel}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 font-semibold text-slate-700 dark:text-slate-300">
+                                                                    {item.plantName || item.plant}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                                                                    {item.startDate} to {item.endDate}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
+                                                                    {fmtNum(item.billedUnits)} {item.utilityUnit}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-900 dark:text-indigo-300">
+                                                                    {fmtNum(item.systemUnits)} {item.utilityUnit}
+                                                                </td>
+                                                                <td className={`py-2.5 px-3 text-right font-mono font-bold ${
+                                                                    item.varianceUnits > 0 ? 'text-rose-600' : 'text-emerald-600'
+                                                                }`}>
+                                                                    {item.varianceUnits > 0 ? `+${fmtNum(item.varianceUnits)}` : fmtNum(item.varianceUnits)} ({fmtNum(item.variancePercent, 1)}%)
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center">
+                                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
+                                                                        item.status === "MATCHED" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                                                                        item.status === "OVERBILLED" ? "bg-rose-50 text-rose-700 border border-rose-200" :
+                                                                        "bg-sky-50 text-sky-700 border border-sky-200"
+                                                                    }`}>
+                                                                        {item.status}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-right">
+                                                                    <div className="flex items-center justify-end gap-1.5">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleLoadSavedAudit(item)}
+                                                                            className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold border-none cursor-pointer"
+                                                                            title="Load into Reconciler"
+                                                                        >
+                                                                            View
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleDeleteBillAudit(item.id)}
+                                                                            className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 border-none cursor-pointer"
+                                                                            title="Delete record"
+                                                                        >
+                                                                            <span className="material-symbols-outlined text-[15px]">delete</span>
+                                                                        </button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -7602,6 +9978,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                             <span className="capitalize font-bold text-slate-700 dark:text-slate-300">
                                                                                 {row[h]}
                                                                             </span>
+                                                                        ) : h === "plant_code" && (selectedMasterTable === "tariff_rates" || selectedMasterTable === "multiply_factors") ? (
+                                                                            row[h] ? (
+                                                                                <span className="font-bold text-slate-800 dark:text-slate-200">
+                                                                                    {row[h]}
+                                                                                    {plants.find(p => String(p.plant_code) === String(row[h]))?.plant_name ? (
+                                                                                        <span className="text-[10px] text-slate-400 font-normal ml-1.5">
+                                                                                            ({plants.find(p => String(p.plant_code) === String(row[h]))?.plant_name})
+                                                                                        </span>
+                                                                                    ) : null}
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="text-[10.5px] italic text-amber-600 dark:text-amber-400 font-semibold">
+                                                                                    Global Fallback
+                                                                                </span>
+                                                                            )
                                                                         ) : (h === "allowed_locations" || h === "allowed_plants") && row[h] === "all" ? (
                                                                             <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-100">
                                                                                 ALL
@@ -8614,12 +11005,17 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                 value={masterFormValues[h] || ""}
                                                                 onChange={(e) => setMasterFormValues({ ...masterFormValues, [h]: e.target.value || null })}
                                                                 className="w-full h-10 rounded-xl border border-slate-200 px-3 text-[12.5px] font-semibold bg-white focus:outline-none"
+                                                                required={currentUser?.role !== "IT_ADMIN"}
                                                             >
-                                                                <option value="">Global Location Fallback (No Plant)</option>
-                                                                {(currentUser.role === "IT_ADMIN" ? plants : allowedPlants)
+                                                                {currentUser?.role === "IT_ADMIN" ? (
+                                                                    <option value="">Global Location Fallback (No Plant)</option>
+                                                                ) : (
+                                                                    <option value="" disabled>Select Plant</option>
+                                                                )}
+                                                                {(currentUser?.role === "IT_ADMIN" ? plants : allowedPlants)
                                                                     .filter(p => !masterFormValues.location || p.location.toUpperCase() === masterFormValues.location.toUpperCase())
                                                                     .map(p => (
-                                                                        <option key={p.plant_code} value={p.plant_code}>{p.plant_code} - {p.plant_name}</option>
+                                                                        <option key={p.plant_code} value={p.plant_code}>{p.plant_code} - {p.plant_display_name || p.plant_name}</option>
                                                                     ))
                                                                 }
                                                             </select>
@@ -9711,6 +12107,179 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     )}
                 </div>
                 <IdleScreensaver logoSrc={PG_LOGO_BASE_64} idleMinutes={idleMinutes} />
+
+            {/* MOLDING OPERATIONAL DAILY ENTRY MODAL */}
+            {isMoldingModalOpen && (
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-[#121a29] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/50">
+                            <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-cyan-600 text-[22px]">precision_manufacturing</span>
+                                <div>
+                                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">
+                                        {moldingFormData.id ? "Edit Molding Log Entry" : "New Molding Daily Entry"}
+                                    </h3>
+                                    <p className="text-[10px] text-slate-400">Record machine power, shot volume and cooling water</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => closeMoldingForm()}
+                                className="h-7 w-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition flex items-center justify-center border-none bg-transparent cursor-pointer"
+                            >
+                                <span className="material-symbols-outlined text-[18px]">close</span>
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleMoldingFormSubmit} className="p-5 space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Date *</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={moldingFormData.date}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, date: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Plant *</label>
+                                    <select
+                                        required
+                                        value={moldingFormData.plant}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, plant: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-bold"
+                                    >
+                                        {allowedPlants.map(p => (
+                                            <option key={p.plant_code} value={p.plant_code}>
+                                                {p.plant_code} - {p.plant_display_name || p.plant_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Machine No / ID *</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="e.g. IMM-01 (150T)"
+                                        value={moldingFormData.machine_no}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, machine_no: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Shift *</label>
+                                    <select
+                                        required
+                                        value={moldingFormData.shift}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, shift: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-bold"
+                                    >
+                                        <option value="Shift A">Shift A (Morning)</option>
+                                        <option value="Shift B">Shift B (Evening)</option>
+                                        <option value="Shift C">Shift C (Night)</option>
+                                        <option value="General">General Shift</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Electricity (kWh) *</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        required
+                                        placeholder="0"
+                                        value={moldingFormData.electricity_consumption}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, electricity_consumption: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-bold text-sky-600"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Parts / Shots Molded *</label>
+                                    <input
+                                        type="number"
+                                        required
+                                        placeholder="0"
+                                        value={moldingFormData.production_shots}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, production_shots: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-bold text-purple-600"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Cooling Water (KL)</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        placeholder="0"
+                                        value={moldingFormData.water_consumption}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, water_consumption: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500 font-bold text-teal-600"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Running Hours</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        placeholder="e.g. 8 or 16"
+                                        value={moldingFormData.running_hours}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, running_hours: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Operator Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Rajesh Sharma"
+                                        value={moldingFormData.operator_name}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, operator_name: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10.5px] font-bold text-slate-600 dark:text-slate-300 block mb-1">Remarks / Notes</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Mould changeover, maintenance..."
+                                        value={moldingFormData.remarks}
+                                        onChange={(e) => setMoldingFormData(prev => ({ ...prev, remarks: e.target.value }))}
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2.5">
+                                <button
+                                    type="button"
+                                    onClick={() => closeMoldingForm()}
+                                    className="h-8 px-3.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-bold transition bg-transparent cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="h-8 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm border-none cursor-pointer"
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">save</span>
+                                    <span>{moldingFormData.id ? "Update Entry" : "Save Log"}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
                 </>
             );
         }

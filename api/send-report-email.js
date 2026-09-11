@@ -42,7 +42,7 @@ export default async function handler(req, res) {
         pass: 'nsxfmjjkskdrbbtt'
       },
       tls: {
-        ciphers: 'SSLv3',
+        minVersion: 'TLSv1.2',
         rejectUnauthorized: false
       }
     });
