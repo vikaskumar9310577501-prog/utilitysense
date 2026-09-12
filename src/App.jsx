@@ -7957,6 +7957,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         {currentUser.name ? currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'U'}
                                     </div>
 
+                                    {/* Quick Theme Switcher */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const themeList = ["light", "dark", "ocean", "emerald"];
+                                            const nextTheme = themeList[(themeList.indexOf(theme) + 1) % themeList.length];
+                                            setTheme(nextTheme);
+                                        }}
+                                        title={`Theme: ${theme.toUpperCase()} (Click to toggle: Daylight / Midnight / Ocean / Emerald)`}
+                                        className="h-9 w-9 rounded-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-amber-500 cursor-pointer transition shadow-xs"
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">
+                                            {theme === "dark" ? "dark_mode" : theme === "ocean" ? "water" : theme === "emerald" ? "eco" : "palette"}
+                                        </span>
+                                    </button>
+
                                     {/* view layout toggle */}
                                     <button
                                         onClick={() => setKpiLayout(kpiLayout === "scroll" ? "grid" : "scroll")}
@@ -9932,36 +9948,43 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         </p>
                                     </div>
 
-                                    {/* All header controls in ONE single horizontal line with NO horizontal scrollbar */}
-                                    <div className="flex items-center gap-1.5 flex-nowrap shrink-0 overflow-x-hidden">
+                                    {/* All header controls in ONE single horizontal line with visible dropdown popovers */}
+                                    <div className="flex items-center gap-1.5 flex-wrap xl:flex-nowrap shrink-0 overflow-visible relative z-30">
                                         {/* Theme Picker */}
                                         <div className="relative shrink-0">
                                             <button
-                                                onClick={() => { setThemePickerOpen(o => !o); setIdlePickerOpen(false); }}
-                                                className="flex items-center gap-1 h-8.5 px-2 border border-slate-200 rounded-xl bg-white text-[11.5px] font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-xs whitespace-nowrap"
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setThemePickerOpen(o => !o);
+                                                    setIdlePickerOpen(false);
+                                                }}
+                                                className="flex items-center gap-1.5 h-8.5 px-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-[11.5px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer shadow-xs whitespace-nowrap transition"
                                                 title="Change Theme"
                                             >
                                                 <span className="material-symbols-outlined text-[16px] text-amber-500">palette</span>
                                                 <span>Theme</span>
+                                                <span className="material-symbols-outlined text-[13px] text-slate-400">arrow_drop_down</span>
                                             </button>
                                             {themePickerOpen && (
                                                 <React.Fragment>
                                                     <div className="fixed inset-0 z-40" onClick={() => setThemePickerOpen(false)}></div>
-                                                    <div className="theme-popover absolute right-0 top-10 z-50 w-48 rounded-2xl border border-slate-200 bg-white shadow-xl p-2">
+                                                    <div className="theme-popover absolute right-0 top-full mt-1.5 z-50 w-52 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl p-2 animate-in fade-in duration-150">
                                                         <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 px-2 pb-1.5 pt-0.5">Choose Theme</p>
                                                         {THEME_OPTIONS.map(opt => (
                                                             <button
                                                                 key={opt.id}
+                                                                type="button"
                                                                 onClick={() => { setTheme(opt.id); setThemePickerOpen(false); }}
-                                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border-none ${theme === opt.id ? "bg-sky-50 text-sky-700 font-bold" : "bg-transparent text-slate-600 hover:bg-slate-50"}`}
+                                                                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer border-none ${theme === opt.id ? "bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 font-bold" : "bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}
                                                             >
                                                                 <span
                                                                     className="h-4.5 w-4.5 rounded-full border border-black/10 shrink-0"
                                                                     style={{ background: opt.swatch }}
                                                                 ></span>
-                                                                {opt.label}
+                                                                <span>{opt.label}</span>
                                                                 {theme === opt.id && (
-                                                                    <span className="material-symbols-outlined text-[15px] ml-auto text-sky-600">check</span>
+                                                                    <span className="material-symbols-outlined text-[15px] ml-auto text-sky-600 dark:text-sky-400">check</span>
                                                                 )}
                                                             </button>
                                                         ))}
@@ -9973,32 +9996,38 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         {/* Idle Screen Saver Selector */}
                                         <div className="relative shrink-0">
                                             <button
-                                                onClick={() => { setIdlePickerOpen(o => !o); setThemePickerOpen(false); }}
-                                                className="flex items-center gap-1 h-8.5 px-2 border border-slate-200 rounded-xl bg-white text-[11.5px] font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-xs whitespace-nowrap"
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setIdlePickerOpen(o => !o);
+                                                    setThemePickerOpen(false);
+                                                }}
+                                                className="flex items-center gap-1.5 h-8.5 px-2.5 border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-[11.5px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer shadow-xs whitespace-nowrap transition"
                                                 title="Idle Screensaver Timeout"
                                             >
                                                 <span className="material-symbols-outlined text-[16px] text-sky-500">timer</span>
                                                 <span>Screensaver ({idleMinutes}m)</span>
+                                                <span className="material-symbols-outlined text-[13px] text-slate-400">arrow_drop_down</span>
                                             </button>
                                             {idlePickerOpen && (
                                                 <React.Fragment>
                                                     <div className="fixed inset-0 z-40" onClick={() => setIdlePickerOpen(false)}></div>
-                                                    <div className="absolute right-0 top-10 z-50 w-48 rounded-2xl border border-slate-200 bg-white shadow-xl p-2">
+                                                    <div className="absolute right-0 top-full mt-1.5 z-50 w-52 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl p-2 animate-in fade-in duration-150">
                                                         <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 px-2 pb-1.5 pt-0.5">Idle Screen</p>
                                                         {IDLE_MINUTE_OPTIONS.map(opt => (
                                                             <button
                                                                 key={opt.value}
                                                                 type="button"
                                                                 onClick={() => { setIdleMinutes(opt.value); setIdlePickerOpen(false); }}
-                                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border-none ${idleMinutes === opt.value ? "bg-sky-50 text-sky-700 font-bold" : "bg-transparent text-slate-600 hover:bg-slate-50"}`}
+                                                                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer border-none ${idleMinutes === opt.value ? "bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 font-bold" : "bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}
                                                             >
-                                                                {opt.label}
+                                                                <span>{opt.label}</span>
                                                                 {idleMinutes === opt.value && (
-                                                                    <span className="material-symbols-outlined text-[15px] ml-auto text-sky-600">check</span>
+                                                                    <span className="material-symbols-outlined text-[15px] ml-auto text-sky-600 dark:text-sky-400">check</span>
                                                                 )}
                                                             </button>
                                                         ))}
-                                                        <div className="pt-1.5 mt-1 border-t border-slate-100">
+                                                        <div className="pt-1.5 mt-1 border-t border-slate-100 dark:border-slate-700">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
@@ -10007,7 +10036,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                         window.__triggerScreensaver();
                                                                     }
                                                                 }}
-                                                                className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-bold bg-sky-50 text-sky-700 hover:bg-sky-100 transition cursor-pointer border-none"
+                                                                className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-bold bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 hover:bg-sky-100 transition cursor-pointer border-none"
                                                             >
                                                                 <span className="material-symbols-outlined text-[15px]">play_circle</span>
                                                                 <span>Preview Screensaver</span>
