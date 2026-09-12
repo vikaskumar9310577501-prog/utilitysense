@@ -5055,7 +5055,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     if (!payload.plant_code) payload.plant_code = null;
                     if (!payload.tariff_id) {
                         const tag = payload.plant_code || payload.location || "TF";
-                        payload.tariff_id = `TF-${String(tag).replace(/\s/g, "").toUpperCase()}-${String(payload.type || "E").slice(0, 1).toUpperCase()}-${String(payload.effective_date || todayStr).replace(/-/g, "")}`;
+                        const typeCode = String(payload.type || "E").slice(0, 3).toUpperCase();
+                        payload.tariff_id = `TF-${String(tag).replace(/\s/g, "").toUpperCase()}-${typeCode}-${String(payload.effective_date || todayStr).replace(/-/g, "")}`;
                     }
                 }
                 if (editingMasterRecord) {
@@ -10504,8 +10505,20 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                                 {row[h]}
                                                                             </span>
                                                                         ) : h === "type" && selectedMasterTable === "tariff_rates" ? (
-                                                                            <span className="capitalize font-bold text-slate-700 dark:text-slate-300">
-                                                                                {row[h]}
+                                                                            <span className="inline-flex items-center gap-1 font-bold">
+                                                                                {row[h] === "png" ? (
+                                                                                    <span className="px-2 py-0.5 rounded text-[9.5px] font-extrabold bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800">PNG Gas</span>
+                                                                                ) : row[h] === "lpg" ? (
+                                                                                    <span className="px-2 py-0.5 rounded text-[9.5px] font-extrabold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">LPG Gas</span>
+                                                                                ) : row[h] === "solar" ? (
+                                                                                    <span className="px-2 py-0.5 rounded text-[9.5px] font-extrabold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">Solar</span>
+                                                                                ) : row[h] === "diesel" ? (
+                                                                                    <span className="px-2 py-0.5 rounded text-[9.5px] font-extrabold bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">Diesel</span>
+                                                                                ) : row[h] === "electricity" ? (
+                                                                                    <span className="px-2 py-0.5 rounded text-[9.5px] font-extrabold bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800">Electricity</span>
+                                                                                ) : (
+                                                                                    <span className="capitalize font-bold text-slate-700 dark:text-slate-300">{row[h]}</span>
+                                                                                )}
                                                                             </span>
                                                                         ) : h === "plant_code" && (selectedMasterTable === "tariff_rates" || selectedMasterTable === "multiply_factors") ? (
                                                                             row[h] ? (
@@ -11623,11 +11636,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                 onChange={(e) => setMasterFormValues({ ...masterFormValues, [h]: e.target.value })}
                                                                 className="w-full h-10 rounded-xl border border-slate-200 px-3 text-[12.5px] bg-white focus:outline-none font-bold"
                                                             >
-                                                                <option value="electricity">Electricity</option>
-                                                                <option value="solar">Solar</option>
-                                                                <option value="water">Water</option>
-                                                                <option value="diesel">Diesel</option>
-                                                                <option value="lpg">LPG</option>
+                                                                <option value="electricity">Electricity (Grid / MSEB / JVVNL - ₹/kWh)</option>
+                                                                <option value="solar">Solar Power (₹/kWh)</option>
+                                                                <option value="diesel">Diesel / HSD Fuel (₹/Litre)</option>
+                                                                <option value="png">PNG Gas (Piped Natural Gas - ₹/kg or SCM)</option>
+                                                                <option value="lpg">LPG Gas (₹/kg)</option>
+                                                                <option value="water">Water (₹/kL)</option>
+                                                                <option value="nitrogen">Nitrogen Gas (₹/SCM)</option>
+                                                                <option value="oxygen">Oxygen Gas (₹/SCM)</option>
                                                             </select>
                                                         ) : h === "location" && (selectedMasterTable === "tariff_rates" || selectedMasterTable === "multiply_factors") ? (
                                                             <select
@@ -11673,12 +11689,29 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             <React.Fragment>
                                                                 <input
                                                                     type={h === "rate" || h === "year" || h === "month" || h.includes("target") || h === "factor" ? "number" : h.includes("date") ? "date" : "text"}
+                                                                    step={h === "rate" || h === "factor" ? "any" : undefined}
                                                                     required={!isPk || !["tariff_rates", "multiply_factors"].includes(selectedMasterTable)}
                                                                     placeholder={isPk && ["tariff_rates", "multiply_factors"].includes(selectedMasterTable) ? "Auto-generated (leave blank)" : `Enter ${h}`}
                                                                     value={masterFormValues[h]}
                                                                     onChange={(e) => setMasterFormValues({ ...masterFormValues, [h]: e.target.value })}
                                                                     className="w-full h-10 rounded-xl border border-slate-200 px-3 text-[12.5px] font-semibold bg-white focus:outline-none"
                                                                 />
+                                                                {h === "rate" && selectedMasterTable === "tariff_rates" && (
+                                                                    <p className="text-[11px] font-bold text-sky-600 dark:text-sky-400 mt-1 flex items-center gap-1">
+                                                                        <span className="material-symbols-outlined text-[13px]">info</span>
+                                                                        <span>
+                                                                            Rate Unit: {
+                                                                                masterFormValues.type === "png" ? "₹ / kg (or SCM) for PNG Natural Gas" :
+                                                                                masterFormValues.type === "lpg" ? "₹ / kg for LPG Gas" :
+                                                                                masterFormValues.type === "diesel" ? "₹ / Litre for HSD Fuel" :
+                                                                                masterFormValues.type === "water" ? "₹ / kL (1000 Litres)" :
+                                                                                masterFormValues.type === "nitrogen" ? "₹ / SCM" :
+                                                                                masterFormValues.type === "oxygen" ? "₹ / SCM" :
+                                                                                "₹ / kWh (Electricity Unit)"
+                                                                            }
+                                                                        </span>
+                                                                    </p>
+                                                                )}
                                                                 {isPk && editingMasterRecord !== null && (
                                                                     <p className="text-[10px] text-amber-600 dark:text-amber-400 font-extrabold mt-1.5 flex items-center gap-1">
                                                                         <span className="material-symbols-outlined text-[13px] font-bold">warning</span>
