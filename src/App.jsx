@@ -2139,6 +2139,69 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             }, [tariffs, dashboardRateContext, activeElectRate]);
 
 
+            // --- Multi-Meter Utilities ---
+            const parseMetersFromRemarks = (remarks) => {
+                if (!remarks || typeof remarks !== "string") return null;
+                const match = remarks.match(/\[METERS_DATA:\s*(\[.*?\])\s*\]/s);
+                if (match && match[1]) {
+                    try {
+                        const parsed = JSON.parse(match[1]);
+                        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                    } catch (e) {
+                        console.warn("Failed to parse METERS_DATA from remarks:", e);
+                    }
+                }
+                return null;
+            };
+
+            const getCleanRemarks = (remarks) => {
+                if (!remarks || typeof remarks !== "string") return "";
+                return remarks.replace(/\[METERS_DATA:\s*\[.*?\]\s*\]/s, "").trim();
+            };
+
+            const serializeRemarksWithMeters = (cleanRemarks, metersList) => {
+                const text = cleanRemarks ? cleanRemarks.trim() : "";
+                if (!metersList || metersList.length === 0) return text;
+                const metersSummary = metersList.map((m, idx) => ({
+                    name: m.name || `Meter ${idx + 1}`,
+                    opening: Number(m.opening) || 0,
+                    closing: m.closing !== "" && m.closing !== null ? Number(m.closing) : "",
+                    diff: Number(m.diff) || 0,
+                    meter_changed: Boolean(m.meter_changed),
+                    custom_difference: m.custom_difference || ""
+                }));
+                const tag = `[METERS_DATA: ${JSON.stringify(metersSummary)}]`;
+                return text ? `${tag}\n${text}` : tag;
+            };
+
+            const getDefaultMetersForPlant = (plantCode, existingMeters = []) => {
+                const pCode = String(plantCode || "").trim().toLowerCase();
+                const configured = (existingMeters || []).filter(m =>
+                    String(m.plant_code || "").trim().toLowerCase() === pCode &&
+                    (!m.status || String(m.status).toLowerCase() === "active")
+                );
+                if (configured.length > 1) {
+                    return configured.map((m, idx) => ({
+                        id: m.meter_id || `meter_${idx + 1}`,
+                        name: m.meter_name || `Meter ${idx + 1}`,
+                        opening: 0,
+                        closing: "",
+                        meter_changed: false,
+                        custom_difference: "",
+                        diff: 0
+                    }));
+                }
+                if (pCode === "1020" || pCode.includes("roork")) {
+                    return [
+                        { id: "m1", name: "Meter 1", opening: 0, closing: "", meter_changed: false, custom_difference: "", diff: 0 },
+                        { id: "m2", name: "Meter 2", opening: 0, closing: "", meter_changed: false, custom_difference: "", diff: 0 }
+                    ];
+                }
+                return [
+                    { id: "m1", name: "Meter 1", opening: 0, closing: "", meter_changed: false, custom_difference: "", diff: 0 }
+                ];
+            };
+
             // Daily Data Entry Form States
             const [isFormOpen, setIsFormOpen] = useState(false);
             const [editingRecord, setEditingRecord] = useState(null);
@@ -2154,6 +2217,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 department: "PROD",
                 shift: "Shift A",
                 operator_name: "",
+                electricity_meters: [{ id: "m1", name: "Meter 1", opening: 0, closing: "", meter_changed: false, custom_difference: "", diff: 0 }],
                 electricity_opening: 0,
                 electricity_closing: "",
                 meter_changed: false,
@@ -3815,8 +3879,52 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const wCons = entry.water_consumption !== undefined && entry.water_consumption !== null ? Number(entry.water_consumption) : (wClose !== "" ? Math.max(0, Number(wClose) - wOpen) : 0);
                     const wCost = entry.water_cost !== undefined && entry.water_cost !== null ? Number(entry.water_cost) : (wCons * waterRate);
 
+                    const savedMeters = parseMetersFromRemarks(entry.remarks);
+                    let initialMeters;
+                    if (savedMeters && savedMeters.length > 0) {
+                        initialMeters = savedMeters.map((m, idx) => ({
+                            id: `m_${idx + 1}`,
+                            name: m.name || `Meter ${idx + 1}`,
+                            opening: Number(m.opening) || 0,
+                            closing: m.closing !== "" && m.closing !== null ? m.closing : "",
+                            meter_changed: m.meter_changed === true || String(m.meter_changed) === "true",
+                            custom_difference: m.custom_difference || "",
+                            diff: Number(m.diff) || 0
+                        }));
+                    } else {
+                        const defaultMtrs = getDefaultMetersForPlant(entry.plant, meters);
+                        if (defaultMtrs.length > 1) {
+                            initialMeters = defaultMtrs.map((dm, idx) => {
+                                if (idx === 0) {
+                                    return {
+                                        ...dm,
+                                        opening: Number(entry.electricity_opening) || 0,
+                                        closing: entry.electricity_closing !== undefined && entry.electricity_closing !== null ? entry.electricity_closing : "",
+                                        meter_changed: entry.meter_changed === true || String(entry.meter_changed) === "true",
+                                        custom_difference: entry.custom_difference || "",
+                                        diff: Math.max(0, (Number(entry.electricity_closing) || 0) - (Number(entry.electricity_opening) || 0))
+                                    };
+                                }
+                                return dm;
+                            });
+                        } else {
+                            initialMeters = [
+                                {
+                                    id: "m1",
+                                    name: "Meter 1",
+                                    opening: Number(entry.electricity_opening) || 0,
+                                    closing: entry.electricity_closing !== undefined && entry.electricity_closing !== null ? entry.electricity_closing : "",
+                                    meter_changed: entry.meter_changed === true || String(entry.meter_changed) === "true",
+                                    custom_difference: entry.custom_difference || "",
+                                    diff: Math.max(0, (Number(entry.electricity_closing) || 0) - (Number(entry.electricity_opening) || 0))
+                                }
+                            ];
+                        }
+                    }
+
                     setEntryFormValues({
                         ...entry,
+                        electricity_meters: initialMeters,
                         meter_changed: entry.meter_changed === true || String(entry.meter_changed) === "true",
                         custom_difference: entry.custom_difference || "",
                         solar_opening: prevSolar,
@@ -3852,6 +3960,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                     const pDef = allowedPlants[0]?.plant_code || "NGM";
                     const lDef = allowedPlants[0]?.location || "NASHIK";
+                    const initialMeters = getDefaultMetersForPlant(pDef, meters);
 
                     setEntryFormValues({
                         date: new Date().toISOString().split('T')[0],
@@ -3860,6 +3969,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         department: "PROD",
                         shift: "Shift A",
                         operator_name: currentUser?.name || "Operator",
+                        electricity_meters: initialMeters,
                         electricity_opening: 0,
                         electricity_closing: "",
                         meter_changed: false,
@@ -4036,7 +4146,33 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const sortedPrev = dailyEntries
                     .filter(e => e.plant === plant && e.date < date)
                     .sort((a, b) => b.date.localeCompare(a.date));
-                const prevReading = sortedPrev.length > 0 ? Number(sortedPrev[0].electricity_closing) || 0 : 0;
+                const prevEntry = sortedPrev.length > 0 ? sortedPrev[0] : null;
+                const prevReading = prevEntry ? Number(prevEntry.electricity_closing) || 0 : 0;
+                const prevMetersData = prevEntry ? parseMetersFromRemarks(prevEntry.remarks) : null;
+
+                let currentMeters = entryFormValues.electricity_meters && entryFormValues.electricity_meters.length > 0
+                    ? [...entryFormValues.electricity_meters]
+                    : getDefaultMetersForPlant(plant, meters);
+
+                // If plant defaults has more meters (e.g. Roorkee plant 1020 has 2 meters), upgrade
+                const plantDefaults = getDefaultMetersForPlant(plant, meters);
+                if (plantDefaults.length > currentMeters.length) {
+                    currentMeters = plantDefaults;
+                }
+
+                currentMeters = currentMeters.map((m, idx) => {
+                    let opening = 0;
+                    if (prevMetersData && prevMetersData.length > 0) {
+                        const matched = prevMetersData.find(pm => String(pm.name || "").toLowerCase() === String(m.name || "").toLowerCase()) || prevMetersData[idx];
+                        if (matched && matched.closing !== "" && matched.closing !== null && !isNaN(Number(matched.closing))) {
+                            opening = Number(matched.closing);
+                        }
+                    } else if (idx === 0) {
+                        opening = prevReading;
+                    }
+                    return { ...m, opening };
+                });
+
                 const prevSolar = sortedPrev.length > 0 ? Number(sortedPrev[0].solar_generated) || 0 : 0;
                 const prevPng = sortedPrev.length > 0 ? Number(sortedPrev[0].png_closing) || 0 : 0;
                 const prevNitrogen = sortedPrev.length > 0 ? Number(sortedPrev[0].nitrogen_closing) || 0 : 0;
@@ -4048,8 +4184,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     if (match) {
                         setIsFetchingExcelData(true);
                         const timer = setTimeout(() => {
+                            const metersWithExcel = currentMeters.map((m, idx) => idx === 0 ? { ...m, closing: match.electricity_closing } : m);
                             updateFormCalculations({
-                                electricity_opening: prevReading,
+                                electricity_meters: metersWithExcel,
+                                electricity_opening: currentMeters[0]?.opening || 0,
                                 electricity_closing: match.electricity_closing,
                                 solar_opening: prevSolar,
                                 solar_closing: match.solar_generated,
@@ -4069,7 +4207,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         // No cached Excel match for this date/plant — only set opening reading.
                         // Do NOT clear odu/idu here; Supabase production_summary effect fills those.
                         updateFormCalculations({
-                            electricity_opening: prevReading,
+                            electricity_meters: currentMeters,
+                            electricity_opening: currentMeters[0]?.opening || 0,
                             electricity_closing: "",
                             solar_opening: prevSolar,
                             solar_closing: "",
@@ -4082,7 +4221,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     }
                 } else {
                     updateFormCalculations({
-                        electricity_opening: prevReading,
+                        electricity_meters: currentMeters,
+                        electricity_opening: currentMeters[0]?.opening || 0,
                         solar_opening: prevSolar,
                         png_opening: prevPng,
                         nitrogen_opening: prevNitrogen,
@@ -4108,18 +4248,60 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const oxygenRate = resolveTariff(tariffs, "oxygen", next.plant, loc, next.date);
                     const waterRate = resolveTariff(tariffs, "water", next.plant, loc, next.date);
 
-                    const opening = Number(next.electricity_opening) || 0;
-                    const closing = Number(next.electricity_closing) || 0;
+                    // Multi-meter processing
+                    let updatedMeters = changedFields.electricity_meters !== undefined
+                        ? changedFields.electricity_meters
+                        : (prev.electricity_meters && prev.electricity_meters.length > 0 ? [...prev.electricity_meters] : null);
 
-                    // Units difference calculation (supports custom override)
-                    let diff = 0;
-                    if (next.meter_changed === true || String(next.meter_changed) === "true") {
-                        diff = Number(next.custom_difference) || 0;
-                    } else {
-                        diff = Math.max(0, closing - opening);
+                    if (!updatedMeters || updatedMeters.length === 0) {
+                        updatedMeters = [
+                            {
+                                id: "m1",
+                                name: "Meter 1",
+                                opening: Number(next.electricity_opening) || 0,
+                                closing: next.electricity_closing !== undefined && next.electricity_closing !== null ? next.electricity_closing : "",
+                                meter_changed: next.meter_changed === true || String(next.meter_changed) === "true",
+                                custom_difference: next.custom_difference || "",
+                                diff: 0
+                            }
+                        ];
+                    } else if (changedFields.electricity_closing !== undefined || changedFields.electricity_opening !== undefined || changedFields.meter_changed !== undefined || changedFields.custom_difference !== undefined) {
+                        updatedMeters = updatedMeters.map((m, idx) => {
+                            if (idx === 0) {
+                                return {
+                                    ...m,
+                                    opening: changedFields.electricity_opening !== undefined ? (Number(changedFields.electricity_opening) || 0) : m.opening,
+                                    closing: changedFields.electricity_closing !== undefined ? changedFields.electricity_closing : m.closing,
+                                    meter_changed: changedFields.meter_changed !== undefined ? changedFields.meter_changed : m.meter_changed,
+                                    custom_difference: changedFields.custom_difference !== undefined ? changedFields.custom_difference : m.custom_difference
+                                };
+                            }
+                            return m;
+                        });
                     }
 
-                    const msebUnits = CalculationEngine.calculateMSEBUnits(diff, mf);
+                    // Compute diff for each meter and combined total difference
+                    let combinedDiff = 0;
+                    updatedMeters = updatedMeters.map(m => {
+                        const op = Number(m.opening) || 0;
+                        const isReset = m.meter_changed === true || String(m.meter_changed) === "true";
+                        let mDiff = 0;
+                        if (isReset) {
+                            mDiff = Number(m.custom_difference) || 0;
+                        } else {
+                            mDiff = m.closing !== "" && m.closing !== null ? Math.max(0, Number(m.closing) - op) : 0;
+                        }
+                        combinedDiff += mDiff;
+                        return { ...m, diff: Math.round(mDiff * 1000) / 1000 };
+                    });
+
+                    next.electricity_meters = updatedMeters;
+                    next.electricity_opening = updatedMeters[0]?.opening || 0;
+                    next.electricity_closing = updatedMeters[0]?.closing ?? "";
+                    next.meter_changed = updatedMeters[0]?.meter_changed || false;
+                    next.custom_difference = updatedMeters[0]?.custom_difference || "";
+
+                    const msebUnits = CalculationEngine.calculateMSEBUnits(combinedDiff, mf);
                     next.electricity_consumption = msebUnits;
                     next.electricity_cost = CalculationEngine.calculateElectricityCost(msebUnits, electTariff);
 
@@ -4289,6 +4471,46 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 );
             }, [isFormOpen, entryFormValues.date, entryFormValues.plant, dailyEntries, editingRecord]);
 
+            // Meter handlers for multi-meter plant operations (IT Admin & Operators)
+            const handleAddMeter = () => {
+                const currentMeters = entryFormValues.electricity_meters || [];
+                const newIdx = currentMeters.length + 1;
+                const newMeter = {
+                    id: `m_${Date.now()}_${newIdx}`,
+                    name: `Meter ${newIdx}`,
+                    opening: 0,
+                    closing: "",
+                    meter_changed: false,
+                    custom_difference: "",
+                    diff: 0
+                };
+                const updated = [...currentMeters, newMeter];
+                updateFormCalculations({ electricity_meters: updated });
+                setToast({ type: "info", message: `Added ${newMeter.name}. Enter readings.` });
+            };
+
+            const handleRemoveMeter = (meterId) => {
+                const currentMeters = entryFormValues.electricity_meters || [];
+                if (currentMeters.length <= 1) {
+                    setToast({ type: "error", message: "At least one electricity meter is required." });
+                    return;
+                }
+                const updated = currentMeters.filter(m => m.id !== meterId);
+                updateFormCalculations({ electricity_meters: updated });
+                setToast({ type: "info", message: "Meter removed." });
+            };
+
+            const handleMeterFieldChange = (meterId, field, value) => {
+                const currentMeters = entryFormValues.electricity_meters || [];
+                const updated = currentMeters.map(m => {
+                    if (m.id === meterId) {
+                        return { ...m, [field]: value };
+                    }
+                    return m;
+                });
+                updateFormCalculations({ electricity_meters: updated });
+            };
+
             const handleEntryFormSubmit = async (e) => {
                 e.preventDefault();
                 setActionLoading(true);
@@ -4299,18 +4521,29 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     return;
                 }
 
-                const isMeterReset = entryFormValues.meter_changed === true || String(entryFormValues.meter_changed) === "true";
-                if (!isMeterReset) {
-                    if (Number(entryFormValues.electricity_closing) < Number(entryFormValues.electricity_opening)) {
-                        setToast({ type: "error", message: "Electricity Daily Reading cannot be smaller than Previous Reading." });
+                // Multi-meter validations
+                const currentMeters = entryFormValues.electricity_meters || [];
+                for (let i = 0; i < currentMeters.length; i++) {
+                    const m = currentMeters[i];
+                    const mName = m.name || `Meter ${i + 1}`;
+                    const isReset = m.meter_changed === true || String(m.meter_changed) === "true";
+                    if (m.closing === "" || m.closing === null) {
+                        setToast({ type: "error", message: `Please enter Daily Reading for ${mName}.` });
                         setActionLoading(false);
                         return;
                     }
-                } else {
-                    if (Number(entryFormValues.custom_difference) < 0) {
-                        setToast({ type: "error", message: "Custom net difference cannot be negative." });
-                        setActionLoading(false);
-                        return;
+                    if (!isReset) {
+                        if (Number(m.closing) < Number(m.opening)) {
+                            setToast({ type: "error", message: `${mName}: Daily Reading cannot be smaller than Previous Reading.` });
+                            setActionLoading(false);
+                            return;
+                        }
+                    } else {
+                        if (Number(m.custom_difference) < 0) {
+                            setToast({ type: "error", message: `${mName}: Custom net difference cannot be negative.` });
+                            setActionLoading(false);
+                            return;
+                        }
                     }
                 }
 
@@ -4378,6 +4611,37 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         }
                     }
                 });
+
+                // Serialize multi-meter breakdown into remarks safely
+                const cleanRemarksText = getCleanRemarks(entryFormValues.remarks);
+                payload.remarks = serializeRemarksWithMeters(cleanRemarksText, currentMeters);
+
+                // If IT Admin or meter added, sync to Supabase 'meters' master table in background
+                if (currentUser?.role === 'IT_ADMIN' && currentMeters.length > 0) {
+                    try {
+                        const plantCode = payload.plant;
+                        currentMeters.forEach(m => {
+                            const meterId = `MTR-${plantCode}-${String(m.name || 'MTR').replace(/\s+/g, '_').toUpperCase()}`;
+                            const exists = (meters || []).some(x => x.meter_id === meterId || (x.plant_code === plantCode && x.meter_name === m.name));
+                            if (!exists) {
+                                supabase.from('meters').insert({
+                                    meter_id: meterId,
+                                    meter_name: m.name,
+                                    plant_code: plantCode,
+                                    dept_code: payload.department || 'PROD',
+                                    status: 'Active'
+                                }).then(({ error }) => {
+                                    if (!error) {
+                                        setMeters(prev => [...prev, { meter_id: meterId, meter_name: m.name, plant_code: plantCode, dept_code: payload.department || 'PROD', status: 'Active' }]);
+                                    }
+                                });
+                            }
+                        });
+                    } catch (e) {
+                        console.warn("Could not sync meters to master:", e);
+                    }
+                }
+
                 // Force Excel-style solar: Daily Reading × rate
                 const solarUnits = Math.max(0, Number(entryFormValues.solar_closing) || Number(entryFormValues.solar_generated) || 0);
                 const saveLoc = entryFormValues.location || plants.find((p) => p.plant_code === entryFormValues.plant)?.location || "";
@@ -10348,64 +10612,149 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             </div>
                                         </div>
 
-                                        {/* Section 2: Electricity Grid Logging */}
-                                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                                            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-sky-50/50">
+                                        {/* Section 2: Electricity Grid Logging (Multi-Meter Support) */}
+                                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                                            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-sky-50/70 to-white">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="material-symbols-outlined text-[16px] text-[#0284c7]">electric_bolt</span>
-                                                    <span className="text-[11px] font-semibold text-slate-700">Electricity Grid Meter (kWh)</span>
+                                                    <span className="material-symbols-outlined text-[18px] text-[#0284c7]">electric_bolt</span>
+                                                    <span className="text-[12px] font-bold text-slate-800">
+                                                        Electricity Grid Meters (kWh)
+                                                    </span>
+                                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">
+                                                        {(entryFormValues.electricity_meters || []).length} { (entryFormValues.electricity_meters || []).length > 1 ? "Meters" : "Meter" }
+                                                    </span>
                                                 </div>
-                                                <label className="flex items-center gap-1.5 cursor-pointer select-none text-[10px] font-medium text-slate-500 hover:text-slate-700 transition">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={entryFormValues.meter_changed}
-                                                        onChange={(e) => updateFormCalculations({ meter_changed: e.target.checked })}
-                                                        className="rounded border-slate-300 text-[#0284c7] focus:ring-[#0284c7] h-3.5 w-3.5"
-                                                    />
-                                                    <span>Meter Replaced / Changed</span>
-                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddMeter}
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-white bg-sky-600 hover:bg-sky-700 rounded-lg shadow-sm transition active:scale-95 cursor-pointer"
+                                                    title="Add an additional electricity meter for this plant"
+                                                >
+                                                    <span className="material-symbols-outlined text-[14px]">add_circle</span>
+                                                    <span>+ Add Meter</span>
+                                                </button>
                                             </div>
 
-                                            <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                <div>
-                                                    <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">Previous Reading (kWh)</label>
-                                                    <input
-                                                        type="number"
-                                                        value={entryFormValues.electricity_opening}
-                                                        onChange={(e) => updateFormCalculations({ electricity_opening: Number(e.target.value) || 0 })}
-                                                        className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-slate-50 text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[10px] font-semibold text-slate-500 mb-1.5">
-                                                        Daily Reading (kWh)
-                                                        {isFetchingExcelData && <span className="ml-1 text-[8px] text-sky-600 animate-pulse">(Syncing...)</span>}
-                                                    </label>
-                                                    <input
-                                                        type="number"
-                                                        required
-                                                        step="any"
-                                                        min="0"
-                                                        placeholder={isFetchingExcelData ? "Syncing..." : "Enter meter reading"}
-                                                        disabled={isFetchingExcelData}
-                                                        value={isFetchingExcelData ? "" : entryFormValues.electricity_closing}
-                                                        onChange={(e) => updateFormCalculations({ electricity_closing: e.target.value })}
-                                                        className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition disabled:bg-slate-50 disabled:text-slate-400"
-                                                    />
-                                                </div>
-                                                {entryFormValues.meter_changed && (
-                                                    <div>
-                                                        <label className="block text-[10px] font-semibold text-red-500 mb-1.5">Custom Net Difference</label>
-                                                        <input
-                                                            type="number"
-                                                            required
-                                                            step="any"
-                                                            min="0"
-                                                            placeholder="Reset difference value"
-                                                            value={entryFormValues.custom_difference}
-                                                            onChange={(e) => updateFormCalculations({ custom_difference: e.target.value })}
-                                                            className="w-full h-9 rounded-lg border border-red-300 px-2.5 bg-red-50/40 text-red-800 font-medium focus:outline-none focus:ring-2 focus:ring-red-400/30 focus:border-red-400 transition"
-                                                        />
+                                            {/* Meter Cards List */}
+                                            <div className="p-4 space-y-3">
+                                                {(entryFormValues.electricity_meters || [{ id: "m1", name: "Meter 1", opening: entryFormValues.electricity_opening, closing: entryFormValues.electricity_closing, meter_changed: entryFormValues.meter_changed, custom_difference: entryFormValues.custom_difference, diff: 0 }]).map((meter, index) => {
+                                                    const isMeterChanged = meter.meter_changed === true || String(meter.meter_changed) === "true";
+                                                    const meterDiff = isMeterChanged
+                                                        ? (Number(meter.custom_difference) || 0)
+                                                        : (meter.closing !== "" && meter.closing !== null ? Math.max(0, Number(meter.closing) - (Number(meter.opening) || 0)) : 0);
+
+                                                    return (
+                                                        <div key={meter.id || index} className="rounded-xl border border-slate-200/90 bg-slate-50/40 p-3.5 transition hover:border-sky-200">
+                                                            <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-200/60">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="w-5 h-5 rounded-full bg-sky-600 text-white text-[10px] font-bold flex items-center justify-center">
+                                                                        {index + 1}
+                                                                    </span>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={meter.name}
+                                                                        onChange={(e) => handleMeterFieldChange(meter.id, "name", e.target.value)}
+                                                                        className="text-[12px] font-bold text-slate-800 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-sky-500 focus:bg-white focus:outline-none px-1 rounded transition max-w-[140px]"
+                                                                        placeholder="Meter Name"
+                                                                    />
+                                                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-200/70 text-slate-600">
+                                                                        Diff: <strong className="text-slate-800">{fmtNum(meterDiff, 2)}</strong>
+                                                                    </span>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-3">
+                                                                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-[10px] font-medium text-slate-500 hover:text-slate-700 transition">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isMeterChanged}
+                                                                            onChange={(e) => handleMeterFieldChange(meter.id, "meter_changed", e.target.checked)}
+                                                                            className="rounded border-slate-300 text-[#0284c7] focus:ring-[#0284c7] h-3.5 w-3.5"
+                                                                        />
+                                                                        <span>Meter Changed</span>
+                                                                    </label>
+
+                                                                    {(entryFormValues.electricity_meters || []).length > 1 && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleRemoveMeter(meter.id)}
+                                                                            className="p-1 text-slate-400 hover:text-red-600 rounded-md hover:bg-red-50 transition cursor-pointer"
+                                                                            title="Remove this meter"
+                                                                        >
+                                                                            <span className="material-symbols-outlined text-[16px]">delete</span>
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                                <div>
+                                                                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kWh)</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        step="any"
+                                                                        value={meter.opening ?? 0}
+                                                                        onChange={(e) => handleMeterFieldChange(meter.id, "opening", e.target.value === "" ? "" : Number(e.target.value))}
+                                                                        className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-slate-50 text-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition text-xs font-medium"
+                                                                    />
+                                                                </div>
+
+                                                                <div>
+                                                                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                                                                        Daily Reading (kWh)
+                                                                        {isFetchingExcelData && <span className="ml-1 text-[8px] text-sky-600 animate-pulse">(Syncing...)</span>}
+                                                                    </label>
+                                                                    <input
+                                                                        type="number"
+                                                                        required
+                                                                        step="any"
+                                                                        min="0"
+                                                                        placeholder={isFetchingExcelData ? "Syncing..." : "Enter reading"}
+                                                                        disabled={isFetchingExcelData}
+                                                                        value={meter.closing ?? ""}
+                                                                        onChange={(e) => handleMeterFieldChange(meter.id, "closing", e.target.value)}
+                                                                        className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-400 transition disabled:bg-slate-50 disabled:text-slate-400 text-xs font-medium"
+                                                                    />
+                                                                </div>
+
+                                                                {isMeterChanged && (
+                                                                    <div>
+                                                                        <label className="block text-[10px] font-semibold text-red-500 mb-1">Custom Net Difference</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            required
+                                                                            step="any"
+                                                                            min="0"
+                                                                            placeholder="Reset diff value"
+                                                                            value={meter.custom_difference ?? ""}
+                                                                            onChange={(e) => handleMeterFieldChange(meter.id, "custom_difference", e.target.value)}
+                                                                            className="w-full h-9 rounded-lg border border-red-300 px-2.5 bg-red-50/40 text-red-800 font-medium focus:outline-none focus:ring-2 focus:ring-red-400/30 focus:border-red-400 transition text-xs"
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+
+                                                {/* Combined Summary Strip when multiple meters */}
+                                                {(entryFormValues.electricity_meters || []).length > 1 && (
+                                                    <div className="bg-sky-50/80 border border-sky-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="material-symbols-outlined text-[18px] text-sky-700">functions</span>
+                                                            <span className="text-[11px] font-bold text-sky-900">
+                                                                Combined Total (All {(entryFormValues.electricity_meters || []).length} Meters):
+                                                            </span>
+                                                            <span className="text-[11px] font-extrabold text-sky-700 bg-white px-2.5 py-0.5 rounded-full border border-sky-200">
+                                                                Net Diff: {fmtNum((entryFormValues.electricity_meters || []).reduce((acc, m) => {
+                                                                    const isReset = m.meter_changed === true || String(m.meter_changed) === "true";
+                                                                    const d = isReset ? (Number(m.custom_difference) || 0) : (m.closing !== "" && m.closing !== null ? Math.max(0, Number(m.closing) - (Number(m.opening) || 0)) : 0);
+                                                                    return acc + d;
+                                                                }, 0), 2)}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-[11px] text-sky-800 font-medium">
+                                                            Units = Diff × {entryRateContext.mf} = <strong className="font-bold text-sky-900">{fmtNum(entryFormValues.electricity_consumption)} kWh</strong>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
@@ -10776,11 +11125,15 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                 {/* Grid difference and MSEB units */}
                                                 <div className="space-y-1.5 pb-3 border-b border-slate-100">
                                                     <div className="flex justify-between items-center">
-                                                        <span className="text-slate-500">Meter Difference</span>
+                                                        <span className="text-slate-500">
+                                                            {(entryFormValues.electricity_meters || []).length > 1 ? "Combined Meter Diff" : "Meter Difference"}
+                                                        </span>
                                                         <span className="text-slate-800 font-semibold">
-                                                            {entryFormValues.meter_changed
-                                                                ? `${Number(entryFormValues.custom_difference) || 0} (Manual)`
-                                                                : `${Math.max(0, (Number(entryFormValues.electricity_closing) || 0) - (Number(entryFormValues.electricity_opening) || 0))}`}
+                                                            {fmtNum((entryFormValues.electricity_meters || []).reduce((acc, m) => {
+                                                                const isReset = m.meter_changed === true || String(m.meter_changed) === "true";
+                                                                const d = isReset ? (Number(m.custom_difference) || 0) : (m.closing !== "" && m.closing !== null ? Math.max(0, Number(m.closing) - (Number(m.opening) || 0)) : 0);
+                                                                return acc + d;
+                                                            }, 0), 2)}
                                                         </span>
                                                     </div>
                                                     <div className="flex justify-between items-center">
@@ -10928,6 +11281,38 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         </div>
                                     </div>
 
+                                    {/* If multi-meter data is present in viewingRecord */}
+                                    {(() => {
+                                        const recordMeters = parseMetersFromRemarks(viewingRecord.remarks);
+                                        if (!recordMeters || recordMeters.length <= 1) return null;
+                                        return (
+                                            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-sky-50/60">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="material-symbols-outlined text-[16px] text-sky-600">electric_meter</span>
+                                                        <span className="text-[11px] font-bold text-slate-700">Electricity Meter Breakdown ({recordMeters.length} Meters)</span>
+                                                    </div>
+                                                </div>
+                                                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    {recordMeters.map((m, idx) => (
+                                                        <div key={idx} className="p-3 rounded-lg border border-slate-100 bg-slate-50/60 flex flex-col gap-1.5">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-xs font-bold text-slate-800">{m.name || `Meter ${idx + 1}`}</span>
+                                                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-100 text-sky-800">
+                                                                    Diff: {fmtNum(m.diff, 2)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 text-[11px] text-slate-600 pt-1 border-t border-slate-200/50">
+                                                                <div>Opening: <strong className="text-slate-700">{fmtNum(m.opening, 2)}</strong></div>
+                                                                <div>Closing: <strong className="text-slate-700">{fmtNum(m.closing, 2)}</strong></div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
                                     {/* Cost Summary & Production Efficiency (simplified: only the figures that matter for review) */}
                                     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                                         <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50">
@@ -10968,7 +11353,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     {/* Remarks */}
                                     <div className="bg-white rounded-xl border border-slate-200 p-4">
                                         <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Remarks & Observations</p>
-                                        <p className="text-xs text-slate-700">{viewingRecord.remarks || "—"}</p>
+                                        <p className="text-xs text-slate-700">{getCleanRemarks(viewingRecord.remarks) || "—"}</p>
                                     </div>
 
                                 </div>
