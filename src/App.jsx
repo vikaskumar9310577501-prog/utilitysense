@@ -1032,12 +1032,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                 const allowedP = String(currentUser.allowed_plants || "all").trim().toLowerCase();
                 const allowedL = String(currentUser.allowed_locations || "all").trim().toLowerCase();
+                const pTokens = (allowedP === "all" || allowedP === "") ? ["all"] : allowedP.split(",").map(x => x.trim()).filter(Boolean);
+                const lTokens = (allowedL === "all" || allowedL === "") ? ["all"] : allowedL.split(",").map(x => x.trim()).filter(Boolean);
 
                 return plants.filter(p => {
-                    const pLoc = p.location.toLowerCase();
-                    const pCode = p.plant_code.toLowerCase();
-                    const matchesPlant = allowedP === "all" || allowedP === "" || allowedP.split(",").map(x => x.trim()).includes(pCode);
-                    const matchesLoc = allowedL === "all" || allowedL === "" || allowedL.includes(pLoc) || pLoc.includes(allowedL);
+                    const pLoc = (p.location || "").toLowerCase();
+                    const pCode = (p.plant_code || "").toLowerCase();
+                    const pName = (p.plant_name || "").toLowerCase();
+                    const pDisp = (p.plant_display_name || "").toLowerCase();
+
+                    const matchesPlant = pTokens.includes("all") || pTokens.some(tok =>
+                        pCode === tok || pCode.includes(tok) || tok.includes(pCode) ||
+                        pName === tok || pName.includes(tok) || tok.includes(pName) ||
+                        pDisp === tok || pDisp.includes(tok) || tok.includes(pDisp)
+                    );
+                    const matchesLoc = lTokens.includes("all") || lTokens.some(tok =>
+                        pLoc === tok || pLoc.includes(tok) || tok.includes(pLoc)
+                    );
                     return matchesPlant && matchesLoc;
                 });
             }, [plants, currentUser]);
@@ -1045,24 +1056,80 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const allowedLocations = useMemo(() => {
                 if (!currentUser) return [];
                 if (currentUser.role === "IT_ADMIN") {
-                    return Array.from(new Set(plants.map(p => p.location.toUpperCase())));
+                    return Array.from(new Set(plants.map(p => p.location).filter(Boolean)));
                 }
-                return Array.from(new Set(allowedPlants.map(p => p.location.toUpperCase())));
+                return Array.from(new Set(allowedPlants.map(p => p.location).filter(Boolean)));
             }, [plants, allowedPlants, currentUser]);
 
-            // Auto-select user's location if non-admin has exactly 1 location assigned
+            // Department access permissions for current user
+            const { userSpecificDepts, userHasSpecificDepts } = useMemo(() => {
+                if (!currentUser || currentUser.role === "IT_ADMIN") {
+                    return { userSpecificDepts: [], userHasSpecificDepts: false };
+                }
+                const raw = String(currentUser.allowed_departments || currentUser.department || "").trim().toLowerCase();
+                if (!raw || raw === "none" || raw === "all") {
+                    return { userSpecificDepts: [], userHasSpecificDepts: false };
+                }
+                const list = raw.split(",").map(x => x.trim().toLowerCase()).filter(Boolean);
+                return { userSpecificDepts: list, userHasSpecificDepts: list.length > 0 };
+            }, [currentUser]);
+
+            // RBAC flags: Only authorized users or IT_ADMIN see Molding & Bill Audit
+            const canAccessMolding = useMemo(() => {
+                if (!currentUser) return false;
+                if (currentUser.role === "IT_ADMIN") return true;
+                const raw = String(currentUser.allowed_departments || currentUser.department || "").trim().toLowerCase();
+                if (raw === "all") return true;
+                if (raw === "none" || !raw) return false;
+                return raw.includes("mold") || raw.includes("mould");
+            }, [currentUser]);
+
+            const canAccessBillAudit = useMemo(() => {
+                if (!currentUser) return false;
+                if (currentUser.role === "IT_ADMIN") return true;
+                const raw = String(currentUser.allowed_departments || currentUser.department || "").trim().toLowerCase();
+                if (raw === "all") return true;
+                if (raw === "none" || !raw) return false;
+                return raw.includes("bill") || raw.includes("audit");
+            }, [currentUser]);
+
+            // Redirect away from restricted tabs if user loses access
+            useEffect(() => {
+                if (activeTab === "molding" && !canAccessMolding) {
+                    setActiveTab("dashboard");
+                }
+                if (activeTab === "bill_audit" && !canAccessBillAudit) {
+                    setActiveTab("dashboard");
+                }
+            }, [activeTab, canAccessMolding, canAccessBillAudit]);
+
+            // Auto-select user's location, plant, and department if non-admin has specific assignment
             useEffect(() => {
                 if (!currentUser || currentUser.role === "IT_ADMIN") return;
+                setFilters(prev => {
+                    const next = { ...prev };
+                    let changed = false;
+                    if (allowedLocations.length === 1 && (prev.location === "all" || !prev.location)) {
+                        next.location = allowedLocations[0];
+                        changed = true;
+                    }
+                    if (allowedPlants.length === 1 && (prev.plant === "all" || !prev.plant)) {
+                        next.plant = allowedPlants[0].plant_code;
+                        changed = true;
+                    }
+                    if (userSpecificDepts.length === 1 && (prev.department === "all" || !prev.department)) {
+                        next.department = userSpecificDepts[0].toUpperCase();
+                        changed = true;
+                    }
+                    return changed ? next : prev;
+                });
                 if (allowedLocations.length === 1) {
-                    const singleLoc = allowedLocations[0];
-                    setFilters(prev => {
-                        if (prev.location === "all" || !prev.location) {
-                            return { ...prev, location: singleLoc, plant: "all", department: "all" };
-                        }
-                        return prev;
-                    });
+                    setEntryLocationFilter(allowedLocations[0]);
                 }
-            }, [currentUser, allowedLocations]);
+                if (allowedPlants.length === 1) {
+                    setEntryPlantFilter(allowedPlants[0].plant_code);
+                }
+            }, [currentUser, allowedLocations, allowedPlants, userSpecificDepts]);
 
             // Status States
             const [loading, setLoading] = useState(true);
@@ -1090,17 +1157,28 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return s;
             };
 
-            // Available departments for currently selected plant (deduplicated)
+            // Available departments for currently selected plant (deduplicated & RBAC filtered)
             const availableDepartmentsForFilter = useMemo(() => {
-                if (!filters.plant || filters.plant === "all") return [];
-                const p = plants.find(x => x.plant_code === filters.plant);
-                if (!p) return [];
+                let targetPlants = [];
+                if (!filters.plant || filters.plant === "all") {
+                    targetPlants = allowedPlants;
+                } else {
+                    const p = plants.find(x => x.plant_code === filters.plant);
+                    if (p) targetPlants = [p];
+                }
+                if (!targetPlants.length) return [];
 
                 let list = [];
-                if (Array.isArray(p.departments) && p.departments.length > 0) {
-                    list = p.departments;
-                } else if (p.department) {
-                    list = [{ dept_code: p.department, dept_name: p.department }];
+                targetPlants.forEach(p => {
+                    if (Array.isArray(p.departments) && p.departments.length > 0) {
+                        list.push(...p.departments);
+                    } else if (p.department) {
+                        list.push({ dept_code: p.department, dept_name: p.department });
+                    }
+                });
+
+                if (!list.length) {
+                    list = [{ dept_code: "PROD", dept_name: "Production" }];
                 }
 
                 const seenKeys = new Set();
@@ -1109,6 +1187,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const code = typeof d === 'string' ? d : (d.dept_code || d.dept_name || '');
                     const name = typeof d === 'string' ? d : (d.dept_name || d.dept_code || '');
                     const norm = normalizeDeptKey(code || name);
+
+                    // If user cannot access molding, hide MOULDING department option
+                    if (norm === "molding" && !canAccessMolding) {
+                        return;
+                    }
+
+                    // If user is restricted to specific departments, only allow matching ones
+                    if (userHasSpecificDepts) {
+                        const isAllowed = userSpecificDepts.some(ud => {
+                            const udNorm = normalizeDeptKey(ud);
+                            return udNorm === norm || ud === code.toLowerCase() || ud === name.toLowerCase();
+                        });
+                        if (!isAllowed) return;
+                    }
+
                     if (norm === "molding") {
                         if (!seenKeys.has("molding")) {
                             seenKeys.add("molding");
@@ -1120,7 +1213,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     }
                 });
                 return uniqueList;
-            }, [filters.plant, plants]);
+            }, [filters.plant, plants, allowedPlants, canAccessMolding, userHasSpecificDepts, userSpecificDepts]);
 
             // Cascading location filter handler
             const handleLocationFilterChange = (newLoc) => {
@@ -1132,7 +1225,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         department: "all"
                     }));
                 } else {
-                    const matchingPlants = allowedPlants.filter(p => p.location.toLowerCase() === newLoc.toLowerCase());
+                    const filterLoc = String(newLoc).trim().toLowerCase();
+                    const matchingPlants = allowedPlants.filter(p => {
+                        const pLoc = String(p.location || "").trim().toLowerCase();
+                        return pLoc === filterLoc || pLoc.includes(filterLoc) || filterLoc.includes(pLoc) ||
+                            (filterLoc.includes("roork") && pLoc.includes("roork"));
+                    });
                     const firstPlant = matchingPlants[0]?.plant_code || "all";
                     setFilters(prev => ({
                         ...prev,
@@ -1975,7 +2073,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 if (!filters.location || filters.location === "all") {
                     return allowedPlants;
                 }
-                return allowedPlants.filter(p => p.location.toLowerCase() === filters.location.toLowerCase());
+                const filterLoc = String(filters.location).trim().toLowerCase();
+                return allowedPlants.filter(p => {
+                    const pLoc = String(p.location || "").trim().toLowerCase();
+                    return pLoc === filterLoc || pLoc.includes(filterLoc) || filterLoc.includes(pLoc) ||
+                        (filterLoc.includes("roork") && pLoc.includes("roork"));
+                });
             }, [allowedPlants, filters.location]);
 
             const dashboardRateContext = useMemo(() => {
@@ -2227,7 +2330,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const { data: entries, error: entriesErr } = await supabase
                         .from('daily_entries')
                         .select('*')
-                        .order('date', { ascending: false });
+                        .order('date', { ascending: false })
+                        .limit(50000);
                     if (entriesErr) throw entriesErr;
                     const rows = entries || [];
                     setDailyEntries(rows);
@@ -2238,15 +2342,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         const minDate = dates[0];
                         const maxDate = dates[dates.length - 1];
                         const today = toISODate(new Date());
-                        setFilters({
-                            startDate: minDate,
-                            endDate: maxDate > today ? maxDate : today,
-                            plant: "all",
-                            department: "all",
-                            location: "all",
-                        });
-                    } else {
-                        setFilters(getDefaultDateFilters());
+                        setFilters(prev => ({
+                            ...prev,
+                            startDate: minDate < prev.startDate ? minDate : prev.startDate,
+                            endDate: maxDate > today ? maxDate : (today > prev.endDate ? today : prev.endDate),
+                        }));
                     }
 
                     // Load configs safely with fallback
@@ -5027,17 +5127,35 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     if (filters.plant === "all") {
                         if (!plants.length) matchesPlant = true;
                         else if (!allowedPlants.length) matchesPlant = false;
-                        else matchesPlant = allowedIds.has(ep);
+                        else matchesPlant = allowedIds.has(ep) || allowedPlants.some(p => p.plant_code === e.plant || p.plant_name === e.plant || p.plant_display_name === e.plant);
                     } else if (selectedIds) {
-                        matchesPlant = selectedIds.has(ep);
+                        matchesPlant = selectedIds.has(ep) || (selectedPlant && (selectedPlant.plant_code === e.plant || selectedPlant.plant_name === e.plant || selectedPlant.plant_display_name === e.plant));
                     } else {
-                        matchesPlant = e.plant === filters.plant;
+                        matchesPlant = e.plant === filters.plant || String(e.plant).trim().toLowerCase() === String(filters.plant).trim().toLowerCase();
                     }
 
                     let matchesDept = true;
+                    const entryDept = String(e.department || "").trim().toLowerCase();
+                    const isMoldingEntry = entryDept.includes("mold") || entryDept.includes("mould");
+
+                    // 1. RBAC: If user cannot access Molding, never show Molding entries
+                    if (isMoldingEntry && !canAccessMolding) {
+                        return false;
+                    }
+
+                    // 2. RBAC: If user has specific assigned departments, enforce them
+                    if (currentUser && currentUser.role !== "IT_ADMIN" && userHasSpecificDepts) {
+                        const allowed = userSpecificDepts.some(dept => {
+                            const dNorm = (dept.includes("mold") || dept.includes("mould")) ? "molding" : dept;
+                            const eNorm = isMoldingEntry ? "molding" : entryDept;
+                            return dNorm === eNorm || dept === entryDept;
+                        });
+                        if (!allowed) return false;
+                    }
+
+                    // 3. Tab-based and filter-based filtering
                     if (activeTab === "molding") {
-                        const entryDept = String(e.department || "").trim().toLowerCase();
-                        matchesDept = entryDept.includes("mold") || entryDept.includes("mould");
+                        matchesDept = isMoldingEntry;
                     } else if (filters.department && filters.department !== "all") {
                         const selDept = departments.find(d => d.dept_code === filters.department || d.dept_name === filters.department);
                         const filterKey = String(filters.department).trim().toLowerCase();
@@ -5050,8 +5168,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                             selDept?.dept_name ? String(selDept.dept_name).trim().toLowerCase() : null
                         ].filter(Boolean));
 
-                        const entryDept = String(e.department || "").trim().toLowerCase();
-                        const entryNorm = (entryDept.includes("mold") || entryDept.includes("mould")) ? "molding" : entryDept;
+                        const entryNorm = isMoldingEntry ? "molding" : entryDept;
 
                         if (filterNorm === "molding") {
                             matchesDept = entryNorm === "molding" || validKeys.has(entryDept);
@@ -5059,19 +5176,26 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                             matchesDept = validKeys.has(entryDept) || validKeys.has(entryNorm);
                         }
                     } else {
-                        // When "All Depts" is selected, only take 'PROD' (or primary) entry if multiple department entries exist for the same date
-                        const ed = String(e.department || "").trim().toUpperCase();
-                        if (ed !== "PROD" && ed !== "" && ed !== "ALL") {
+                        // Standard Dashboard: hide separate molding entries if user is in standard view, but keep all primary/plant entries
+                        if (isMoldingEntry && activeTab !== "molding") {
                             matchesDept = false;
+                        } else {
+                            matchesDept = true;
                         }
                     }
 
-                    const matchesLocation = !filters.location || filters.location === "all"
-                        || plantLocationMap[e.plant] === filters.location;
+                    const entryLoc = String(e.location || plantLocationMap[e.plant] || "").trim().toLowerCase();
+                    const filterLoc = String(filters.location || "").trim().toLowerCase();
+                    const matchesLocation = !filterLoc || filterLoc === "all" ||
+                        entryLoc === filterLoc ||
+                        entryLoc.includes(filterLoc) ||
+                        filterLoc.includes(entryLoc) ||
+                        (filterLoc.includes("roork") && entryLoc.includes("roork"));
+
                     const matchesDate = e.date >= filters.startDate && e.date <= filters.endDate;
                     return matchesPlant && matchesDept && matchesLocation && matchesDate;
                 });
-            }, [dailyEntries, filters, allowedPlants, plants, departments, activeTab]);
+            }, [dailyEntries, filters, allowedPlants, plants, departments, activeTab, canAccessMolding, currentUser, userHasSpecificDepts, userSpecificDepts]);
 
             // Unique locations derived from plants master data (used for Reports location filter)
             const reportLocations = useMemo(() => {
@@ -5082,13 +5206,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             // Plants narrowed down by the selected location (used for Reports plant dropdown)
             const reportLocationPlants = useMemo(() => {
                 if (selectedReportLocation === "all") return allowedPlants;
-                return allowedPlants.filter(p => p.location === selectedReportLocation);
+                const filterLoc = String(selectedReportLocation).trim().toLowerCase();
+                return allowedPlants.filter(p => {
+                    const pLoc = String(p.location || "").trim().toLowerCase();
+                    return pLoc === filterLoc || pLoc.includes(filterLoc) || filterLoc.includes(pLoc) ||
+                        (filterLoc.includes("roork") && pLoc.includes("roork"));
+                });
             }, [allowedPlants, selectedReportLocation]);
 
             // Plants for Daily Entry location filter
             const entryFilterPlants = useMemo(() => {
                 if (entryLocationFilter === "all") return allowedPlants;
-                return allowedPlants.filter(p => p.location === entryLocationFilter);
+                const filterLoc = String(entryLocationFilter).trim().toLowerCase();
+                return allowedPlants.filter(p => {
+                    const pLoc = String(p.location || "").trim().toLowerCase();
+                    return pLoc === filterLoc || pLoc.includes(filterLoc) || filterLoc.includes(pLoc) ||
+                        (filterLoc.includes("roork") && pLoc.includes("roork"));
+                });
             }, [allowedPlants, entryLocationFilter]);
 
             // Molding Tariff Context
@@ -5846,18 +5980,34 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const ep = entryPlantKey(e.plant);
                     const isAllowed = !plants.length
                         ? true
-                        : (!allowedPlants.length ? false : allowedIds.has(ep));
+                        : (!allowedPlants.length ? false : (allowedIds.has(ep) || allowedPlants.some(p => p.plant_code === e.plant || p.plant_name === e.plant || p.plant_display_name === e.plant)));
                     if (!isAllowed) return false;
 
+                    const entryDept = String(e.department || "").trim().toLowerCase();
+                    const isMoldingEntry = entryDept.includes("mold") || entryDept.includes("mould");
+                    if (isMoldingEntry && !canAccessMolding) return false;
+
+                    if (currentUser && currentUser.role !== "IT_ADMIN" && userHasSpecificDepts) {
+                        const deptAllowed = userSpecificDepts.some(dept => {
+                            const dNorm = (dept.includes("mold") || dept.includes("mould")) ? "molding" : dept;
+                            const eNorm = isMoldingEntry ? "molding" : entryDept;
+                            return dNorm === eNorm || dept === entryDept;
+                        });
+                        if (!deptAllowed) return false;
+                    }
+
                     if (entryLocationFilter !== "all") {
-                        const loc = e.location || plantLocationMap[e.plant];
-                        if (String(loc || "").toUpperCase() !== String(entryLocationFilter).toUpperCase()) return false;
+                        const loc = String(e.location || plantLocationMap[e.plant] || "").trim().toLowerCase();
+                        const filterLoc = String(entryLocationFilter || "").trim().toLowerCase();
+                        const matchesLoc = loc === filterLoc || loc.includes(filterLoc) || filterLoc.includes(loc) ||
+                            (filterLoc.includes("roork") && loc.includes("roork"));
+                        if (!matchesLoc) return false;
                     }
 
                     if (entryPlantFilter !== "all") {
                         if (selectedIds) {
-                            if (!selectedIds.has(ep)) return false;
-                        } else if (e.plant !== entryPlantFilter) {
+                            if (!selectedIds.has(ep) && (!selectedPlant || (selectedPlant.plant_code !== e.plant && selectedPlant.plant_name !== e.plant && selectedPlant.plant_display_name !== e.plant))) return false;
+                        } else if (e.plant !== entryPlantFilter && String(e.plant).trim().toLowerCase() !== String(entryPlantFilter).trim().toLowerCase()) {
                             return false;
                         }
                     }
@@ -5871,7 +6021,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         String(e.date || "").includes(searchLower)
                     );
                 });
-            }, [dailyEntries, entrySearch, entryLocationFilter, entryPlantFilter, allowedPlants, plants]);
+            }, [dailyEntries, entrySearch, entryLocationFilter, entryPlantFilter, allowedPlants, plants, canAccessMolding, currentUser, userHasSpecificDepts, userSpecificDepts]);
 
             const paginatedEntries = useMemo(() => {
                 const start = (entryPage - 1) * entryLimit;
@@ -6057,6 +6207,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                             if (!matchPlant) return false;
                         }
 
+                        // Department & Molding check
+                        const entryDept = String(e.department || "").trim().toLowerCase();
+                        const isMoldingEntry = entryDept.includes("mold") || entryDept.includes("mould");
+                        if (isMoldingEntry && !canAccessMolding) return false;
+
                         // Location filter check
                         if (targetLoc && targetLoc !== "all") {
                             const loc = String(e.location || meta.location || "").toUpperCase();
@@ -6064,7 +6219,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                             const matchLoc =
                                 loc === selLoc ||
                                 loc.includes(selLoc) ||
-                                selLoc.includes(loc);
+                                selLoc.includes(loc) ||
+                                (selLoc.includes("ROORK") && loc.includes("ROORK"));
                             if (!matchLoc) return false;
                         }
                         if (targetStart && e.date < targetStart) return false;
@@ -7363,34 +7519,38 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                 </button>
 
                                 {/* Molding Dedicated Tab Button */}
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab("molding")}
-                                    className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${
-                                        activeTab === "molding"
-                                            ? 'bg-cyan-600 text-white shadow-sm font-extrabold'
-                                            : 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100 font-bold border border-cyan-200/60'
-                                    }`}
-                                    title="Molding Department Operations & Dashboard"
-                                >
-                                    <span className="material-symbols-outlined text-[16px]">precision_manufacturing</span>
-                                    <span className="text-[10px] uppercase tracking-wider">Molding</span>
-                                </button>
+                                {canAccessMolding && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab("molding")}
+                                        className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${
+                                            activeTab === "molding"
+                                                ? 'bg-cyan-600 text-white shadow-sm font-extrabold'
+                                                : 'bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100 font-bold border border-cyan-200/60'
+                                        }`}
+                                        title="Molding Department Operations & Dashboard"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">precision_manufacturing</span>
+                                        <span className="text-[10px] uppercase tracking-wider">Molding</span>
+                                    </button>
+                                )}
 
                                 {/* Bill Audit Dedicated Tab Button */}
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab("bill_audit")}
-                                    className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${
-                                        activeTab === "bill_audit"
-                                            ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
-                                            : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 font-bold border border-indigo-200/60'
-                                    }`}
-                                    title="Utility Bill Upload & Consumption Reconciliation"
-                                >
-                                    <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-                                    <span className="text-[10px] uppercase tracking-wider">Bill Audit</span>
-                                </button>
+                                {canAccessBillAudit && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab("bill_audit")}
+                                        className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${
+                                            activeTab === "bill_audit"
+                                                ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                                                : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 font-bold border border-indigo-200/60'
+                                        }`}
+                                        title="Utility Bill Upload & Consumption Reconciliation"
+                                    >
+                                        <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                                        <span className="text-[10px] uppercase tracking-wider">Bill Audit</span>
+                                    </button>
+                                )}
 
                                 {currentUser.role === "IT_ADMIN" && (
                                     <React.Fragment>
@@ -7625,7 +7785,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                     )}
                                                 </select>
                                             </div>
-                                            {filters.plant && filters.plant !== "all" && availableDepartmentsForFilter.length > 0 && (
+                                            {availableDepartmentsForFilter.length > 0 && (
                                                 <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-xs">
                                                     <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 shrink-0">3. Dept:</label>
                                                     <select
