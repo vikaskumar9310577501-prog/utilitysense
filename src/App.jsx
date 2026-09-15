@@ -2174,7 +2174,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return text ? `${tag}\n${text}` : tag;
             };
 
-            const getDefaultMetersForPlant = (plantCode, existingMeters = []) => {
+            const getDefaultMetersForPlant = (plantCode, existingMeters = [], prevMetersData = null) => {
                 const pCode = String(plantCode || "").trim().toLowerCase();
                 const configured = (existingMeters || []).filter(m =>
                     String(m.plant_code || "").trim().toLowerCase() === pCode &&
@@ -2185,6 +2185,17 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         id: m.meter_id || `meter_${idx + 1}`,
                         name: m.meter_name || `Meter ${idx + 1}`,
                         opening: 0,
+                        closing: "",
+                        meter_changed: false,
+                        custom_difference: "",
+                        diff: 0
+                    }));
+                }
+                if (prevMetersData && Array.isArray(prevMetersData) && prevMetersData.length > 1) {
+                    return prevMetersData.map((m, idx) => ({
+                        id: `m_${idx + 1}`,
+                        name: m.name || `Meter ${idx + 1}`,
+                        opening: Number(m.closing) || 0,
                         closing: "",
                         meter_changed: false,
                         custom_difference: "",
@@ -3960,7 +3971,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                     const pDef = allowedPlants[0]?.plant_code || "NGM";
                     const lDef = allowedPlants[0]?.location || "NASHIK";
-                    const initialMeters = getDefaultMetersForPlant(pDef, meters);
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const sortedPrev = dailyEntries
+                        .filter(e => e.plant === pDef && e.date < todayStr)
+                        .sort((a, b) => b.date.localeCompare(a.date));
+                    const prevEntry = sortedPrev.length > 0 ? sortedPrev[0] : null;
+                    const prevMetersData = prevEntry ? parseMetersFromRemarks(prevEntry.remarks) : null;
+                    const initialMeters = getDefaultMetersForPlant(pDef, meters, prevMetersData);
 
                     setEntryFormValues({
                         date: new Date().toISOString().split('T')[0],
@@ -4150,24 +4167,30 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const prevReading = prevEntry ? Number(prevEntry.electricity_closing) || 0 : 0;
                 const prevMetersData = prevEntry ? parseMetersFromRemarks(prevEntry.remarks) : null;
 
+                const plantDefaults = getDefaultMetersForPlant(plant, meters, prevMetersData);
                 let currentMeters = entryFormValues.electricity_meters && entryFormValues.electricity_meters.length > 0
                     ? [...entryFormValues.electricity_meters]
-                    : getDefaultMetersForPlant(plant, meters);
+                    : plantDefaults;
 
-                // If plant defaults has more meters (e.g. Roorkee plant 1020 has 2 meters), upgrade
-                const plantDefaults = getDefaultMetersForPlant(plant, meters);
+                // Ensure currentMeters includes all meters from plantDefaults or prevMetersData
                 if (plantDefaults.length > currentMeters.length) {
-                    currentMeters = plantDefaults;
+                    const existingNames = new Set(currentMeters.map(m => String(m.name || "").toLowerCase().trim()));
+                    plantDefaults.forEach(pm => {
+                        const pNameClean = String(pm.name || "").toLowerCase().trim();
+                        if (!existingNames.has(pNameClean)) {
+                            currentMeters.push(pm);
+                        }
+                    });
                 }
 
                 currentMeters = currentMeters.map((m, idx) => {
-                    let opening = 0;
+                    let opening = Number(m.opening) || 0;
                     if (prevMetersData && prevMetersData.length > 0) {
-                        const matched = prevMetersData.find(pm => String(pm.name || "").toLowerCase() === String(m.name || "").toLowerCase()) || prevMetersData[idx];
+                        const matched = prevMetersData.find(pm => String(pm.name || "").toLowerCase().trim() === String(m.name || "").toLowerCase().trim()) || prevMetersData[idx];
                         if (matched && matched.closing !== "" && matched.closing !== null && !isNaN(Number(matched.closing))) {
                             opening = Number(matched.closing);
                         }
-                    } else if (idx === 0) {
+                    } else if (idx === 0 && prevReading > 0) {
                         opening = prevReading;
                     }
                     return { ...m, opening };
@@ -4475,10 +4498,28 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const handleAddMeter = () => {
                 const currentMeters = entryFormValues.electricity_meters || [];
                 const newIdx = currentMeters.length + 1;
+                const newMeterName = `Meter ${newIdx}`;
+
+                const targetDate = entryFormValues.date || new Date().toISOString().split('T')[0];
+                const targetPlant = entryFormValues.plant;
+                const sortedPrev = dailyEntries
+                    .filter(e => e.plant === targetPlant && e.date < targetDate)
+                    .sort((a, b) => b.date.localeCompare(a.date));
+                const prevEntry = sortedPrev.length > 0 ? sortedPrev[0] : null;
+                const prevMetersData = prevEntry ? parseMetersFromRemarks(prevEntry.remarks) : null;
+
+                let autoOpening = 0;
+                if (prevMetersData && prevMetersData.length >= newIdx) {
+                    const matched = prevMetersData.find(pm => String(pm.name || "").toLowerCase().trim() === newMeterName.toLowerCase().trim()) || prevMetersData[newIdx - 1];
+                    if (matched && matched.closing !== "" && matched.closing !== null && !isNaN(Number(matched.closing))) {
+                        autoOpening = Number(matched.closing);
+                    }
+                }
+
                 const newMeter = {
                     id: `m_${Date.now()}_${newIdx}`,
-                    name: `Meter ${newIdx}`,
-                    opening: 0,
+                    name: newMeterName,
+                    opening: autoOpening,
                     closing: "",
                     meter_changed: false,
                     custom_difference: "",
@@ -4616,13 +4657,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const cleanRemarksText = getCleanRemarks(entryFormValues.remarks);
                 payload.remarks = serializeRemarksWithMeters(cleanRemarksText, currentMeters);
 
-                // If IT Admin or meter added, sync to Supabase 'meters' master table in background
-                if (currentUser?.role === 'IT_ADMIN' && currentMeters.length > 0) {
+                // Sync any newly added meters to Supabase 'meters' master table in background
+                if (currentMeters && currentMeters.length > 0) {
                     try {
                         const plantCode = payload.plant;
                         currentMeters.forEach(m => {
                             const meterId = `MTR-${plantCode}-${String(m.name || 'MTR').replace(/\s+/g, '_').toUpperCase()}`;
-                            const exists = (meters || []).some(x => x.meter_id === meterId || (x.plant_code === plantCode && x.meter_name === m.name));
+                            const exists = (meters || []).some(x => x.meter_id === meterId || (x.plant_code === plantCode && String(x.meter_name || "").toLowerCase().trim() === String(m.name || "").toLowerCase().trim()));
                             if (!exists) {
                                 supabase.from('meters').insert({
                                     meter_id: meterId,
