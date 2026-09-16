@@ -3409,6 +3409,72 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return analyzed;
             };
 
+            // Download Standard Bulk Excel Template
+            const handleDownloadImportTemplate = () => {
+                const sampleData = [
+                    {
+                        "Date (YYYY-MM-DD)": "2026-09-01",
+                        "Location": "GREATER NOIDA",
+                        "Plant Code / Name": "PG ELECTROPLAST LTD",
+                        "Electricity Opening (kWh)": 1000.00,
+                        "Electricity Closing (kWh)": 1250.50,
+                        "Solar Generated (kWh)": 350.00,
+                        "PNG Gas Opening (kg)": 100.00,
+                        "PNG Gas Closing (kg)": 145.50,
+                        "Nitrogen Gas Opening (kg)": 50.00,
+                        "Nitrogen Gas Closing (kg)": 75.00,
+                        "Oxygen Gas Opening (kg)": 20.00,
+                        "Oxygen Gas Closing (kg)": 32.00,
+                        "Diesel Used (Liters)": 15.00,
+                        "Water Opening (KL)": 500.00,
+                        "Water Closing (KL)": 530.00,
+                        "ODU Production": 150,
+                        "IDU Production": 150,
+                        "Operator": "Vikas Kumar",
+                        "Remarks": "Sample historical entry"
+                    },
+                    {
+                        "Date (YYYY-MM-DD)": "2026-09-02",
+                        "Location": "PUNE",
+                        "Plant Code / Name": "4010",
+                        "Electricity Opening (kWh)": 2500.00,
+                        "Electricity Closing (kWh)": 2890.00,
+                        "Solar Generated (kWh)": 520.00,
+                        "PNG Gas Opening (kg)": 200.00,
+                        "PNG Gas Closing (kg)": 260.00,
+                        "Nitrogen Gas Opening (kg)": 80.00,
+                        "Nitrogen Gas Closing (kg)": 115.00,
+                        "Oxygen Gas Opening (kg)": 30.00,
+                        "Oxygen Gas Closing (kg)": 48.00,
+                        "Diesel Used (Liters)": 0,
+                        "Water Opening (KL)": 800.00,
+                        "Water Closing (KL)": 845.00,
+                        "ODU Production": 200,
+                        "IDU Production": 200,
+                        "Operator": "Operator 2",
+                        "Remarks": "Sample entry for Pune plant"
+                    }
+                ];
+
+                try {
+                    const ws = XLSX.utils.json_to_sheet(sampleData);
+                    ws['!cols'] = [
+                        { wch: 18 }, { wch: 18 }, { wch: 24 }, { wch: 24 },
+                        { wch: 24 }, { wch: 22 }, { wch: 22 }, { wch: 22 },
+                        { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 },
+                        { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 16 },
+                        { wch: 16 }, { wch: 16 }, { wch: 26 }
+                    ];
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "UtilitySense_Import_Template");
+                    XLSX.writeFile(wb, "UtilitySense_Bulk_Data_Import_Template.xlsx");
+                    setToast({ type: "success", message: "Standard Excel import template downloaded!" });
+                } catch (err) {
+                    console.error("Failed to download template:", err);
+                    setToast({ type: "error", message: "Failed to generate Excel template." });
+                }
+            };
+
             // File Upload & Sheet Extraction
             const handleMassExcelFileUpload = async (e) => {
                 const file = e.target.files[0];
@@ -12342,26 +12408,37 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             <p className="text-[11px] text-slate-500 max-w-md mb-4">
                                                 Supports multi-utility columns (Electricity, Solar, Diesel, ODU/IDU Production, Waste). System will auto-detect columns, locations, and plants.
                                             </p>
-                                            <label className="flex items-center gap-2 px-5 py-2.5 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl font-bold cursor-pointer transition shadow-sm">
-                                                {isAnalyzingExcel ? (
-                                                    <>
-                                                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                                        <span>Analyzing Spreadsheet...</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <span className="material-symbols-outlined text-[18px]">folder_open</span>
-                                                        <span>Browse Excel File</span>
-                                                    </>
-                                                )}
-                                                <input
-                                                    type="file"
-                                                    accept=".xlsx, .xls, .csv"
-                                                    onChange={handleMassExcelFileUpload}
-                                                    className="hidden"
-                                                    disabled={isAnalyzingExcel}
-                                                />
-                                            </label>
+                                            <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
+                                                <label className="flex items-center gap-2 px-5 py-2.5 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-xl font-bold cursor-pointer transition shadow-sm">
+                                                    {isAnalyzingExcel ? (
+                                                        <>
+                                                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                            <span>Analyzing Spreadsheet...</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <span className="material-symbols-outlined text-[18px]">folder_open</span>
+                                                            <span>Browse Excel File</span>
+                                                        </>
+                                                    )}
+                                                    <input
+                                                        type="file"
+                                                        accept=".xlsx, .xls, .csv"
+                                                        onChange={handleMassExcelFileUpload}
+                                                        className="hidden"
+                                                        disabled={isAnalyzingExcel}
+                                                    />
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleDownloadImportTemplate}
+                                                    className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs transition cursor-pointer shadow-xs"
+                                                    title="Download ready-to-use sample Excel sheet format"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]">download</span>
+                                                    <span>Download Sample Excel Template</span>
+                                                </button>
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
