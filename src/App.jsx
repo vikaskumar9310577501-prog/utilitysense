@@ -2174,28 +2174,47 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return text ? `${tag}\n${text}` : tag;
             };
 
+            const isSamePlant = (p1, p2) => {
+                const s1 = String(p1 || "").trim().toLowerCase();
+                const s2 = String(p2 || "").trim().toLowerCase();
+                if (!s1 || !s2) return false;
+                if (s1 === s2) return true;
+                const match1 = (plants || []).find(x => String(x.plant_code || "").toLowerCase() === s1 || String(x.plant_name || "").toLowerCase() === s1 || String(x.plant_display_name || "").toLowerCase() === s1);
+                const match2 = (plants || []).find(x => String(x.plant_code || "").toLowerCase() === s2 || String(x.plant_name || "").toLowerCase() === s2 || String(x.plant_display_name || "").toLowerCase() === s2);
+                return Boolean(match1 && match2 && match1.plant_code === match2.plant_code);
+            };
+
             const getDefaultMetersForPlant = (plantCode, existingMeters = [], prevMetersData = null) => {
                 const pCode = String(plantCode || "").trim().toLowerCase();
                 const configured = (existingMeters || []).filter(m =>
-                    String(m.plant_code || "").trim().toLowerCase() === pCode &&
+                    (String(m.plant_code || "").trim().toLowerCase() === pCode || String(m.plant_name || "").trim().toLowerCase() === pCode) &&
                     (!m.status || String(m.status).toLowerCase() === "active")
                 );
                 if (configured.length > 1) {
-                    return configured.map((m, idx) => ({
-                        id: m.meter_id || `meter_${idx + 1}`,
-                        name: m.meter_name || `Meter ${idx + 1}`,
-                        opening: 0,
-                        closing: "",
-                        meter_changed: false,
-                        custom_difference: "",
-                        diff: 0
-                    }));
+                    return configured.map((m, idx) => {
+                        let prevOpening = 0;
+                        if (prevMetersData && prevMetersData.length > 0) {
+                            const matched = prevMetersData.find(pm => String(pm.name || "").toLowerCase().trim() === String(m.meter_name || m.name || "").toLowerCase().trim()) || prevMetersData[idx];
+                            if (matched && matched.closing !== "" && matched.closing !== null && !isNaN(Number(matched.closing))) {
+                                prevOpening = Number(matched.closing);
+                            }
+                        }
+                        return {
+                            id: m.meter_id || `meter_${idx + 1}`,
+                            name: m.meter_name || `Meter ${idx + 1}`,
+                            opening: prevOpening,
+                            closing: "",
+                            meter_changed: false,
+                            custom_difference: "",
+                            diff: 0
+                        };
+                    });
                 }
                 if (prevMetersData && Array.isArray(prevMetersData) && prevMetersData.length > 1) {
                     return prevMetersData.map((m, idx) => ({
                         id: `m_${idx + 1}`,
                         name: m.name || `Meter ${idx + 1}`,
-                        opening: Number(m.closing) || 0,
+                        opening: m.closing !== "" && m.closing !== null && !isNaN(Number(m.closing)) ? Number(m.closing) : 0,
                         closing: "",
                         meter_changed: false,
                         custom_difference: "",
@@ -2203,13 +2222,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     }));
                 }
                 if (pCode === "1020" || pCode.includes("roork")) {
+                    let m1Open = 0, m2Open = 0;
+                    if (prevMetersData && prevMetersData.length > 0) {
+                        m1Open = Number(prevMetersData[0]?.closing) || 0;
+                        m2Open = Number(prevMetersData[1]?.closing) || 0;
+                    }
                     return [
-                        { id: "m1", name: "Meter 1", opening: 0, closing: "", meter_changed: false, custom_difference: "", diff: 0 },
-                        { id: "m2", name: "Meter 2", opening: 0, closing: "", meter_changed: false, custom_difference: "", diff: 0 }
+                        { id: "m1", name: "Meter 1", opening: m1Open, closing: "", meter_changed: false, custom_difference: "", diff: 0 },
+                        { id: "m2", name: "Meter 2", opening: m2Open, closing: "", meter_changed: false, custom_difference: "", diff: 0 }
                     ];
                 }
+                let m1DefaultOpen = 0;
+                if (prevMetersData && prevMetersData.length > 0) {
+                    m1DefaultOpen = Number(prevMetersData[0]?.closing) || 0;
+                }
                 return [
-                    { id: "m1", name: "Meter 1", opening: 0, closing: "", meter_changed: false, custom_difference: "", diff: 0 }
+                    { id: "m1", name: "Meter 1", opening: m1DefaultOpen, closing: "", meter_changed: false, custom_difference: "", diff: 0 }
                 ];
             };
 
@@ -4076,7 +4104,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const lDef = allowedPlants[0]?.location || "NASHIK";
                     const todayStr = new Date().toISOString().split('T')[0];
                     const sortedPrev = dailyEntries
-                        .filter(e => e.plant === pDef && e.date < todayStr)
+                        .filter(e => isSamePlant(e.plant, pDef) && e.date < todayStr)
                         .sort((a, b) => b.date.localeCompare(a.date));
                     const prevEntry = sortedPrev.length > 0 ? sortedPrev[0] : null;
                     const prevMetersData = prevEntry ? parseMetersFromRemarks(prevEntry.remarks) : null;
@@ -4090,7 +4118,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         shift: "Shift A",
                         operator_name: currentUser?.name || "Operator",
                         electricity_meters: initialMeters,
-                        electricity_opening: 0,
+                        electricity_opening: initialMeters[0]?.opening || 0,
                         electricity_closing: "",
                         meter_changed: false,
                         custom_difference: "",
@@ -4264,7 +4292,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 if (isEditingSame) return;
 
                 const sortedPrev = dailyEntries
-                    .filter(e => e.plant === plant && e.date < date)
+                    .filter(e => isSamePlant(e.plant, plant) && e.date < date)
                     .sort((a, b) => b.date.localeCompare(a.date));
                 const prevEntry = sortedPrev.length > 0 ? sortedPrev[0] : null;
                 const prevReading = prevEntry ? Number(prevEntry.electricity_closing) || 0 : 0;
@@ -8439,8 +8467,41 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                     {e.department || 'PROD'}
                                                                 </span>
                                                             </td>
-                                                            <td className="py-3 px-2.5 text-right text-slate-800">{fmtNum(e.electricity_opening)}</td>
-                                                            <td className="py-3 px-2.5 text-right text-slate-800">{fmtNum(unitsDiff, 2)}</td>
+                                                            <td className="py-3 px-2.5 text-right text-slate-800">
+                                                                {(() => {
+                                                                    const rowMeters = parseMetersFromRemarks(e.remarks);
+                                                                    if (rowMeters && rowMeters.length > 1) {
+                                                                        return (
+                                                                            <div className="flex flex-col items-end gap-0.5">
+                                                                                {rowMeters.map((m, mIdx) => (
+                                                                                    <div key={mIdx} className="text-[10px] flex items-center justify-end gap-1">
+                                                                                        <span className="font-bold text-slate-500">{m.name || `M${mIdx + 1}`}:</span>
+                                                                                        <span className="font-mono text-slate-800">{fmtNum(m.opening, 2)} → {fmtNum(m.closing, 2)}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return e.electricity_closing !== undefined && e.electricity_closing !== null && e.electricity_closing !== "" ? `${fmtNum(e.electricity_opening, 2)} → ${fmtNum(e.electricity_closing, 2)}` : fmtNum(e.electricity_opening, 2);
+                                                                })()}
+                                                            </td>
+                                                            <td className="py-3 px-2.5 text-right text-slate-800">
+                                                                {(() => {
+                                                                    const rowMeters = parseMetersFromRemarks(e.remarks);
+                                                                    if (rowMeters && rowMeters.length > 1) {
+                                                                        return (
+                                                                            <div className="flex flex-col items-end gap-0.5">
+                                                                                {rowMeters.map((m, mIdx) => (
+                                                                                    <div key={mIdx} className="text-[10px] font-bold text-sky-700">
+                                                                                        {m.name || `M${mIdx + 1}`}: {fmtNum(m.diff, 2)}
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return fmtNum(unitsDiff, 2);
+                                                                })()}
+                                                            </td>
                                                             <td className="py-3 px-2.5 text-right font-medium text-slate-800">{fmtNum(msebUnits)}</td>
                                                             <td className="py-3 px-2.5 text-right text-amber-600 font-medium">{fmtNum(solarUnits, 2)}</td>
                                                             <td className="py-3 px-2.5 text-right text-slate-800">{fmtNum(totalUnits, 2)}</td>
