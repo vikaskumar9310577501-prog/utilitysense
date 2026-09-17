@@ -971,6 +971,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const [isMassUploadModalOpen, setIsMassUploadModalOpen] = useState(false);
             const [isImportHistoryOpen, setIsImportHistoryOpen] = useState(false);
             const [importHistory, setImportHistory] = useState([]);
+
+            // Past Financial Year Monthly Importer States
+            const [isPastFyModalOpen, setIsPastFyModalOpen] = useState(false);
+            const [pastFyLocation, setPastFyLocation] = useState("");
+            const [pastFyPlant, setPastFyPlant] = useState("");
+            const [pastFyFileName, setPastFyFileName] = useState("");
+            const [pastFyParsedRows, setPastFyParsedRows] = useState([]);
+            const [isAnalyzingPastFy, setIsAnalyzingPastFy] = useState(false);
+            const [isImportingPastFy, setIsImportingPastFy] = useState(false);
+
             const [massUploadFileName, setMassUploadFileName] = useState("");
             const [massUploadSheets, setMassUploadSheets] = useState([]);
             const [selectedUploadSheet, setSelectedUploadSheet] = useState("");
@@ -3616,6 +3626,329 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 setPlantOverride(newPlt);
                 const reAnalyzed = analyzeImportRows(rawUploadData, columnMappings, locationOverride, newPlt);
                 setAnalyzedImportRows(reAnalyzed);
+            };
+
+            // ----------------------------------------------------
+            // PAST FINANCIAL YEAR MONTHLY IMPORTER LOGIC
+            // ----------------------------------------------------
+
+            const openPastFyModal = () => {
+                const defaultLoc = allowedLocations[0] || "PUNE";
+                const matching = allowedPlants.filter(p => !defaultLoc || (p.location || "").toUpperCase() === defaultLoc.toUpperCase());
+                const defaultPlt = matching[0]?.plant_code || allowedPlants[0]?.plant_code || "4010";
+                setPastFyLocation(defaultLoc);
+                setPastFyPlant(defaultPlt);
+                setPastFyFileName("");
+                setPastFyParsedRows([]);
+                setIsPastFyModalOpen(true);
+            };
+
+            const handlePastFyLocationChange = (newLoc) => {
+                setPastFyLocation(newLoc);
+                const matching = allowedPlants.filter(p => !newLoc || (p.location || "").toUpperCase() === newLoc.toUpperCase());
+                setPastFyPlant(matching[0]?.plant_code || allowedPlants[0]?.plant_code || "");
+            };
+
+            // Download Official Sample Template for Past FY Monthly Import
+            const downloadPastFyTemplate = () => {
+                const templateData = [
+                    { "Sr. No.": 1, "Month": "Apr-25", "Units consumed kwh": 469585, "Rate /Unit (INR)": 10.18, "Amount (INR)": 4780660, "Solar Gen. kwh": 35222 },
+                    { "Sr. No.": 2, "Month": "May-25", "Units consumed kwh": 438940, "Rate /Unit (INR)": 10.86, "Amount (INR)": 4766730, "Solar Gen. kwh": 28411 },
+                    { "Sr. No.": 3, "Month": "Jun-25", "Units consumed kwh": 45903, "Rate /Unit (INR)": 21.31, "Amount (INR)": 978420, "Solar Gen. kwh": 24342 },
+                    { "Sr. No.": 4, "Month": "Jul-25", "Units consumed kwh": 52763, "Rate /Unit (INR)": 21.05, "Amount (INR)": 1110630, "Solar Gen. kwh": 19943 },
+                    { "Sr. No.": 5, "Month": "Aug-25", "Units consumed kwh": 72832, "Rate /Unit (INR)": 18.83, "Amount (INR)": 1371620, "Solar Gen. kwh": 21206 },
+                    { "Sr. No.": 6, "Month": "Sep-25", "Units consumed kwh": 101674, "Rate /Unit (INR)": 16.54, "Amount (INR)": 1682090, "Solar Gen. kwh": 17173 },
+                    { "Sr. No.": 7, "Month": "Oct-25", "Units consumed kwh": 256763, "Rate /Unit (INR)": 11.45, "Amount (INR)": 2941120, "Solar Gen. kwh": 25593 },
+                    { "Sr. No.": 8, "Month": "Nov-25", "Units consumed kwh": 397479, "Rate /Unit (INR)": 10.94, "Amount (INR)": 4347200, "Solar Gen. kwh": 25030 },
+                    { "Sr. No.": 9, "Month": "Dec-25", "Units consumed kwh": 410055, "Rate /Unit (INR)": 10.98, "Amount (INR)": 4503810, "Solar Gen. kwh": 28012 },
+                    { "Sr. No.": 10, "Month": "Jan-26", "Units consumed kwh": 308008, "Rate /Unit (INR)": 11.80, "Amount (INR)": 3633070, "Solar Gen. kwh": 27312 },
+                    { "Sr. No.": 11, "Month": "Feb-26", "Units consumed kwh": 554141, "Rate /Unit (INR)": 11.34, "Amount (INR)": 6284080, "Solar Gen. kwh": 24436 },
+                    { "Sr. No.": 12, "Month": "Mar-26", "Units consumed kwh": 820597, "Rate /Unit (INR)": 10.82, "Amount (INR)": 8877160, "Solar Gen. kwh": 31480 }
+                ];
+
+                try {
+                    const ws = XLSX.utils.json_to_sheet(templateData);
+                    ws['!cols'] = [
+                        { wch: 10 }, { wch: 16 }, { wch: 22 }, { wch: 20 }, { wch: 18 }, { wch: 18 }
+                    ];
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Past_FY_Monthly_Data");
+                    XLSX.writeFile(wb, "UtilitySense_Past_FY_Monthly_Import_Template.xlsx");
+                    setToast({ type: "success", message: "Past FY Monthly Excel Template downloaded successfully!" });
+                } catch (err) {
+                    console.error("Template download error:", err);
+                    setToast({ type: "error", message: "Failed to generate Past FY template." });
+                }
+            };
+
+            // Parse month string (e.g. Apr-25, 04/2025) to Month-End Date (e.g. 2025-04-30)
+            const parseMonthToMonthEnd = (monthStr, fallbackIndex = 0) => {
+                if (!monthStr) return `2025-${String(fallbackIndex + 1).padStart(2, '0')}-28`;
+                const str = String(monthStr).trim();
+
+                const monthsMap = {
+                    jan: { m: 1, days: 31 },
+                    feb: { m: 2, days: 28 },
+                    mar: { m: 3, days: 31 },
+                    apr: { m: 4, days: 30 },
+                    may: { m: 5, days: 31 },
+                    jun: { m: 6, days: 30 },
+                    jul: { m: 7, days: 31 },
+                    aug: { m: 8, days: 31 },
+                    sep: { m: 9, days: 30 },
+                    oct: { m: 10, days: 31 },
+                    nov: { m: 11, days: 30 },
+                    dec: { m: 12, days: 31 }
+                };
+
+                const strLower = str.toLowerCase();
+                let monthNum = null;
+                let daysInMonth = 30;
+
+                Object.keys(monthsMap).forEach(key => {
+                    if (strLower.includes(key)) {
+                        monthNum = monthsMap[key].m;
+                        daysInMonth = monthsMap[key].days;
+                    }
+                });
+
+                let year = 2025;
+                const yearMatch = str.match(/\b(20\d{2}|\d{2})\b/);
+                if (yearMatch) {
+                    const yVal = Number(yearMatch[1]);
+                    year = yVal < 100 ? 2000 + yVal : yVal;
+                }
+
+                if (monthNum === 2 && ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0))) {
+                    daysInMonth = 29;
+                }
+
+                if (!monthNum) {
+                    const numMatch = str.match(/(\d{1,2})/);
+                    if (numMatch) {
+                        monthNum = Math.min(12, Math.max(1, Number(numMatch[1])));
+                    } else {
+                        monthNum = (fallbackIndex % 12) + 1;
+                    }
+                }
+
+                const mm = String(monthNum).padStart(2, '0');
+                const dd = String(daysInMonth).padStart(2, '0');
+                return `${year}-${mm}-${dd}`;
+            };
+
+            // File Upload & Sheet Extraction for Past FY Importer
+            const handlePastFyExcelUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const lowerName = file.name.toLowerCase();
+                const isExcel = lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls') || lowerName.endsWith('.csv');
+                if (!isExcel) {
+                    setToast({
+                        type: "error",
+                        message: "Invalid file format! Please upload a valid Excel spreadsheet (.xlsx or .xls)."
+                    });
+                    e.target.value = "";
+                    return;
+                }
+
+                setIsAnalyzingPastFy(true);
+                setPastFyFileName(file.name);
+
+                try {
+                    const data = await file.arrayBuffer();
+                    const wb = XLSX.read(data, { type: 'array', cellDates: true });
+                    
+                    if (!wb.SheetNames || wb.SheetNames.length === 0) {
+                        throw new Error("No sheets found in uploaded Excel file.");
+                    }
+
+                    const firstSheet = wb.SheetNames[0];
+                    const ws = wb.Sheets[firstSheet];
+                    const jsonRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+                    if (!jsonRows || jsonRows.length === 0) {
+                        throw new Error(`Sheet "${firstSheet}" contains no data rows.`);
+                    }
+
+                    // Strict Header Verification in English
+                    const firstRowKeys = Object.keys(jsonRows[0] || {}).map(k => String(k).toLowerCase());
+                    const hasMonth = firstRowKeys.some(k => k.includes("month"));
+                    const hasUnits = firstRowKeys.some(k => k.includes("unit") || k.includes("kwh") || k.includes("consumption"));
+
+                    if (!hasMonth || !hasUnits) {
+                        setToast({
+                            type: "error",
+                            message: "Invalid template format! Please download and use the official Past Financial Year template."
+                        });
+                        setPastFyFileName("");
+                        setPastFyParsedRows([]);
+                        return;
+                    }
+
+                    // Parse & Sanitize Monthly Rows
+                    const parsed = jsonRows.map((row, idx) => {
+                        let monthRaw = "";
+                        Object.keys(row).forEach(k => {
+                            if (String(k).toLowerCase().includes("month")) monthRaw = row[k];
+                        });
+                        if (!monthRaw && row["Month"]) monthRaw = row["Month"];
+
+                        let unitsRaw = 0;
+                        let rateRaw = 0;
+                        let amountRaw = 0;
+                        let solarRaw = 0;
+
+                        Object.keys(row).forEach(k => {
+                            const kLower = String(k).toLowerCase();
+                            if (kLower.includes("unit") || (kLower.includes("consumed") && kLower.includes("kwh"))) unitsRaw = row[k];
+                            else if (kLower.includes("rate")) rateRaw = row[k];
+                            else if (kLower.includes("amount") || kLower.includes("cost") || kLower.includes("inr")) amountRaw = row[k];
+                            else if (kLower.includes("solar")) solarRaw = row[k];
+                        });
+
+                        const units = Math.max(0, Number(unitsRaw) || 0);
+                        const rate = Math.max(0, Number(rateRaw) || 0);
+                        let amount = Math.max(0, Number(amountRaw) || 0);
+                        if (amount === 0 && units > 0 && rate > 0) {
+                            amount = Math.round(units * rate);
+                        }
+                        const solar = Math.max(0, Number(solarRaw) || 0);
+
+                        const parsedDate = parseMonthToMonthEnd(monthRaw, idx);
+
+                        return {
+                            monthLabel: String(monthRaw).trim() || `Month ${idx + 1}`,
+                            date: parsedDate,
+                            units,
+                            rate,
+                            amount,
+                            solar
+                        };
+                    });
+
+                    setPastFyParsedRows(parsed);
+                    setToast({
+                        type: "success",
+                        message: `Successfully analyzed ${parsed.length} monthly rows from "${file.name}". Please review and confirm below.`
+                    });
+                } catch (err) {
+                    console.error("Past FY analysis error:", err);
+                    setToast({ type: "error", message: `File processing failed: ${err.message}` });
+                    setPastFyParsedRows([]);
+                } finally {
+                    setIsAnalyzingPastFy(false);
+                    e.target.value = "";
+                }
+            };
+
+            // Save Parsed Past FY Monthly Data to Database & State
+            const handleSavePastFyData = async () => {
+                if (pastFyParsedRows.length === 0) {
+                    setToast({ type: "error", message: "No parsed rows to save." });
+                    return;
+                }
+
+                const pCode = pastFyPlant;
+                const pObj = plants.find(p => p.plant_code === pCode) || allowedPlants.find(p => p.plant_code === pCode) || { plant_code: pCode, location: pastFyLocation };
+                const loc = pastFyLocation || pObj.location || "PUNE";
+
+                setIsImportingPastFy(true);
+                try {
+                    const payloads = pastFyParsedRows.map(r => ({
+                        date: r.date,
+                        plant: pCode,
+                        location: loc,
+                        department: "PROD",
+                        shift: "Shift A",
+                        operator_name: currentUser?.name || "Operator",
+                        electricity_opening: 0,
+                        electricity_closing: r.units,
+                        electricity_consumption: r.units,
+                        electricity_cost: r.amount,
+                        solar_opening: 0,
+                        solar_closing: r.solar,
+                        solar_generated: r.solar,
+                        solar_utilized: r.solar,
+                        solar_cost: Math.round(r.solar * 3.5),
+                        solar_utilization_pct: 100,
+                        diesel_used: 0,
+                        diesel_cost: 0,
+                        png_opening: 0,
+                        png_closing: 0,
+                        png_consumption: 0,
+                        png_cost: 0,
+                        nitrogen_opening: 0,
+                        nitrogen_closing: 0,
+                        nitrogen_consumption: 0,
+                        nitrogen_cost: 0,
+                        oxygen_opening: 0,
+                        oxygen_closing: 0,
+                        oxygen_consumption: 0,
+                        oxygen_cost: 0,
+                        water_opening: 0,
+                        water_closing: 0,
+                        water_consumption: 0,
+                        water_cost: 0,
+                        odu: 0,
+                        idu: 0,
+                        production_set: 0,
+                        production_qty: 0,
+                        production_unit: "Sets",
+                        cost_per_set: 0,
+                        sec: 0,
+                        waste_hazardous: 0,
+                        waste_non_hazardous: 0,
+                        waste_recycled: 0,
+                        remarks: `Past Financial Year Monthly Summary Import [${r.monthLabel}]`
+                    }));
+
+                    let chunk = [...payloads];
+                    let chunkRes = null;
+                    for (let attempt = 0; attempt < 25; attempt++) {
+                        chunkRes = await supabase.from('daily_entries').insert(chunk).select();
+                        if (chunkRes.error) {
+                            const msg = chunkRes.error.message || "";
+                            const match = msg.match(/Could not find the '([^']+)' column/i);
+                            if (match && match[1]) {
+                                const missingCol = match[1];
+                                chunk = chunk.map(item => {
+                                    const copy = { ...item };
+                                    delete copy[missingCol];
+                                    return copy;
+                                });
+                                continue;
+                            }
+                        }
+                        break;
+                    }
+
+                    const insertedRows = [];
+                    if (chunkRes?.error) {
+                        console.warn("Past FY insert warning:", chunkRes.error.message);
+                        chunk.forEach((item, cIdx) => {
+                            insertedRows.push({ ...item, id: `past_fy_imp_${Date.now()}_${cIdx}` });
+                        });
+                    } else if (chunkRes?.data) {
+                        insertedRows.push(...chunkRes.data);
+                    }
+
+                    setDailyEntries(prev => [...insertedRows, ...prev]);
+
+                    setToast({
+                        type: "success",
+                        message: `Successfully imported ${insertedRows.length} monthly records for ${pCode} (${loc})!`
+                    });
+                    setIsPastFyModalOpen(false);
+                    setPastFyParsedRows([]);
+                    setPastFyFileName("");
+                } catch (err) {
+                    console.error("Past FY import failed:", err);
+                    setToast({ type: "error", message: `Import failed: ${err.message}` });
+                } finally {
+                    setIsImportingPastFy(false);
+                }
             };
 
             // Execute Safe Transactional Import
@@ -8389,6 +8722,15 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             )
                                         )}
 
+                                        <button
+                                            onClick={openPastFyModal}
+                                            className="flex items-center gap-1.5 h-9 px-3 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer shrink-0 whitespace-nowrap"
+                                            title="Upload Historical Past Financial Year Monthly Data (12 Months)"
+                                        >
+                                            <span className="material-symbols-outlined text-[17px] text-amber-600">calendar_month</span>
+                                            <span>Past FY Importer</span>
+                                        </button>
+
                                         {currentUser.role === "IT_ADMIN" && (
                                             <button
                                                 onClick={openMassUploadModal}
@@ -12934,6 +13276,223 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             </button>
                                         )}
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* PAST FINANCIAL YEAR MONTHLY IMPORTER MODAL */}
+                    {isPastFyModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm">
+                            <div className="relative w-full max-w-4xl overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-2xl flex flex-col max-h-[92vh]">
+                                {/* Header */}
+                                <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/80">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600">
+                                            <span className="material-symbols-outlined text-[22px]">calendar_month</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-extrabold text-slate-900">
+                                                Past Financial Year Monthly Importer
+                                            </h3>
+                                            <p className="text-[11px] text-slate-500 mt-0.5">
+                                                Upload 12-month historical Financial Year summary data (Units, Tariff Rate, Amount & Solar Generation)
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsPastFyModalOpen(false)}
+                                        className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition border-none bg-transparent cursor-pointer"
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">close</span>
+                                    </button>
+                                </div>
+
+                                {/* Body */}
+                                <div className="p-6 overflow-y-auto space-y-5 text-xs flex-1">
+                                    {/* Controls Bar: Location, Plant, Download Template */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200/80">
+                                        <div>
+                                            <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Target Location *</label>
+                                            <select
+                                                value={pastFyLocation}
+                                                onChange={(e) => handlePastFyLocationChange(e.target.value)}
+                                                className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+                                            >
+                                                {allowedLocations.map(loc => (
+                                                    <option key={loc} value={loc}>{loc}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">Target Plant Code *</label>
+                                            <select
+                                                value={pastFyPlant}
+                                                onChange={(e) => setPastFyPlant(e.target.value)}
+                                                className="w-full h-9 rounded-lg border border-slate-300 px-2.5 bg-white text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+                                            >
+                                                {allowedPlants
+                                                    .filter(p => !pastFyLocation || (p.location || "").toUpperCase() === pastFyLocation.toUpperCase())
+                                                    .map(p => (
+                                                        <option key={p.plant_code} value={p.plant_code}>{p.plant_code} - {p.plant_display_name || p.plant_name}</option>
+                                                    ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="flex items-end">
+                                            <button
+                                                type="button"
+                                                onClick={downloadPastFyTemplate}
+                                                className="w-full flex items-center justify-center gap-1.5 h-9 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg font-bold text-xs transition cursor-pointer"
+                                            >
+                                                <span className="material-symbols-outlined text-[17px]">download</span>
+                                                <span>Download Official Template (.xlsx)</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* File Upload Zone */}
+                                    {!pastFyFileName ? (
+                                        <div className="border-2 border-dashed border-amber-200 hover:border-amber-400 rounded-2xl p-8 bg-amber-50/20 transition text-center flex flex-col items-center justify-center">
+                                            <div className="h-12 w-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mb-3">
+                                                <span className="material-symbols-outlined text-[28px]">upload_file</span>
+                                            </div>
+                                            <h4 className="text-sm font-bold text-slate-800 mb-1">
+                                                Browse or Drag & Drop Past FY Monthly Excel Sheet (.xlsx, .xls)
+                                            </h4>
+                                            <p className="text-[11px] text-slate-500 max-w-md mb-4">
+                                                Sheet should contain 12 rows with columns: Month, Units consumed kwh, Rate /Unit, Amount, Solar Gen kwh.
+                                            </p>
+                                            <label className="flex items-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold cursor-pointer transition shadow-sm">
+                                                {isAnalyzingPastFy ? (
+                                                    <>
+                                                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                        <span>Analyzing Sheet...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span className="material-symbols-outlined text-[18px]">folder_open</span>
+                                                        <span>Select Excel File</span>
+                                                    </>
+                                                )}
+                                                <input
+                                                    type="file"
+                                                    accept=".xlsx, .xls, .csv"
+                                                    onChange={handlePastFyExcelUpload}
+                                                    className="hidden"
+                                                    disabled={isAnalyzingPastFy}
+                                                />
+                                            </label>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {/* File status & change file button */}
+                                            <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200 flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="material-symbols-outlined text-amber-600 text-[24px]">description</span>
+                                                    <div>
+                                                        <div className="font-bold text-slate-900 text-xs">{pastFyFileName}</div>
+                                                        <div className="text-[10px] text-slate-500">{pastFyParsedRows.length} Monthly Summary Rows Detected</div>
+                                                    </div>
+                                                </div>
+                                                <label className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer">
+                                                    <span className="material-symbols-outlined text-[15px]">sync</span>
+                                                    <span>Change File</span>
+                                                    <input
+                                                        type="file"
+                                                        accept=".xlsx, .xls, .csv"
+                                                        onChange={handlePastFyExcelUpload}
+                                                        className="hidden"
+                                                    />
+                                                </label>
+                                            </div>
+
+                                            {/* Live Preview Table */}
+                                            <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                                                    <span className="font-extrabold text-slate-700 uppercase tracking-wider text-[10px]">Pre-Save Live Data Preview</span>
+                                                    <span className="text-[10px] font-bold text-slate-500">12 Months Summary</span>
+                                                </div>
+                                                <div className="max-h-60 overflow-y-auto">
+                                                    <table className="w-full text-left border-collapse text-xs">
+                                                        <thead>
+                                                            <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-600 text-[9.5px] uppercase tracking-wider font-extrabold">
+                                                                <th className="py-2 px-3">#</th>
+                                                                <th className="py-2 px-3">Month</th>
+                                                                <th className="py-2 px-3">End Date</th>
+                                                                <th className="py-2 px-3 text-right">Grid Units (kWh)</th>
+                                                                <th className="py-2 px-3 text-right">Tariff (₹/Unit)</th>
+                                                                <th className="py-2 px-3 text-right">Amount (₹)</th>
+                                                                <th className="py-2 px-3 text-right">Solar Gen (kWh)</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            {pastFyParsedRows.map((r, idx) => (
+                                                                <tr key={idx} className="hover:bg-slate-50/80 font-medium text-slate-700">
+                                                                    <td className="py-1.5 px-3 text-slate-400">{idx + 1}</td>
+                                                                    <td className="py-1.5 px-3 font-bold text-slate-900">{r.monthLabel}</td>
+                                                                    <td className="py-1.5 px-3 text-slate-500">{r.date}</td>
+                                                                    <td className="py-1.5 px-3 text-right font-bold text-sky-600">{fmtNum(r.units)}</td>
+                                                                    <td className="py-1.5 px-3 text-right text-slate-600">₹{fmtNum(r.rate, 2)}</td>
+                                                                    <td className="py-1.5 px-3 text-right font-bold text-slate-900">₹{fmtNum(r.amount)}</td>
+                                                                    <td className="py-1.5 px-3 text-right font-bold text-amber-600">{fmtNum(r.solar)}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                {/* Summary Footer */}
+                                                {pastFyParsedRows.length > 0 && (
+                                                    <div className="p-3 bg-slate-50 border-t border-slate-200 grid grid-cols-3 gap-2 text-center">
+                                                        <div className="bg-white p-2 rounded-lg border border-slate-200">
+                                                            <div className="text-[9px] text-slate-400 font-extrabold uppercase">Total Grid Units</div>
+                                                            <div className="text-xs font-black text-sky-600">{fmtNum(pastFyParsedRows.reduce((a, b) => a + b.units, 0))} kWh</div>
+                                                        </div>
+                                                        <div className="bg-white p-2 rounded-lg border border-slate-200">
+                                                            <div className="text-[9px] text-slate-400 font-extrabold uppercase">Total Electricity Cost</div>
+                                                            <div className="text-xs font-black text-slate-900">₹{fmtNum(pastFyParsedRows.reduce((a, b) => a + b.amount, 0))}</div>
+                                                        </div>
+                                                        <div className="bg-white p-2 rounded-lg border border-slate-200">
+                                                            <div className="text-[9px] text-slate-400 font-extrabold uppercase">Total Solar Generated</div>
+                                                            <div className="text-xs font-black text-amber-600">{fmtNum(pastFyParsedRows.reduce((a, b) => a + b.solar, 0))} kWh</div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Footer Actions */}
+                                <div className="flex items-center justify-between border-t border-slate-200 px-6 py-4 bg-slate-50">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsPastFyModalOpen(false)}
+                                        className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleSavePastFyData}
+                                        disabled={pastFyParsedRows.length === 0 || isImportingPastFy}
+                                        className="flex items-center gap-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer"
+                                    >
+                                        {isImportingPastFy ? (
+                                            <>
+                                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                <span>Saving to System...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                                <span>Confirm & Save to System</span>
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
                         </div>
