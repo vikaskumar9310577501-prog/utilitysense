@@ -47,9 +47,9 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             }
 
             if (compact) {
-                if (Math.abs(num) >= 1e7) return (num / 1e7).toFixed(2) + " Cr";
-                if (Math.abs(num) >= 1e5) return (num / 1e5).toFixed(2) + " L";
-                if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(1) + " k";
+                if (Math.abs(num) >= 1e7) return parseFloat((num / 1e7).toFixed(2)) + " Cr";
+                if (Math.abs(num) >= 1e5) return parseFloat((num / 1e5).toFixed(2)) + " L";
+                if (Math.abs(num) >= 1e3) return parseFloat((num / 1e3).toFixed(1)) + " k";
                 return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(num);
             }
 
@@ -7106,7 +7106,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                          <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.dailyElect} fill="url(#colorElect7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                              <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyElect }} formatter={(v) => fmtNum(v)} />
@@ -7130,7 +7130,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                          <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.dailySolar} fill="url(#colorSolar7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                              <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailySolar }} formatter={(v) => fmtNum(v)} />
@@ -7154,7 +7154,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                          <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.dailyDiesel} fill="url(#colorDiesel7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                              <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyDiesel }} formatter={(v) => fmtNum(v)} />
@@ -7181,7 +7181,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                          <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.monthlyElect} fill="url(#colorElectM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                              <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlyElect }} formatter={(v) => fmtNum(v)} />
@@ -7205,7 +7205,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                          <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.monthlySolar} fill="url(#colorSolarM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                              <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlySolar }} formatter={(v) => fmtNum(v)} />
@@ -7229,7 +7229,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                          <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.monthlyDiesel} fill="url(#colorDieselM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                              <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlyDiesel }} formatter={(v) => fmtNum(v)} />
