@@ -3409,13 +3409,17 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return analyzed;
             };
 
-            // Download Standard Bulk Excel Template
+            // Download Standard Bulk Excel Template (Single Plant & Location to avoid confusion)
             const handleDownloadImportTemplate = () => {
+                const targetPlantObj = allowedPlants.find(p => p.plant_code === plantOverride) || allowedPlants[0] || plants[0] || { plant_code: "PG ELECTROPLAST LTD", location: "GREATER NOIDA", plant_name: "PG Electroplast Ltd" };
+                const locName = targetPlantObj.location ? String(targetPlantObj.location).toUpperCase() : "GREATER NOIDA";
+                const pltCode = targetPlantObj.plant_code || targetPlantObj.plant_name || "PG ELECTROPLAST LTD";
+
                 const sampleData = [
                     {
                         "Date (YYYY-MM-DD)": "2026-09-01",
-                        "Location": "GREATER NOIDA",
-                        "Plant Code / Name": "PG ELECTROPLAST LTD",
+                        "Location": locName,
+                        "Plant": pltCode,
                         "Electricity Opening (kWh)": 1000.00,
                         "Electricity Closing (kWh)": 1250.50,
                         "Solar Generated (kWh)": 350.00,
@@ -3430,29 +3434,50 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         "Water Closing (KL)": 530.00,
                         "ODU Production": 150,
                         "IDU Production": 150,
-                        "Operator": "Vikas Kumar",
-                        "Remarks": "Sample historical entry"
+                        "Operator": currentUser?.name || "Vikas Kumar",
+                        "Remarks": "Day 1 entry"
                     },
                     {
                         "Date (YYYY-MM-DD)": "2026-09-02",
-                        "Location": "PUNE",
-                        "Plant Code / Name": "4010",
-                        "Electricity Opening (kWh)": 2500.00,
-                        "Electricity Closing (kWh)": 2890.00,
-                        "Solar Generated (kWh)": 520.00,
-                        "PNG Gas Opening (kg)": 200.00,
-                        "PNG Gas Closing (kg)": 260.00,
-                        "Nitrogen Gas Opening (kg)": 80.00,
-                        "Nitrogen Gas Closing (kg)": 115.00,
-                        "Oxygen Gas Opening (kg)": 30.00,
-                        "Oxygen Gas Closing (kg)": 48.00,
-                        "Diesel Used (Liters)": 0,
-                        "Water Opening (KL)": 800.00,
-                        "Water Closing (KL)": 845.00,
-                        "ODU Production": 200,
-                        "IDU Production": 200,
-                        "Operator": "Operator 2",
-                        "Remarks": "Sample entry for Pune plant"
+                        "Location": locName,
+                        "Plant": pltCode,
+                        "Electricity Opening (kWh)": 1250.50,
+                        "Electricity Closing (kWh)": 1510.00,
+                        "Solar Generated (kWh)": 380.00,
+                        "PNG Gas Opening (kg)": 145.50,
+                        "PNG Gas Closing (kg)": 190.00,
+                        "Nitrogen Gas Opening (kg)": 75.00,
+                        "Nitrogen Gas Closing (kg)": 102.00,
+                        "Oxygen Gas Opening (kg)": 32.00,
+                        "Oxygen Gas Closing (kg)": 45.00,
+                        "Diesel Used (Liters)": 0.00,
+                        "Water Opening (KL)": 530.00,
+                        "Water Closing (KL)": 565.00,
+                        "ODU Production": 165,
+                        "IDU Production": 165,
+                        "Operator": currentUser?.name || "Vikas Kumar",
+                        "Remarks": "Day 2 entry"
+                    },
+                    {
+                        "Date (YYYY-MM-DD)": "2026-09-03",
+                        "Location": locName,
+                        "Plant": pltCode,
+                        "Electricity Opening (kWh)": 1510.00,
+                        "Electricity Closing (kWh)": 1785.20,
+                        "Solar Generated (kWh)": 410.00,
+                        "PNG Gas Opening (kg)": 190.00,
+                        "PNG Gas Closing (kg)": 238.00,
+                        "Nitrogen Gas Opening (kg)": 102.00,
+                        "Nitrogen Gas Closing (kg)": 130.00,
+                        "Oxygen Gas Opening (kg)": 45.00,
+                        "Oxygen Gas Closing (kg)": 60.00,
+                        "Diesel Used (Liters)": 10.00,
+                        "Water Opening (KL)": 565.00,
+                        "Water Closing (KL)": 602.00,
+                        "ODU Production": 180,
+                        "IDU Production": 180,
+                        "Operator": currentUser?.name || "Vikas Kumar",
+                        "Remarks": "Day 3 entry"
                     }
                 ];
 
@@ -3466,19 +3491,31 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         { wch: 16 }, { wch: 16 }, { wch: 26 }
                     ];
                     const wb = XLSX.utils.book_new();
+                    const cleanPltName = String(pltCode).replace(/[^a-zA-Z0-9]/g, '_');
                     XLSX.utils.book_append_sheet(wb, ws, "UtilitySense_Import_Template");
-                    XLSX.writeFile(wb, "UtilitySense_Bulk_Data_Import_Template.xlsx");
-                    setToast({ type: "success", message: "Standard Excel import template downloaded!" });
+                    XLSX.writeFile(wb, `UtilitySense_Bulk_Import_Template_${cleanPltName}.xlsx`);
+                    setToast({ type: "success", message: `Excel template generated for ${locName} (${pltCode})!` });
                 } catch (err) {
                     console.error("Failed to download template:", err);
                     setToast({ type: "error", message: "Failed to generate Excel template." });
                 }
             };
 
-            // File Upload & Sheet Extraction
+            // File Upload & Sheet Extraction (Strict Excel File Validation Only)
             const handleMassExcelFileUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
+
+                const lowerName = file.name.toLowerCase();
+                const isExcel = lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls') || lowerName.endsWith('.csv');
+                if (!isExcel) {
+                    setToast({
+                        type: "error",
+                        message: "Invalid file type! Only Excel spreadsheets (.xlsx, .xls, .csv) with tabular rows and columns are allowed."
+                    });
+                    e.target.value = "";
+                    return;
+                }
 
                 setIsAnalyzingExcel(true);
                 setMassUploadFileName(file.name);
