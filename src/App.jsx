@@ -981,6 +981,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const [isAnalyzingPastFy, setIsAnalyzingPastFy] = useState(false);
             const [isImportingPastFy, setIsImportingPastFy] = useState(false);
 
+            // Financial Year Deep-Dive Analysis Modal States
+            const [isFyAnalysisModalOpen, setIsFyAnalysisModalOpen] = useState(false);
+            const [selectedFyForAnalysis, setSelectedFyForAnalysis] = useState("");
+            const [selectedFyMetric, setSelectedFyMetric] = useState("electricity");
+
             const [massUploadFileName, setMassUploadFileName] = useState("");
             const [massUploadSheets, setMassUploadSheets] = useState([]);
             const [selectedUploadSheet, setSelectedUploadSheet] = useState("");
@@ -6590,6 +6595,115 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return out;
             }, [yearlyTrendsData, filters.endDate]);
 
+            // Open Financial Year Deep-Dive Analysis Modal
+            const openFyAnalysisModal = (fyKey = "", defaultMetric = "electricity") => {
+                let targetFy = fyKey;
+                if (!targetFy) {
+                    targetFy = last4YearsTrendsData[last4YearsTrendsData.length - 1]?.period || "FY 2025-2026";
+                }
+                setSelectedFyForAnalysis(targetFy);
+                setSelectedFyMetric(defaultMetric);
+                setIsFyAnalysisModalOpen(true);
+            };
+
+            // Calculate 12-Month Breakdown (April to March) for Selected Financial Year
+            const fyMonthlyBreakdown = useMemo(() => {
+                if (!selectedFyForAnalysis) return [];
+                
+                let startYear = 2025;
+                const match = selectedFyForAnalysis.match(/\b(20\d{2})\b/);
+                if (match) {
+                    startYear = Number(match[1]);
+                }
+
+                const monthsDef = [
+                    { label: "Apr", monthNum: 4, year: startYear },
+                    { label: "May", monthNum: 5, year: startYear },
+                    { label: "Jun", monthNum: 6, year: startYear },
+                    { label: "Jul", monthNum: 7, year: startYear },
+                    { label: "Aug", monthNum: 8, year: startYear },
+                    { label: "Sep", monthNum: 9, year: startYear },
+                    { label: "Oct", monthNum: 10, year: startYear },
+                    { label: "Nov", monthNum: 11, year: startYear },
+                    { label: "Dec", monthNum: 12, year: startYear },
+                    { label: "Jan", monthNum: 1, year: startYear + 1 },
+                    { label: "Feb", monthNum: 2, year: startYear + 1 },
+                    { label: "Mar", monthNum: 3, year: startYear + 1 }
+                ];
+
+                return monthsDef.map(m => {
+                    const ymPrefix = `${m.year}-${String(m.monthNum).padStart(2, '0')}`;
+                    const monthEntries = filteredEntries.filter(e => (e.date || "").startsWith(ymPrefix));
+
+                    let electricity = 0;
+                    let electricityCost = 0;
+                    let solarGen = 0;
+                    let diesel = 0;
+                    let dieselCost = 0;
+                    let totalCost = 0;
+
+                    monthEntries.forEach(e => {
+                        const elUnits = Number(e.electricity_consumption) || 0;
+                        const elCost = Number(e.electricity_cost) || 0;
+                        const sol = Number(e.solar_generated) || 0;
+                        const dsl = Number(e.diesel_used) || 0;
+                        const dslCost = Number(e.diesel_cost) || 0;
+                        const totC = Number(e.total_cost) || (elCost + dslCost);
+
+                        electricity += elUnits;
+                        electricityCost += elCost;
+                        solarGen += sol;
+                        diesel += dsl;
+                        dieselCost += dslCost;
+                        totalCost += totC;
+                    });
+
+                    const unitRate = electricity > 0 ? electricityCost / electricity : 0;
+
+                    return {
+                        month: m.label,
+                        yearMonth: ymPrefix,
+                        label: `${m.label} '${String(m.year).slice(-2)}`,
+                        electricity,
+                        electricityCost,
+                        unitRate,
+                        solarGen,
+                        diesel,
+                        dieselCost,
+                        totalCost
+                    };
+                });
+            }, [selectedFyForAnalysis, filteredEntries]);
+
+            // Export FY Analysis Breakdown to Excel
+            const exportFyAnalysisXLSX = () => {
+                if (!fyMonthlyBreakdown || fyMonthlyBreakdown.length === 0) return;
+                try {
+                    const tableData = fyMonthlyBreakdown.map((r, idx) => ({
+                        "Sr. No.": idx + 1,
+                        "Month": r.label,
+                        "Grid Electricity (kWh)": r.electricity,
+                        "Effective Rate (INR/kWh)": Math.round(r.unitRate * 100) / 100,
+                        "Electricity Cost (INR)": r.electricityCost,
+                        "Solar Gen (kWh)": r.solarGen,
+                        "Diesel Used (L)": r.diesel,
+                        "Total Utility Cost (INR)": r.totalCost
+                    }));
+
+                    const ws = XLSX.utils.json_to_sheet(tableData);
+                    ws['!cols'] = [
+                        { wch: 10 }, { wch: 16 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 24 }
+                    ];
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "FY_Monthly_Analysis");
+                    XLSX.writeFile(wb, `Financial_Year_Analysis_${String(selectedFyForAnalysis).replace(/\s+/g, '_')}.xlsx`);
+                    setToast({ type: "success", message: `Exported ${selectedFyForAnalysis} analysis to Excel!` });
+                } catch (err) {
+                    console.error("Export error:", err);
+                    setToast({ type: "error", message: "Failed to export Excel." });
+                }
+            };
+
             // Power Factor (PF) Analytics - Cos φ & APFC performance
             const powerFactorTrendsData = useMemo(() => {
                 return last5MonthsTrendsData.map((m, idx) => {
@@ -7604,10 +7718,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                          {/* ROW 3: Financial Year area charts + Power Factor trend */}
                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-1">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Electricity</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 4 financial years grid load</p>
+                                             <div 
+                                                 onClick={() => openFyAnalysisModal("", "electricity")}
+                                                 className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm hover:border-sky-400 dark:hover:border-sky-500 transition cursor-pointer group"
+                                             >
+                                                 <div className="flex items-center justify-between mb-1">
+                                                     <div>
+                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider group-hover:text-sky-600 transition">Financial Year Electricity</h4>
+                                                         <p className="text-[9px] text-slate-400">Last 4 financial years grid load (Click for full analysis)</p>
+                                                     </div>
+                                                     <span className="material-symbols-outlined text-[16px] text-sky-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={250}>
                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 22, right: 28, left: 4, bottom: 4 }}>
@@ -7620,7 +7740,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
-                                                         <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kWh`, "Financial Year Electricity"]} />
+                                                         <Tooltip
+                                                             contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                             labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
+                                                             formatter={(v, name, item) => {
+                                                                 const p = item?.payload || {};
+                                                                 return [
+                                                                     <div key="fy_el_tt" className="space-y-1">
+                                                                         <div>⚡ Grid Electricity: <b>{fmtNum(p.electricity)} kWh</b></div>
+                                                                         <div>💰 Total Utility Cost: <b>{fmtINR(p.cost)}</b></div>
+                                                                         {p.solarGen > 0 && <div>☀️ Solar Gen: <b>{fmtNum(p.solarGen)} kWh</b></div>}
+                                                                     </div>,
+                                                                     ""
+                                                                 ];
+                                                             }}
+                                                         />
                                                          <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.yearlyElect} fill="url(#colorElectY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: CHART.yearlyElect, strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                              <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.yearlyElect }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
                                                          </Area>
@@ -7628,10 +7762,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                  </ResponsiveContainer>
                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-1">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Utility Cost</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 4 financial years utility cost</p>
+                                             <div 
+                                                 onClick={() => openFyAnalysisModal("", "cost")}
+                                                 className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm hover:border-rose-400 dark:hover:border-rose-500 transition cursor-pointer group"
+                                             >
+                                                 <div className="flex items-center justify-between mb-1">
+                                                     <div>
+                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider group-hover:text-rose-600 transition">Financial Year Utility Cost</h4>
+                                                         <p className="text-[9px] text-slate-400">Last 4 financial years utility cost (Click for full analysis)</p>
+                                                     </div>
+                                                     <span className="material-symbols-outlined text-[16px] text-rose-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={250}>
                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 22, right: 28, left: 4, bottom: 4 }}>
@@ -7644,7 +7784,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={58} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "₹0" : (v >= 1e7 ? `₹${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `₹${Math.round(v/1e5)} L` : (v >= 1e3 ? `₹${Math.round(v/1e3)} k` : `₹${v}`)))} />
-                                                         <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [fmtINR(v), "Financial Year Utility Cost"]} />
+                                                         <Tooltip
+                                                             contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                             labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
+                                                             formatter={(v, name, item) => {
+                                                                 const p = item?.payload || {};
+                                                                 return [
+                                                                     <div key="fy_cs_tt" className="space-y-1">
+                                                                         <div>💰 Total Utility Cost: <b>{fmtINR(p.cost)}</b></div>
+                                                                         <div>⚡ Grid Electricity: <b>{fmtNum(p.electricity)} kWh</b></div>
+                                                                         {p.solarGen > 0 && <div>☀️ Solar Gen: <b>{fmtNum(p.solarGen)} kWh</b></div>}
+                                                                     </div>,
+                                                                     ""
+                                                                 ];
+                                                             }}
+                                                         />
                                                          <Area type="monotone" dataKey="cost" name="Cost" stroke={CHART.yearlyCost} fill="url(#colorCostY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: CHART.yearlyCost, strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                              <LabelList dataKey="cost" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.yearlyCost }} formatter={(v) => v > 0 ? fmtINR(v, { compact: true }) : ""} />
                                                          </Area>
@@ -13577,6 +13731,232 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         type="button"
                                         onClick={() => setIsImportHistoryOpen(false)}
                                         className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold border-none cursor-pointer transition"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* FINANCIAL YEAR FULL ANALYSIS & MONTH BREAKDOWN MODAL */}
+                    {isFyAnalysisModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm">
+                            <div className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-white dark:bg-[#121a29] border border-slate-200 dark:border-[#26334a] shadow-2xl flex flex-col max-h-[92vh]">
+                                {/* Header */}
+                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4 bg-slate-50/80 dark:bg-[#182234]">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-100 dark:border-sky-900 flex items-center justify-center text-sky-600 dark:text-sky-400">
+                                            <span className="material-symbols-outlined text-[22px]">analytics</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                                                <span>Financial Year Deep-Dive Analysis & Month Breakdown</span>
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-300">
+                                                    {selectedFyForAnalysis}
+                                                </span>
+                                            </h3>
+                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                                Month-by-month historical comparison, utility cost distribution & effective tariff rates
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsFyAnalysisModalOpen(false)}
+                                        className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition border-none bg-transparent cursor-pointer"
+                                    >
+                                        <span className="material-symbols-outlined text-[18px]">close</span>
+                                    </button>
+                                </div>
+
+                                {/* Body */}
+                                <div className="p-6 overflow-y-auto space-y-5 text-xs flex-1">
+                                    {/* Controls Bar: FY Selector, Metric Toggle, Excel Export */}
+                                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 bg-slate-50 dark:bg-[#182234] rounded-xl border border-slate-200/80 dark:border-[#26334a]">
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <div>
+                                                <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Financial Year</label>
+                                                <select
+                                                    value={selectedFyForAnalysis}
+                                                    onChange={(e) => setSelectedFyForAnalysis(e.target.value)}
+                                                    className="h-9 rounded-lg border border-slate-300 dark:border-slate-700 px-3 bg-white dark:bg-[#121a29] text-slate-800 dark:text-slate-100 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+                                                >
+                                                    {last4YearsTrendsData.map(d => (
+                                                        <option key={d.period} value={d.period}>{d.period}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-[9px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Analysis Metric</label>
+                                                <div className="flex items-center gap-1 bg-slate-200/70 dark:bg-slate-800 p-1 rounded-lg">
+                                                    {[
+                                                        { id: "electricity", label: "Grid Electricity", icon: "bolt" },
+                                                        { id: "cost", label: "Utility Cost (₹)", icon: "payments" },
+                                                        { id: "solar", label: "Solar Gen (kWh)", icon: "wb_sunny" }
+                                                    ].map(m => (
+                                                        <button
+                                                            key={m.id}
+                                                            type="button"
+                                                            onClick={() => setSelectedFyMetric(m.id)}
+                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-bold text-[11px] transition cursor-pointer border-none ${selectedFyMetric === m.id ? "bg-white dark:bg-sky-600 text-sky-700 dark:text-white shadow-xs" : "text-slate-600 dark:text-slate-300 hover:text-slate-900"}`}
+                                                        >
+                                                            <span className="material-symbols-outlined text-[14px]">{m.icon}</span>
+                                                            <span>{m.label}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={exportFyAnalysisXLSX}
+                                            className="flex items-center justify-center gap-1.5 h-9 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition cursor-pointer shadow-xs shrink-0"
+                                        >
+                                            <span className="material-symbols-outlined text-[17px]">download</span>
+                                            <span>Export FY Analysis (.xlsx)</span>
+                                        </button>
+                                    </div>
+
+                                    {/* KPI Cards Summary */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                        <div className="bg-sky-50/70 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50 p-3.5 rounded-xl">
+                                            <div className="text-[10px] font-extrabold text-sky-600 dark:text-sky-400 uppercase tracking-wider">Total Grid Electricity</div>
+                                            <div className="text-base font-black text-sky-900 dark:text-sky-100 mt-1">
+                                                {fmtNum(fyMonthlyBreakdown.reduce((a, b) => a + b.electricity, 0))} kWh
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-rose-50/70 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/50 p-3.5 rounded-xl">
+                                            <div className="text-[10px] font-extrabold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Total Electricity Cost</div>
+                                            <div className="text-base font-black text-rose-900 dark:text-rose-100 mt-1">
+                                                {fmtINR(fyMonthlyBreakdown.reduce((a, b) => a + b.electricityCost, 0))}
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-amber-50/70 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50 p-3.5 rounded-xl">
+                                            <div className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Total Solar Generated</div>
+                                            <div className="text-base font-black text-amber-900 dark:text-amber-100 mt-1">
+                                                {fmtNum(fyMonthlyBreakdown.reduce((a, b) => a + b.solarGen, 0))} kWh
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 p-3.5 rounded-xl">
+                                            <div className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">Effective Unit Rate</div>
+                                            <div className="text-base font-black text-indigo-900 dark:text-indigo-100 mt-1">
+                                                {(() => {
+                                                    const totUnits = fyMonthlyBreakdown.reduce((a, b) => a + b.electricity, 0);
+                                                    const totCost = fyMonthlyBreakdown.reduce((a, b) => a + b.electricityCost, 0);
+                                                    return totUnits > 0 ? `₹${(totCost / totUnits).toFixed(2)}/kWh` : "—";
+                                                })()}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 12-Month Deep Dive Chart */}
+                                    <div className="bg-white dark:bg-[#182234] border border-slate-200 dark:border-[#26334a] p-4 rounded-xl shadow-xs">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                                                12-Month Distribution — {selectedFyForAnalysis} ({selectedFyMetric === "electricity" ? "Grid Load kWh" : (selectedFyMetric === "solar" ? "Solar Generation kWh" : "Electricity Cost ₹")})
+                                            </h4>
+                                            <span className="text-[10px] text-slate-400 font-bold">April to March</span>
+                                        </div>
+
+                                        <ResponsiveContainer width="100%" height={260}>
+                                            <BarChart data={fyMonthlyBreakdown} margin={{ top: 20, right: 20, left: 0, bottom: 4 }}>
+                                                <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                                                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                                <YAxis 
+                                                    tick={{ fontSize: 10, fill: '#64748b' }} 
+                                                    axisLine={false} 
+                                                    tickLine={false} 
+                                                    width={60} 
+                                                    tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} 
+                                                />
+                                                <Tooltip
+                                                    contentStyle={{ fontSize: 11, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                    labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
+                                                    formatter={(val, name, item) => {
+                                                        const p = item?.payload || {};
+                                                        return [
+                                                            <div key="fy_modal_tt" className="space-y-1 text-xs">
+                                                                <div>⚡ Grid Electricity: <b>{fmtNum(p.electricity)} kWh</b></div>
+                                                                <div>💰 Electricity Cost: <b>{fmtINR(p.electricityCost)}</b></div>
+                                                                <div>📈 Effective Rate: <b>₹{p.unitRate.toFixed(2)}/kWh</b></div>
+                                                                {p.solarGen > 0 && <div>☀️ Solar Gen: <b>{fmtNum(p.solarGen)} kWh</b></div>}
+                                                            </div>,
+                                                            ""
+                                                        ];
+                                                    }}
+                                                />
+                                                <Bar 
+                                                    dataKey={selectedFyMetric === "electricity" ? "electricity" : (selectedFyMetric === "solar" ? "solarGen" : "electricityCost")} 
+                                                    name={selectedFyMetric === "electricity" ? "Electricity (kWh)" : (selectedFyMetric === "solar" ? "Solar (kWh)" : "Cost (₹)")} 
+                                                    fill={selectedFyMetric === "electricity" ? "#0284c7" : (selectedFyMetric === "solar" ? "#f59e0b" : "#e11d48")} 
+                                                    radius={[6, 6, 0, 0]} 
+                                                    maxBarSize={45} 
+                                                >
+                                                    <LabelList 
+                                                        dataKey={selectedFyMetric === "electricity" ? "electricity" : (selectedFyMetric === "solar" ? "solarGen" : "electricityCost")} 
+                                                        position="top" 
+                                                        offset={6} 
+                                                        style={{ fontSize: 9, fontWeight: 700, fill: selectedFyMetric === "electricity" ? "#0284c7" : (selectedFyMetric === "solar" ? "#f59e0b" : "#e11d48") }} 
+                                                        formatter={(v) => v > 0 ? (selectedFyMetric === "cost" ? fmtINR(v, { compact: true }) : fmtNum(v)) : ""} 
+                                                    />
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+
+                                    {/* Month-Wise Data Breakdown Table */}
+                                    <div className="border border-slate-200 dark:border-[#26334a] rounded-xl overflow-hidden bg-white dark:bg-[#182234]">
+                                        <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#121a29] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                                            <span className="font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">
+                                                Month-Wise Data Breakdown ({selectedFyForAnalysis})
+                                            </span>
+                                            <span className="text-[10px] font-bold text-slate-400">12 Months April to March</span>
+                                        </div>
+
+                                        <div className="max-h-64 overflow-y-auto">
+                                            <table className="w-full text-left border-collapse text-xs">
+                                                <thead>
+                                                    <tr className="bg-slate-100/70 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-[9.5px] uppercase tracking-wider font-extrabold">
+                                                        <th className="py-2.5 px-3">#</th>
+                                                        <th className="py-2.5 px-3">Month</th>
+                                                        <th className="py-2.5 px-3 text-right">Grid Electricity (kWh)</th>
+                                                        <th className="py-2.5 px-3 text-right">Effective Tariff (₹/kWh)</th>
+                                                        <th className="py-2.5 px-3 text-right">Electricity Cost (₹)</th>
+                                                        <th className="py-2.5 px-3 text-right">Solar Gen (kWh)</th>
+                                                        <th className="py-2.5 px-3 text-right">Total Cost (₹)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                    {fyMonthlyBreakdown.map((r, idx) => (
+                                                        <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 font-medium text-slate-700 dark:text-slate-300">
+                                                            <td className="py-2 px-3 text-slate-400">{idx + 1}</td>
+                                                            <td className="py-2 px-3 font-bold text-slate-900 dark:text-white">{r.label}</td>
+                                                            <td className="py-2 px-3 text-right font-bold text-sky-600 dark:text-sky-400">{fmtNum(r.electricity)}</td>
+                                                            <td className="py-2 px-3 text-right text-slate-600 dark:text-slate-400">₹{r.unitRate.toFixed(2)}</td>
+                                                            <td className="py-2 px-3 text-right font-bold text-rose-600 dark:text-rose-400">{fmtINR(r.electricityCost)}</td>
+                                                            <td className="py-2 px-3 text-right font-bold text-amber-600 dark:text-amber-400">{fmtNum(r.solarGen)}</td>
+                                                            <td className="py-2 px-3 text-right font-black text-slate-900 dark:text-white">{fmtINR(r.totalCost)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 px-6 py-3.5 bg-slate-50 dark:bg-[#182234]">
+                                    <span className="text-[11px] text-slate-400 font-medium">UtilitySense Financial Year Analytics Module</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsFyAnalysisModalOpen(false)}
+                                        className="px-5 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white rounded-xl text-xs font-bold transition border-none cursor-pointer"
                                     >
                                         Close
                                     </button>
