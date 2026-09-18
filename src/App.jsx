@@ -2154,7 +2154,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             }, [tariffs, dashboardRateContext, activeElectRate]);
 
 
-            // --- Multi-Meter Utilities ---
+            // --- Multi-Meter & Gas Utilities ---
             const parseMetersFromRemarks = (remarks) => {
                 if (!remarks || typeof remarks !== "string") return null;
                 const match = remarks.match(/\[METERS_DATA:\s*(\[.*?\])\s*\]/s);
@@ -2169,24 +2169,100 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return null;
             };
 
-            const getCleanRemarks = (remarks) => {
-                if (!remarks || typeof remarks !== "string") return "";
-                return remarks.replace(/\[METERS_DATA:\s*\[.*?\]\s*\]/s, "").trim();
+            const parseGasFromRemarks = (remarks) => {
+                if (!remarks || typeof remarks !== "string") return null;
+                const match = remarks.match(/\[GAS_DATA:\s*(\{.*?\}|\[.*?\])\s*\]/s);
+                if (match && match[1]) {
+                    try {
+                        const parsed = JSON.parse(match[1]);
+                        if (parsed && typeof parsed === "object") return parsed;
+                    } catch (e) {
+                        console.warn("Failed to parse GAS_DATA from remarks:", e);
+                    }
+                }
+                return null;
             };
 
-            const serializeRemarksWithMeters = (cleanRemarks, metersList) => {
+            const hydrateEntryWithRemarks = (row) => {
+                if (!row) return row;
+                const gasData = parseGasFromRemarks(row.remarks);
+                if (!gasData) return row;
+
+                const getVal = (rowVal, gasValKey, gasValKeyAlt, fallback = 0) => {
+                    if (rowVal !== undefined && rowVal !== null && rowVal !== "") return rowVal;
+                    if (gasData[gasValKey] !== undefined && gasData[gasValKey] !== null) return gasData[gasValKey];
+                    if (gasValKeyAlt && gasData[gasValKeyAlt] !== undefined && gasData[gasValKeyAlt] !== null) return gasData[gasValKeyAlt];
+                    return fallback;
+                };
+
+                return {
+                    ...row,
+                    png_opening: getVal(row.png_opening, "png_opening", "png_op", 0),
+                    png_closing: getVal(row.png_closing, "png_closing", "png_cl", null),
+                    png_consumption: getVal(row.png_consumption, "png_consumption", "png_co", 0),
+                    png_cost: getVal(row.png_cost, "png_cost", "png_cst", 0),
+
+                    nitrogen_opening: getVal(row.nitrogen_opening, "nitrogen_opening", "n_op", 0),
+                    nitrogen_closing: getVal(row.nitrogen_closing, "nitrogen_closing", "n_cl", null),
+                    nitrogen_consumption: getVal(row.nitrogen_consumption, "nitrogen_consumption", "n_co", 0),
+                    nitrogen_cost: getVal(row.nitrogen_cost, "nitrogen_cost", "n_cst", 0),
+
+                    oxygen_opening: getVal(row.oxygen_opening, "oxygen_opening", "o_op", 0),
+                    oxygen_closing: getVal(row.oxygen_closing, "oxygen_closing", "o_cl", null),
+                    oxygen_consumption: getVal(row.oxygen_consumption, "oxygen_consumption", "o_co", 0),
+                    oxygen_cost: getVal(row.oxygen_cost, "oxygen_cost", "o_cst", 0),
+
+                    water_opening: getVal(row.water_opening, "water_opening", "w_op", 0),
+                    water_closing: getVal(row.water_closing, "water_closing", "w_cl", null),
+                    water_consumption: getVal(row.water_consumption, "water_consumption", "w_co", 0),
+                    water_cost: getVal(row.water_cost, "water_cost", "w_cst", 0),
+                };
+            };
+
+            const getCleanRemarks = (remarks) => {
+                if (!remarks || typeof remarks !== "string") return "";
+                return remarks
+                    .replace(/\[METERS_DATA:\s*\[.*?\]\s*\]/s, "")
+                    .replace(/\[GAS_DATA:\s*(\{.*?\}|\[.*?\])\s*\]/s, "")
+                    .trim();
+            };
+
+            const serializeRemarksWithMeters = (cleanRemarks, metersList, gasValues = null) => {
                 const text = cleanRemarks ? cleanRemarks.trim() : "";
-                if (!metersList || metersList.length === 0) return text;
-                const metersSummary = metersList.map((m, idx) => ({
-                    name: m.name || `Meter ${idx + 1}`,
-                    opening: Number(m.opening) || 0,
-                    closing: m.closing !== "" && m.closing !== null ? Number(m.closing) : "",
-                    diff: Number(m.diff) || 0,
-                    meter_changed: Boolean(m.meter_changed),
-                    custom_difference: m.custom_difference || ""
-                }));
-                const tag = `[METERS_DATA: ${JSON.stringify(metersSummary)}]`;
-                return text ? `${tag}\n${text}` : tag;
+                let result = text;
+                if (metersList && metersList.length > 0) {
+                    const metersSummary = metersList.map((m, idx) => ({
+                        name: m.name || `Meter ${idx + 1}`,
+                        opening: Number(m.opening) || 0,
+                        closing: m.closing !== "" && m.closing !== null ? Number(m.closing) : "",
+                        diff: Number(m.diff) || 0,
+                        meter_changed: Boolean(m.meter_changed),
+                        custom_difference: m.custom_difference || ""
+                    }));
+                    result = `[METERS_DATA: ${JSON.stringify(metersSummary)}]\n${result}`;
+                }
+                if (gasValues) {
+                    const gasSummary = {
+                        png_op: Number(gasValues.png_opening) || 0,
+                        png_cl: gasValues.png_closing !== "" && gasValues.png_closing !== null ? Number(gasValues.png_closing) : null,
+                        png_co: Number(gasValues.png_consumption) || 0,
+                        png_cst: Number(gasValues.png_cost) || 0,
+                        n_op: Number(gasValues.nitrogen_opening) || 0,
+                        n_cl: gasValues.nitrogen_closing !== "" && gasValues.nitrogen_closing !== null ? Number(gasValues.nitrogen_closing) : null,
+                        n_co: Number(gasValues.nitrogen_consumption) || 0,
+                        n_cst: Number(gasValues.nitrogen_cost) || 0,
+                        o_op: Number(gasValues.oxygen_opening) || 0,
+                        o_cl: gasValues.oxygen_closing !== "" && gasValues.oxygen_closing !== null ? Number(gasValues.oxygen_closing) : null,
+                        o_co: Number(gasValues.oxygen_consumption) || 0,
+                        o_cst: Number(gasValues.oxygen_cost) || 0,
+                        w_op: Number(gasValues.water_opening) || 0,
+                        w_cl: gasValues.water_closing !== "" && gasValues.water_closing !== null ? Number(gasValues.water_closing) : null,
+                        w_co: Number(gasValues.water_consumption) || 0,
+                        w_cst: Number(gasValues.water_cost) || 0,
+                    };
+                    result = `[GAS_DATA: ${JSON.stringify(gasSummary)}]\n${result}`;
+                }
+                return result.trim();
             };
 
             const isSamePlant = (p1, p2) => {
@@ -2451,7 +2527,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         .order('date', { ascending: false })
                         .limit(50000);
                     if (entriesErr) throw entriesErr;
-                    const rows = entries || [];
+                    const rows = (entries || []).map(hydrateEntryWithRemarks);
                     setDailyEntries(rows);
 
                     // Default date window = full available data so KPI cards populate on login
@@ -4317,49 +4393,50 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const openDailyForm = (entry = null) => {
                 setWasteSectionOpen(false);
                 if (entry) {
-                    setEditingRecord(entry);
-                    const solGen = Number(entry.solar_generated) || 0;
-                    const solCloseRaw = Number(entry.solar_closing);
+                    const hydratedEntry = hydrateEntryWithRemarks(entry);
+                    setEditingRecord(hydratedEntry);
+                    const solGen = Number(hydratedEntry.solar_generated) || 0;
+                    const solCloseRaw = Number(hydratedEntry.solar_closing);
                     const solarDaily = Number.isFinite(solCloseRaw) && solCloseRaw > 0 ? solCloseRaw : solGen;
                     const prevEntry = dailyEntries
-                        .filter(e => e.plant === entry.plant && e.date < entry.date && e.id !== entry.id)
+                        .filter(e => e.plant === hydratedEntry.plant && e.date < hydratedEntry.date && e.id !== hydratedEntry.id)
                         .sort((a, b) => b.date.localeCompare(a.date))[0];
                     const prevSolar = prevEntry ? (Number(prevEntry.solar_generated) || 0) : 0;
-                    const prevPng = prevEntry ? (Number(prevEntry.png_closing) || 0) : 0;
-                    const prevNitrogen = prevEntry ? (Number(prevEntry.nitrogen_closing) || 0) : 0;
-                    const prevOxygen = prevEntry ? (Number(prevEntry.oxygen_closing) || 0) : 0;
-                    const prevWater = prevEntry ? (Number(prevEntry.water_closing) || 0) : 0;
+                    const prevPng = prevEntry ? (Number(prevEntry.png_closing) || Number(prevEntry.png_opening) || 0) : 0;
+                    const prevNitrogen = prevEntry ? (Number(prevEntry.nitrogen_closing) || Number(prevEntry.nitrogen_opening) || 0) : 0;
+                    const prevOxygen = prevEntry ? (Number(prevEntry.oxygen_closing) || Number(prevEntry.oxygen_opening) || 0) : 0;
+                    const prevWater = prevEntry ? (Number(prevEntry.water_closing) || Number(prevEntry.water_opening) || 0) : 0;
 
-                    const solarCost = CalculationEngine.calculateSolarCost(solarDaily, resolveTariff(tariffs, "solar", entry.plant, entry.location, entry.date) || resolveTariff(tariffs, "electricity", entry.plant, entry.location, entry.date));
-                    const dieselCost = CalculationEngine.calculateDieselCost(Number(entry.diesel_used) || 0, resolveTariff(tariffs, "diesel", entry.plant, entry.location, entry.date));
-                    const electCost = Number(entry.electricity_cost) || 0;
+                    const solarCost = CalculationEngine.calculateSolarCost(solarDaily, resolveTariff(tariffs, "solar", hydratedEntry.plant, hydratedEntry.location, hydratedEntry.date) || resolveTariff(tariffs, "electricity", hydratedEntry.plant, hydratedEntry.location, hydratedEntry.date));
+                    const dieselCost = CalculationEngine.calculateDieselCost(Number(hydratedEntry.diesel_used) || 0, resolveTariff(tariffs, "diesel", hydratedEntry.plant, hydratedEntry.location, hydratedEntry.date));
+                    const electCost = Number(hydratedEntry.electricity_cost) || 0;
 
-                    const pngRate = resolveTariff(tariffs, "png", entry.plant, entry.location, entry.date);
-                    const nitrogenRate = resolveTariff(tariffs, "nitrogen", entry.plant, entry.location, entry.date);
-                    const oxygenRate = resolveTariff(tariffs, "oxygen", entry.plant, entry.location, entry.date);
-                    const waterRate = resolveTariff(tariffs, "water", entry.plant, entry.location, entry.date);
+                    const pngRate = resolveTariff(tariffs, "png", hydratedEntry.plant, hydratedEntry.location, hydratedEntry.date);
+                    const nitrogenRate = resolveTariff(tariffs, "nitrogen", hydratedEntry.plant, hydratedEntry.location, hydratedEntry.date);
+                    const oxygenRate = resolveTariff(tariffs, "oxygen", hydratedEntry.plant, hydratedEntry.location, hydratedEntry.date);
+                    const waterRate = resolveTariff(tariffs, "water", hydratedEntry.plant, hydratedEntry.location, hydratedEntry.date);
 
-                    const pngOpen = entry.png_opening !== undefined && entry.png_opening !== null ? Number(entry.png_opening) : prevPng;
-                    const pngClose = entry.png_closing !== undefined && entry.png_closing !== null ? entry.png_closing : "";
-                    const pngCons = entry.png_consumption !== undefined && entry.png_consumption !== null ? Number(entry.png_consumption) : (pngClose !== "" ? Math.max(0, Number(pngClose) - pngOpen) : 0);
-                    const pngCost = entry.png_cost !== undefined && entry.png_cost !== null ? Number(entry.png_cost) : (pngCons * pngRate);
+                    const pngOpen = hydratedEntry.png_opening !== undefined && hydratedEntry.png_opening !== null && hydratedEntry.png_opening !== "" ? Number(hydratedEntry.png_opening) : prevPng;
+                    const pngClose = hydratedEntry.png_closing !== undefined && hydratedEntry.png_closing !== null ? hydratedEntry.png_closing : "";
+                    const pngCons = hydratedEntry.png_consumption !== undefined && hydratedEntry.png_consumption !== null ? Number(hydratedEntry.png_consumption) : (pngClose !== "" ? Math.max(0, Number(pngClose) - pngOpen) : 0);
+                    const pngCost = hydratedEntry.png_cost !== undefined && hydratedEntry.png_cost !== null ? Number(hydratedEntry.png_cost) : (pngCons * pngRate);
 
-                    const nOpen = entry.nitrogen_opening !== undefined && entry.nitrogen_opening !== null ? Number(entry.nitrogen_opening) : prevNitrogen;
-                    const nClose = entry.nitrogen_closing !== undefined && entry.nitrogen_closing !== null ? entry.nitrogen_closing : "";
-                    const nCons = entry.nitrogen_consumption !== undefined && entry.nitrogen_consumption !== null ? Number(entry.nitrogen_consumption) : (nClose !== "" ? Math.max(0, Number(nClose) - nOpen) : 0);
-                    const nCost = entry.nitrogen_cost !== undefined && entry.nitrogen_cost !== null ? Number(entry.nitrogen_cost) : (nCons * nitrogenRate);
+                    const nOpen = hydratedEntry.nitrogen_opening !== undefined && hydratedEntry.nitrogen_opening !== null && hydratedEntry.nitrogen_opening !== "" ? Number(hydratedEntry.nitrogen_opening) : prevNitrogen;
+                    const nClose = hydratedEntry.nitrogen_closing !== undefined && hydratedEntry.nitrogen_closing !== null ? hydratedEntry.nitrogen_closing : "";
+                    const nCons = hydratedEntry.nitrogen_consumption !== undefined && hydratedEntry.nitrogen_consumption !== null ? Number(hydratedEntry.nitrogen_consumption) : (nClose !== "" ? Math.max(0, Number(nClose) - nOpen) : 0);
+                    const nCost = hydratedEntry.nitrogen_cost !== undefined && hydratedEntry.nitrogen_cost !== null ? Number(hydratedEntry.nitrogen_cost) : (nCons * nitrogenRate);
 
-                    const oOpen = entry.oxygen_opening !== undefined && entry.oxygen_opening !== null ? Number(entry.oxygen_opening) : prevOxygen;
-                    const oClose = entry.oxygen_closing !== undefined && entry.oxygen_closing !== null ? entry.oxygen_closing : "";
-                    const oCons = entry.oxygen_consumption !== undefined && entry.oxygen_consumption !== null ? Number(entry.oxygen_consumption) : (oClose !== "" ? Math.max(0, Number(oClose) - oOpen) : 0);
-                    const oCost = entry.oxygen_cost !== undefined && entry.oxygen_cost !== null ? Number(entry.oxygen_cost) : (oCons * oxygenRate);
+                    const oOpen = hydratedEntry.oxygen_opening !== undefined && hydratedEntry.oxygen_opening !== null && hydratedEntry.oxygen_opening !== "" ? Number(hydratedEntry.oxygen_opening) : prevOxygen;
+                    const oClose = hydratedEntry.oxygen_closing !== undefined && hydratedEntry.oxygen_closing !== null ? hydratedEntry.oxygen_closing : "";
+                    const oCons = hydratedEntry.oxygen_consumption !== undefined && hydratedEntry.oxygen_consumption !== null ? Number(hydratedEntry.oxygen_consumption) : (oClose !== "" ? Math.max(0, Number(oClose) - oOpen) : 0);
+                    const oCost = hydratedEntry.oxygen_cost !== undefined && hydratedEntry.oxygen_cost !== null ? Number(hydratedEntry.oxygen_cost) : (oCons * oxygenRate);
 
-                    const wOpen = entry.water_opening !== undefined && entry.water_opening !== null ? Number(entry.water_opening) : prevWater;
-                    const wClose = entry.water_closing !== undefined && entry.water_closing !== null ? entry.water_closing : "";
-                    const wCons = entry.water_consumption !== undefined && entry.water_consumption !== null ? Number(entry.water_consumption) : (wClose !== "" ? Math.max(0, Number(wClose) - wOpen) : 0);
-                    const wCost = entry.water_cost !== undefined && entry.water_cost !== null ? Number(entry.water_cost) : (wCons * waterRate);
+                    const wOpen = hydratedEntry.water_opening !== undefined && hydratedEntry.water_opening !== null && hydratedEntry.water_opening !== "" ? Number(hydratedEntry.water_opening) : prevWater;
+                    const wClose = hydratedEntry.water_closing !== undefined && hydratedEntry.water_closing !== null ? hydratedEntry.water_closing : "";
+                    const wCons = hydratedEntry.water_consumption !== undefined && hydratedEntry.water_consumption !== null ? Number(hydratedEntry.water_consumption) : (wClose !== "" ? Math.max(0, Number(wClose) - wOpen) : 0);
+                    const wCost = hydratedEntry.water_cost !== undefined && hydratedEntry.water_cost !== null ? Number(hydratedEntry.water_cost) : (wCons * waterRate);
 
-                    const savedMeters = parseMetersFromRemarks(entry.remarks);
+                    const savedMeters = parseMetersFromRemarks(hydratedEntry.remarks);
                     let initialMeters;
                     if (savedMeters && savedMeters.length > 0) {
                         initialMeters = savedMeters.map((m, idx) => ({
@@ -4372,17 +4449,17 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                             diff: Number(m.diff) || 0
                         }));
                     } else {
-                        const defaultMtrs = getDefaultMetersForPlant(entry.plant, meters);
+                        const defaultMtrs = getDefaultMetersForPlant(hydratedEntry.plant, meters);
                         if (defaultMtrs.length > 1) {
                             initialMeters = defaultMtrs.map((dm, idx) => {
                                 if (idx === 0) {
                                     return {
                                         ...dm,
-                                        opening: Number(entry.electricity_opening) || 0,
-                                        closing: entry.electricity_closing !== undefined && entry.electricity_closing !== null ? entry.electricity_closing : "",
-                                        meter_changed: entry.meter_changed === true || String(entry.meter_changed) === "true",
-                                        custom_difference: entry.custom_difference || "",
-                                        diff: Math.max(0, (Number(entry.electricity_closing) || 0) - (Number(entry.electricity_opening) || 0))
+                                        opening: Number(hydratedEntry.electricity_opening) || 0,
+                                        closing: hydratedEntry.electricity_closing !== undefined && hydratedEntry.electricity_closing !== null ? hydratedEntry.electricity_closing : "",
+                                        meter_changed: hydratedEntry.meter_changed === true || String(hydratedEntry.meter_changed) === "true",
+                                        custom_difference: hydratedEntry.custom_difference || "",
+                                        diff: Math.max(0, (Number(hydratedEntry.electricity_closing) || 0) - (Number(hydratedEntry.electricity_opening) || 0))
                                     };
                                 }
                                 return dm;
@@ -4392,21 +4469,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                 {
                                     id: "m1",
                                     name: "Meter 1",
-                                    opening: Number(entry.electricity_opening) || 0,
-                                    closing: entry.electricity_closing !== undefined && entry.electricity_closing !== null ? entry.electricity_closing : "",
-                                    meter_changed: entry.meter_changed === true || String(entry.meter_changed) === "true",
-                                    custom_difference: entry.custom_difference || "",
-                                    diff: Math.max(0, (Number(entry.electricity_closing) || 0) - (Number(entry.electricity_opening) || 0))
+                                    opening: Number(hydratedEntry.electricity_opening) || 0,
+                                    closing: hydratedEntry.electricity_closing !== undefined && hydratedEntry.electricity_closing !== null ? hydratedEntry.electricity_closing : "",
+                                    meter_changed: hydratedEntry.meter_changed === true || String(hydratedEntry.meter_changed) === "true",
+                                    custom_difference: hydratedEntry.custom_difference || "",
+                                    diff: Math.max(0, (Number(hydratedEntry.electricity_closing) || 0) - (Number(hydratedEntry.electricity_opening) || 0))
                                 }
                             ];
                         }
                     }
 
                     setEntryFormValues({
-                        ...entry,
+                        ...hydratedEntry,
                         electricity_meters: initialMeters,
-                        meter_changed: entry.meter_changed === true || String(entry.meter_changed) === "true",
-                        custom_difference: entry.custom_difference || "",
+                        meter_changed: hydratedEntry.meter_changed === true || String(hydratedEntry.meter_changed) === "true",
+                        custom_difference: hydratedEntry.custom_difference || "",
                         solar_opening: prevSolar,
                         solar_closing: solarDaily || "",
                         solar_generated: solarDaily,
@@ -4432,7 +4509,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         total_cost: CalculationEngine.calculateTotalCost(electCost, solarCost, dieselCost),
                     });
                     // Auto-expand the waste section if the record being edited already has waste data
-                    if (Number(entry.waste_hazardous) || Number(entry.waste_non_hazardous) || Number(entry.waste_recycled)) {
+                    if (Number(hydratedEntry.waste_hazardous) || Number(hydratedEntry.waste_non_hazardous) || Number(hydratedEntry.waste_recycled)) {
                         setWasteSectionOpen(true);
                     }
                 } else {
@@ -4442,22 +4519,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const lDef = allowedPlants[0]?.location || "NASHIK";
                     const todayStr = new Date().toISOString().split('T')[0];
                     const sortedPrev = dailyEntries
-                        .filter(e => isSamePlant(e.plant, pDef) && e.date < todayStr)
+                        .filter(e => isSamePlant(e.plant, pDef) && e.date <= todayStr)
                         .sort((a, b) => b.date.localeCompare(a.date));
                     const prevEntry = sortedPrev.length > 0 ? sortedPrev[0] : null;
                     const prevMetersData = prevEntry ? parseMetersFromRemarks(prevEntry.remarks) : null;
                     const initialMeters = getDefaultMetersForPlant(pDef, meters, prevMetersData);
 
-                    const prevPngEntry = sortedPrev.find(e => e.png_closing !== undefined && e.png_closing !== null && e.png_closing !== "" && Number(e.png_closing) > 0) || sortedPrev.find(e => Number(e.png_opening) > 0);
+                    const prevPngEntry = sortedPrev.find(e => e.png_closing !== undefined && e.png_closing !== null && e.png_closing !== "" && !isNaN(Number(e.png_closing)) && Number(e.png_closing) > 0) || sortedPrev.find(e => Number(e.png_opening) > 0);
                     const prevPng = prevPngEntry ? (Number(prevPngEntry.png_closing) || Number(prevPngEntry.png_opening) || 0) : 0;
 
-                    const prevNitrogenEntry = sortedPrev.find(e => e.nitrogen_closing !== undefined && e.nitrogen_closing !== null && e.nitrogen_closing !== "" && Number(e.nitrogen_closing) > 0) || sortedPrev.find(e => Number(e.nitrogen_opening) > 0);
+                    const prevNitrogenEntry = sortedPrev.find(e => e.nitrogen_closing !== undefined && e.nitrogen_closing !== null && e.nitrogen_closing !== "" && !isNaN(Number(e.nitrogen_closing)) && Number(e.nitrogen_closing) > 0) || sortedPrev.find(e => Number(e.nitrogen_opening) > 0);
                     const prevNitrogen = prevNitrogenEntry ? (Number(prevNitrogenEntry.nitrogen_closing) || Number(prevNitrogenEntry.nitrogen_opening) || 0) : 0;
 
-                    const prevOxygenEntry = sortedPrev.find(e => e.oxygen_closing !== undefined && e.oxygen_closing !== null && e.oxygen_closing !== "" && Number(e.oxygen_closing) > 0) || sortedPrev.find(e => Number(e.oxygen_opening) > 0);
+                    const prevOxygenEntry = sortedPrev.find(e => e.oxygen_closing !== undefined && e.oxygen_closing !== null && e.oxygen_closing !== "" && !isNaN(Number(e.oxygen_closing)) && Number(e.oxygen_closing) > 0) || sortedPrev.find(e => Number(e.oxygen_opening) > 0);
                     const prevOxygen = prevOxygenEntry ? (Number(prevOxygenEntry.oxygen_closing) || Number(prevOxygenEntry.oxygen_opening) || 0) : 0;
 
-                    const prevWaterEntry = sortedPrev.find(e => e.water_closing !== undefined && e.water_closing !== null && e.water_closing !== "" && Number(e.water_closing) > 0) || sortedPrev.find(e => Number(e.water_opening) > 0);
+                    const prevWaterEntry = sortedPrev.find(e => e.water_closing !== undefined && e.water_closing !== null && e.water_closing !== "" && !isNaN(Number(e.water_closing)) && Number(e.water_closing) > 0) || sortedPrev.find(e => Number(e.water_opening) > 0);
                     const prevWater = prevWaterEntry ? (Number(prevWaterEntry.water_closing) || Number(prevWaterEntry.water_opening) || 0) : 0;
 
                     const prevSolar = prevEntry ? (Number(prevEntry.solar_generated) || 0) : 0;
@@ -4896,16 +4973,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const prevReading = sortedPrev.length > 0 ? Number(sortedPrev[0].electricity_closing) || 0 : 0;
                 const prevSolar = sortedPrev.length > 0 ? Number(sortedPrev[0].solar_generated) || 0 : 0;
 
-                const prevPngEntry = sortedPrev.find(e => e.png_closing !== undefined && e.png_closing !== null && e.png_closing !== "" && Number(e.png_closing) > 0) || sortedPrev.find(e => Number(e.png_opening) > 0);
+                const prevPngEntry = sortedPrev.find(e => e.png_closing !== undefined && e.png_closing !== null && e.png_closing !== "" && !isNaN(Number(e.png_closing)) && Number(e.png_closing) > 0) || sortedPrev.find(e => Number(e.png_opening) > 0);
                 const prevPng = prevPngEntry ? (Number(prevPngEntry.png_closing) || Number(prevPngEntry.png_opening) || 0) : 0;
 
-                const prevNitrogenEntry = sortedPrev.find(e => e.nitrogen_closing !== undefined && e.nitrogen_closing !== null && e.nitrogen_closing !== "" && Number(e.nitrogen_closing) > 0) || sortedPrev.find(e => Number(e.nitrogen_opening) > 0);
+                const prevNitrogenEntry = sortedPrev.find(e => e.nitrogen_closing !== undefined && e.nitrogen_closing !== null && e.nitrogen_closing !== "" && !isNaN(Number(e.nitrogen_closing)) && Number(e.nitrogen_closing) > 0) || sortedPrev.find(e => Number(e.nitrogen_opening) > 0);
                 const prevNitrogen = prevNitrogenEntry ? (Number(prevNitrogenEntry.nitrogen_closing) || Number(prevNitrogenEntry.nitrogen_opening) || 0) : 0;
 
-                const prevOxygenEntry = sortedPrev.find(e => e.oxygen_closing !== undefined && e.oxygen_closing !== null && e.oxygen_closing !== "" && Number(e.oxygen_closing) > 0) || sortedPrev.find(e => Number(e.oxygen_opening) > 0);
+                const prevOxygenEntry = sortedPrev.find(e => e.oxygen_closing !== undefined && e.oxygen_closing !== null && e.oxygen_closing !== "" && !isNaN(Number(e.oxygen_closing)) && Number(e.oxygen_closing) > 0) || sortedPrev.find(e => Number(e.oxygen_opening) > 0);
                 const prevOxygen = prevOxygenEntry ? (Number(prevOxygenEntry.oxygen_closing) || Number(prevOxygenEntry.oxygen_opening) || 0) : 0;
 
-                const prevWaterEntry = sortedPrev.find(e => e.water_closing !== undefined && e.water_closing !== null && e.water_closing !== "" && Number(e.water_closing) > 0) || sortedPrev.find(e => Number(e.water_opening) > 0);
+                const prevWaterEntry = sortedPrev.find(e => e.water_closing !== undefined && e.water_closing !== null && e.water_closing !== "" && !isNaN(Number(e.water_closing)) && Number(e.water_closing) > 0) || sortedPrev.find(e => Number(e.water_opening) > 0);
                 const prevWater = prevWaterEntry ? (Number(prevWaterEntry.water_closing) || Number(prevWaterEntry.water_opening) || 0) : 0;
 
                 updateFormCalculations({
@@ -5152,9 +5229,26 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     }
                 });
 
-                // Serialize multi-meter breakdown into remarks safely
+                // Serialize multi-meter breakdown and gas values into remarks safely
                 const cleanRemarksText = getCleanRemarks(entryFormValues.remarks);
-                payload.remarks = serializeRemarksWithMeters(cleanRemarksText, currentMeters);
+                payload.remarks = serializeRemarksWithMeters(cleanRemarksText, currentMeters, {
+                    png_opening: payload.png_opening,
+                    png_closing: payload.png_closing,
+                    png_consumption: payload.png_consumption,
+                    png_cost: payload.png_cost,
+                    nitrogen_opening: payload.nitrogen_opening,
+                    nitrogen_closing: payload.nitrogen_closing,
+                    nitrogen_consumption: payload.nitrogen_consumption,
+                    nitrogen_cost: payload.nitrogen_cost,
+                    oxygen_opening: payload.oxygen_opening,
+                    oxygen_closing: payload.oxygen_closing,
+                    oxygen_consumption: payload.oxygen_consumption,
+                    oxygen_cost: payload.oxygen_cost,
+                    water_opening: payload.water_opening,
+                    water_closing: payload.water_closing,
+                    water_consumption: payload.water_consumption,
+                    water_cost: payload.water_cost
+                });
 
                 // Sync any newly added meters to Supabase 'meters' master table in background
                 if (currentMeters && currentMeters.length > 0) {
@@ -12100,7 +12194,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             <DetailField label="Diesel Used (L)" value={fmtNum(viewingRecord.diesel_used)} />
                                             <DetailField label="Diesel Cost" value={"₹ " + fmtNum(viewingRecord.diesel_cost)} />
                                             {(() => {
-                                                 const vRec = viewingRecord;
+                                                 const vRec = hydrateEntryWithRemarks(viewingRecord);
                                                  const pngC = vRec.png_consumption !== undefined && vRec.png_consumption !== null && vRec.png_consumption !== "" 
                                                      ? Number(vRec.png_consumption) 
                                                      : (vRec.png_closing !== undefined && vRec.png_closing !== null && vRec.png_closing !== "" && vRec.png_opening !== undefined && vRec.png_opening !== null && vRec.png_opening !== "" 
