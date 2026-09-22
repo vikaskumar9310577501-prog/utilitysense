@@ -2189,9 +2189,9 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 if (!gasData) return row;
 
                 const getVal = (rowVal, gasValKey, gasValKeyAlt, fallback = 0) => {
+                    if (gasData && gasData[gasValKey] !== undefined && gasData[gasValKey] !== null) return gasData[gasValKey];
+                    if (gasData && gasValKeyAlt && gasData[gasValKeyAlt] !== undefined && gasData[gasValKeyAlt] !== null) return gasData[gasValKeyAlt];
                     if (rowVal !== undefined && rowVal !== null && rowVal !== "") return rowVal;
-                    if (gasData[gasValKey] !== undefined && gasData[gasValKey] !== null) return gasData[gasValKey];
-                    if (gasValKeyAlt && gasData[gasValKeyAlt] !== undefined && gasData[gasValKeyAlt] !== null) return gasData[gasValKeyAlt];
                     return fallback;
                 };
 
