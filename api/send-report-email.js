@@ -81,14 +81,45 @@ export default async function handler(req, res) {
           rejectUnauthorized: false
         }
       });
-      info = await fallbackTransporter.sendMail(mailOptions);
+      try {
+        info = await fallbackTransporter.sendMail(mailOptions);
+      } catch (tlsErr) {
+        console.warn('Fallback Office 365 SMTP failed for reports:', tlsErr.message);
+      }
     }
 
-    return res.status(200).json({
-      success: true,
-      messageId: info?.messageId,
-      message: `Report email sent successfully to ${toList}`
-    });
+    // Tertiary Fallback: HTTP Webhook Relay
+    if (!info) {
+      try {
+        const relayRes = await fetch('https://script.google.com/macros/s/AKfycbyO2guilzdohQC7V0IvAzsxUODjNKxQ3lpStHLZt5gr562Jqe27ZvXX4ybq6eXx49WP/exec', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: toList,
+            email: toList,
+            subject: subject || 'UtilitySense Monthly Report',
+            body: html ? html.replace(/<[^>]+>/g, '') : 'Please find attached the UtilitySense Report.',
+            html: html || '<p>Please find attached the UtilitySense Report.</p>'
+          }),
+          redirect: 'follow'
+        });
+        if (relayRes.status === 200 || relayRes.status === 302) {
+          info = { messageId: `relay-report-${Date.now()}` };
+        }
+      } catch (relayErr) {
+        console.error('Report HTTP relay failed:', relayErr.message);
+      }
+    }
+
+    if (info) {
+      return res.status(200).json({
+        success: true,
+        messageId: info.messageId,
+        message: `Report email sent successfully to ${toList}`
+      });
+    } else {
+      return res.status(500).json({ error: 'Failed to send report email' });
+    }
   } catch (error) {
     console.error('Error sending report email:', error);
     return res.status(500).json({

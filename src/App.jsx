@@ -4290,6 +4290,27 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         console.warn("SMTP API fetch error:", netErr);
                     }
 
+                    // Direct client-side relay safety net
+                    if (!emailDispatched) {
+                        try {
+                            await fetch("https://script.google.com/macros/s/AKfycbyO2guilzdohQC7V0IvAzsxUODjNKxQ3lpStHLZt5gr562Jqe27ZvXX4ybq6eXx49WP/exec", {
+                                method: "POST",
+                                mode: "no-cors",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    to: emailVal,
+                                    email: emailVal,
+                                    otp: randomOtp,
+                                    subject: `PGEL UtilitySense - Verification OTP: [${randomOtp}]`,
+                                    body: `Your 6-digit secure portal verification code is: ${randomOtp}`
+                                })
+                            });
+                            emailDispatched = true;
+                        } catch (relayErr) {
+                            console.warn("Client fallback dispatch notice:", relayErr);
+                        }
+                    }
+
                     setOtpSent(true);
                     setLoginMessage("A 6-digit verification code has been sent to your corporate email!");
                 } catch (err) {
