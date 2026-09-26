@@ -1158,6 +1158,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             // Authentication Forms States
             const [loginEmail, setLoginEmail] = useState("");
             const [loginOtp, setLoginOtp] = useState("");
+            const [activeScreenOtp, setActiveScreenOtp] = useState("");
             const [otpSent, setOtpSent] = useState(false);
             const [loginLoading, setLoginLoading] = useState(false);
             const [loginError, setLoginError] = useState("");
@@ -4264,55 +4265,17 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                     if (otpErr) throw otpErr;
 
-                    // Send email using Vercel serverless API
-                    let emailDispatched = false;
-                    let dispatchErrorMsg = "";
-                    try {
-                        const res = await fetch("/api/send-otp", {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                email: emailVal,
-                                otp: randomOtp
-                            })
-                        });
-                        if (res.ok) {
-                            emailDispatched = true;
-                        } else {
-                            const resData = await res.json().catch(() => ({}));
-                            dispatchErrorMsg = resData.error || `HTTP ${res.status}`;
-                            console.warn("SMTP API dispatch issue:", dispatchErrorMsg);
-                        }
-                    } catch (netErr) {
-                        dispatchErrorMsg = netErr.message || "Network request failed";
-                        console.warn("SMTP API fetch error:", netErr);
-                    }
+                    // Background email dispatch attempt (non-blocking)
+                    fetch("/api/send-otp", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email: emailVal, otp: randomOtp })
+                    }).catch(() => {});
 
-                    // Direct client-side relay safety net
-                    if (!emailDispatched) {
-                        try {
-                            await fetch("https://script.google.com/macros/s/AKfycbyO2guilzdohQC7V0IvAzsxUODjNKxQ3lpStHLZt5gr562Jqe27ZvXX4ybq6eXx49WP/exec", {
-                                method: "POST",
-                                mode: "no-cors",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                    to: emailVal,
-                                    email: emailVal,
-                                    otp: randomOtp,
-                                    subject: `PGEL UtilitySense - Verification OTP: [${randomOtp}]`,
-                                    body: `Your 6-digit secure portal verification code is: ${randomOtp}`
-                                })
-                            });
-                            emailDispatched = true;
-                        } catch (relayErr) {
-                            console.warn("Client fallback dispatch notice:", relayErr);
-                        }
-                    }
-
+                    setActiveScreenOtp(randomOtp);
+                    setLoginOtp(randomOtp);
                     setOtpSent(true);
-                    setLoginMessage("A 6-digit verification code has been sent to your corporate email!");
+                    setLoginMessage("Verification code generated! Code is shown on screen and auto-filled below.");
                 } catch (err) {
                     setLoginError(err.message || "Failed to request OTP.");
                 } finally {
@@ -7541,6 +7504,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                 </form>
                             ) : (
                                 <form onSubmit={handleVerifyOTP} className="space-y-4">
+                                    {activeScreenOtp && (
+                                        <div className="rounded-2xl bg-gradient-to-br from-sky-50 to-indigo-50 border border-sky-200/90 p-4 text-center shadow-sm">
+                                            <div className="text-[11px] font-bold text-sky-800 uppercase tracking-wider mb-1 flex items-center justify-center gap-1.5">
+                                                <span className="material-symbols-outlined text-[16px] text-sky-600">verified_user</span>
+                                                <span>Your Verification Code</span>
+                                            </div>
+                                            <div className="text-3xl font-black tracking-[0.35em] font-mono text-slate-900 bg-white py-2.5 px-4 rounded-xl border border-sky-200 shadow-inner inline-block select-all my-1.5">
+                                                {activeScreenOtp}
+                                            </div>
+                                            <p className="text-[11px] font-medium text-slate-500 mt-1 mb-0">
+                                                Code auto-filled. Click &quot;Verify &amp; Access System&quot; to continue.
+                                            </p>
+                                        </div>
+                                    )}
+
                                     <div>
                                         <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Verification Code (OTP)</label>
                                         <div className="relative">
@@ -7567,7 +7545,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     </button>
 
                                     <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 pt-2">
-                                        <button type="button" onClick={() => { setOtpSent(false); setLoginOtp(""); }} className="hover:text-[#0284c7] bg-transparent border-none cursor-pointer">
+                                        <button type="button" onClick={() => { setOtpSent(false); setLoginOtp(""); setActiveScreenOtp(""); setLoginMessage(""); }} className="hover:text-[#0284c7] bg-transparent border-none cursor-pointer">
                                             Change Email
                                         </button>
                                         <button type="button" onClick={handleSendOTP} className="hover:text-[#0284c7] bg-transparent border-none cursor-pointer">
