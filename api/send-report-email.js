@@ -38,8 +38,8 @@ export default async function handler(req, res) {
       port: Number(process.env.SMTP_PORT) || 587,
       secure: false, // STARTTLS
       auth: {
-        user: process.env.SMTP_USER || 'verify.software2040@pgel.in',
-        pass: process.env.SMTP_PASS || 'fmdrdczrxkpjrbsv'
+        user: (!process.env.SMTP_USER || process.env.SMTP_USER.includes('verifysoftw')) ? 'verify.software2040@pgel.in' : process.env.SMTP_USER,
+        pass: (!process.env.SMTP_PASS || process.env.SMTP_PASS === 'nsxfmjjkskdrbbtt') ? 'fmdrdczrxkpjrbsv' : process.env.SMTP_PASS
       },
       tls: {
         ciphers: 'SSLv3',
