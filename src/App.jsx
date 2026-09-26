@@ -4291,17 +4291,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     }
 
                     setOtpSent(true);
-                    if (emailDispatched) {
-                        setLoginMessage("A 6-digit verification code has been sent to your corporate email!");
-                    } else {
-                        // Fail-safe: If cloud SMTP is blocked or fails, IT Admin gets direct access code
-                        const isItAdmin = userRec?.role === "IT_ADMIN" || emailVal.includes("software.2040");
-                        if (isItAdmin) {
-                            setLoginMessage(`OTP Code: ${randomOtp} (Notice: Cloud SMTP dispatch issue [${dispatchErrorMsg}]. Entered OTP will verify successfully)`);
-                        } else {
-                            setLoginMessage("Verification code generated. If email delivery is delayed, contact IT Admin for instant assistance.");
-                        }
-                    }
+                    setLoginMessage("A 6-digit verification code has been sent to your corporate email!");
                 } catch (err) {
                     setLoginError(err.message || "Failed to request OTP.");
                 } finally {

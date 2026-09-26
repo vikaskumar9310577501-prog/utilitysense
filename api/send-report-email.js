@@ -32,23 +32,11 @@ export default async function handler(req, res) {
     const ccList = cc ? (Array.isArray(cc) ? cc.join(', ') : cc) : undefined;
     const bccList = bcc ? (Array.isArray(bcc) ? bcc.join(', ') : bcc) : undefined;
 
-    // Configure Microsoft 365 SMTP transport
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.office365.com',
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false, // STARTTLS
-      auth: {
-        user: (!process.env.SMTP_USER || process.env.SMTP_USER.includes('verifysoftw')) ? 'verify.software2040@pgel.in' : process.env.SMTP_USER,
-        pass: (!process.env.SMTP_PASS || process.env.SMTP_PASS === 'nsxfmjjkskdrbbtt') ? 'fmdrdczrxkpjrbsv' : process.env.SMTP_PASS
-      },
-      tls: {
-        ciphers: 'SSLv3',
-        rejectUnauthorized: false
-      }
-    });
+    const SMTP_USER = 'verify.software2040@pgel.in';
+    const SMTP_PASS = 'fmdrdczrxkpjrbsv';
 
     const mailOptions = {
-      from: '"UtilitySense Reports" <verify.software2040@pgel.in>',
+      from: `"UtilitySense Reports" <${SMTP_USER}>`,
       to: toList,
       subject: subject || 'UtilitySense Monthly Report',
       html: html || '<p>Please find attached the UtilitySense Report.</p>',
@@ -63,10 +51,42 @@ export default async function handler(req, res) {
     if (ccList && ccList.trim()) mailOptions.cc = ccList;
     if (bccList && bccList.trim()) mailOptions.bcc = bccList;
 
-    const info = await transporter.sendMail(mailOptions);
+    let info = null;
+    try {
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.office365.com',
+        port: 587,
+        secure: false, // STARTTLS
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS
+        },
+        tls: {
+          ciphers: 'SSLv3',
+          rejectUnauthorized: false
+        }
+      });
+      info = await transporter.sendMail(mailOptions);
+    } catch (primaryErr) {
+      console.warn('Primary SSLv3 SMTP attempt failed for reports, trying fallback TLS:', primaryErr.message);
+      const fallbackTransporter = nodemailer.createTransport({
+        host: 'smtp.office365.com',
+        port: 587,
+        secure: false,
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS
+        },
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+      info = await fallbackTransporter.sendMail(mailOptions);
+    }
+
     return res.status(200).json({
       success: true,
-      messageId: info.messageId,
+      messageId: info?.messageId,
       message: `Report email sent successfully to ${toList}`
     });
   } catch (error) {

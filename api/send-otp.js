@@ -26,23 +26,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Email and OTP are required' });
     }
 
-    // Configure Microsoft 365 SMTP transport
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.office365.com',
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false, // STARTTLS
-      auth: {
-        user: (!process.env.SMTP_USER || process.env.SMTP_USER.includes('verifysoftw')) ? 'verify.software2040@pgel.in' : process.env.SMTP_USER,
-        pass: (!process.env.SMTP_PASS || process.env.SMTP_PASS === 'nsxfmjjkskdrbbtt') ? 'fmdrdczrxkpjrbsv' : process.env.SMTP_PASS
-      },
-      tls: {
-        ciphers: 'SSLv3',
-        rejectUnauthorized: false
-      }
-    });
+    const SMTP_USER = 'verify.software2040@pgel.in';
+    const SMTP_PASS = 'fmdrdczrxkpjrbsv';
 
     const mailOptions = {
-      from: '"PGEL UtilitySense Verification" <verify.software2040@pgel.in>',
+      from: `"PGEL UtilitySense Verification" <${SMTP_USER}>`,
       to: email,
       subject: `PGEL UtilitySense - Login Verification OTP: [${otp}]`,
       html: `
@@ -66,8 +54,42 @@ export default async function handler(req, res) {
       `
     };
 
-    await transporter.sendMail(mailOptions);
-    return res.status(200).json({ success: true });
+    // Primary transport: Office 365 with GatePass verified SSLv3 ciphers
+    let sendResult = null;
+    try {
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.office365.com',
+        port: 587,
+        secure: false, // STARTTLS
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS
+        },
+        tls: {
+          ciphers: 'SSLv3',
+          rejectUnauthorized: false
+        }
+      });
+      sendResult = await transporter.sendMail(mailOptions);
+    } catch (primaryErr) {
+      console.warn('Primary SSLv3 SMTP attempt failed, trying fallback TLS:', primaryErr.message);
+      // Secondary fallback transport without SSLv3 cipher constraint
+      const fallbackTransporter = nodemailer.createTransport({
+        host: 'smtp.office365.com',
+        port: 587,
+        secure: false,
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS
+        },
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+      sendResult = await fallbackTransporter.sendMail(mailOptions);
+    }
+
+    return res.status(200).json({ success: true, messageId: sendResult?.messageId });
   } catch (error) {
     console.error('Error sending email:', error);
     return res.status(500).json({ error: error.message || 'Failed to send verification email' });
