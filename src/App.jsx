@@ -309,7 +309,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             calculateElectricityCost: (units, rate) => units * rate,
             calculateSolarCost: (units, rate) => units * rate,
             calculateDieselCost: (qty, rate) => qty * rate,
-            calculateTotalCost: (elect, solar, diesel) => elect + solar + diesel,
+            calculateTotalCost: (elect, solar, diesel, png = 0, nitrogen = 0, oxygen = 0) => (Number(elect) || 0) + (Number(solar) || 0) + (Number(diesel) || 0) + (Number(png) || 0) + (Number(nitrogen) || 0) + (Number(oxygen) || 0),
             calculateProductionSets: (odu, idu) => {
                 if (idu > odu) return Math.round((idu - odu) / 3 + odu);
                 if (odu > idu) return Math.round((odu - idu) * 1.5 + idu);
@@ -1419,11 +1419,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const BILL_UTILITY_CONFIGS = [
                 { key: "electricity", label: "Electricity (Grid / MSEB)", unit: "kWh", icon: "electric_bolt", field: "electricity_consumption", costField: "electricity_cost", color: "sky" },
                 { key: "solar", label: "Solar Generation", unit: "kWh", icon: "solar_power", field: "solar_generated", costField: "solar_cost", color: "amber" },
-                { key: "png", label: "PNG (Natural Gas)", unit: "SCM", icon: "local_fire_department", field: "png_consumption", costField: "png_cost", color: "orange" },
+                { key: "png", label: "PNG (Natural Gas)", unit: "MMBTU", icon: "local_fire_department", field: "png_consumption", costField: "png_cost", color: "orange" },
                 { key: "water", label: "Water Consumption", unit: "KL", icon: "water_drop", field: "water_consumption", costField: "water_cost", color: "teal" },
                 { key: "diesel", label: "Diesel / DG Fuel", unit: "Liters", icon: "local_gas_station", field: "diesel_used", costField: "diesel_cost", color: "rose" },
-                { key: "nitrogen", label: "Nitrogen Gas", unit: "SCM", icon: "air", field: "nitrogen_consumption", costField: "nitrogen_cost", color: "indigo" },
-                { key: "oxygen", label: "Oxygen Gas", unit: "Nm³", icon: "masks", field: "oxygen_consumption", costField: "oxygen_cost", color: "cyan" },
+                { key: "nitrogen", label: "Nitrogen Gas", unit: "m³", icon: "air", field: "nitrogen_consumption", costField: "nitrogen_cost", color: "indigo" },
+                { key: "oxygen", label: "Oxygen Gas", unit: "m³", icon: "masks", field: "oxygen_consumption", costField: "oxygen_cost", color: "cyan" },
                 { key: "lpg", label: "LPG Gas", unit: "Kg", icon: "propane_tank", field: "lpg_used", costField: "lpg_cost", color: "purple" }
             ];
 
@@ -3543,12 +3543,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         "Electricity Opening (kWh)": 1000.00,
                         "Electricity Closing (kWh)": 1250.50,
                         "Solar Generated (kWh)": 350.00,
-                        "PNG Gas Opening (kg)": 100.00,
-                        "PNG Gas Closing (kg)": 145.50,
-                        "Nitrogen Gas Opening (kg)": 50.00,
-                        "Nitrogen Gas Closing (kg)": 75.00,
-                        "Oxygen Gas Opening (kg)": 20.00,
-                        "Oxygen Gas Closing (kg)": 32.00,
+                        "PNG Gas Opening (MMBTU)": 100.00,
+                        "PNG Gas Closing (MMBTU)": 145.50,
+                        "Nitrogen Gas Opening (m³)": 50.00,
+                        "Nitrogen Gas Closing (m³)": 75.00,
+                        "Oxygen Gas Opening (m³)": 20.00,
+                        "Oxygen Gas Closing (m³)": 32.00,
                         "Diesel Used (Liters)": 15.00,
                         "Water Opening (KL)": 500.00,
                         "Water Closing (KL)": 530.00,
@@ -3564,12 +3564,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         "Electricity Opening (kWh)": 1250.50,
                         "Electricity Closing (kWh)": 1510.00,
                         "Solar Generated (kWh)": 380.00,
-                        "PNG Gas Opening (kg)": 145.50,
-                        "PNG Gas Closing (kg)": 190.00,
-                        "Nitrogen Gas Opening (kg)": 75.00,
-                        "Nitrogen Gas Closing (kg)": 102.00,
-                        "Oxygen Gas Opening (kg)": 32.00,
-                        "Oxygen Gas Closing (kg)": 45.00,
+                        "PNG Gas Opening (MMBTU)": 145.50,
+                        "PNG Gas Closing (MMBTU)": 190.00,
+                        "Nitrogen Gas Opening (m³)": 75.00,
+                        "Nitrogen Gas Closing (m³)": 102.00,
+                        "Oxygen Gas Opening (m³)": 32.00,
+                        "Oxygen Gas Closing (m³)": 45.00,
                         "Diesel Used (Liters)": 0.00,
                         "Water Opening (KL)": 530.00,
                         "Water Closing (KL)": 565.00,
@@ -3585,12 +3585,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         "Electricity Opening (kWh)": 1510.00,
                         "Electricity Closing (kWh)": 1785.20,
                         "Solar Generated (kWh)": 410.00,
-                        "PNG Gas Opening (kg)": 190.00,
-                        "PNG Gas Closing (kg)": 238.00,
-                        "Nitrogen Gas Opening (kg)": 102.00,
-                        "Nitrogen Gas Closing (kg)": 130.00,
-                        "Oxygen Gas Opening (kg)": 45.00,
-                        "Oxygen Gas Closing (kg)": 60.00,
+                        "PNG Gas Opening (MMBTU)": 190.00,
+                        "PNG Gas Closing (MMBTU)": 238.00,
+                        "Nitrogen Gas Opening (m³)": 102.00,
+                        "Nitrogen Gas Closing (m³)": 130.00,
+                        "Oxygen Gas Opening (m³)": 45.00,
+                        "Oxygen Gas Closing (m³)": 60.00,
                         "Diesel Used (Liters)": 10.00,
                         "Water Opening (KL)": 565.00,
                         "Water Closing (KL)": 602.00,
@@ -4480,7 +4480,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         water_closing: wClose,
                         water_consumption: wCons,
                         water_cost: wCost,
-                        total_cost: CalculationEngine.calculateTotalCost(electCost, solarCost, dieselCost),
+                        total_cost: CalculationEngine.calculateTotalCost(electCost, solarCost, dieselCost, pngCost, nCost, oCost),
                     });
                     // Auto-expand the waste section if the record being edited already has waste data
                     if (Number(hydratedEntry.waste_hazardous) || Number(hydratedEntry.waste_non_hazardous) || Number(hydratedEntry.waste_recycled)) {
@@ -4879,21 +4879,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     next.diesel_used = Number(next.diesel_used) || 0;
                     next.diesel_cost = CalculationEngine.calculateDieselCost(next.diesel_used, dieselRate);
 
-                    // PNG Gas calculation (kg)
+                    // PNG Gas calculation (MMBTU)
                     const pngOpen = Number(next.png_opening) || 0;
                     const pngClose = next.png_closing !== "" && next.png_closing !== null && next.png_closing !== undefined ? Number(next.png_closing) : "";
                     const pngCons = pngClose !== "" ? Math.max(0, pngClose - pngOpen) : 0;
                     next.png_consumption = pngCons;
                     next.png_cost = pngCons * pngRate;
 
-                    // Nitrogen Gas calculation (kg)
+                    // Nitrogen Gas calculation (m³)
                     const nOpen = Number(next.nitrogen_opening) || 0;
                     const nClose = next.nitrogen_closing !== "" && next.nitrogen_closing !== null && next.nitrogen_closing !== undefined ? Number(next.nitrogen_closing) : "";
                     const nCons = nClose !== "" ? Math.max(0, nClose - nOpen) : 0;
                     next.nitrogen_consumption = nCons;
                     next.nitrogen_cost = nCons * nitrogenRate;
 
-                    // Oxygen Gas calculation (kg)
+                    // Oxygen Gas calculation (m³)
                     const oOpen = Number(next.oxygen_opening) || 0;
                     const oClose = next.oxygen_closing !== "" && next.oxygen_closing !== null && next.oxygen_closing !== undefined ? Number(next.oxygen_closing) : "";
                     const oCons = oClose !== "" ? Math.max(0, oClose - oOpen) : 0;
@@ -4907,7 +4907,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     next.water_consumption = wCons;
                     next.water_cost = wCons * waterRate;
 
-                    const totalCost = CalculationEngine.calculateTotalCost(next.electricity_cost, next.solar_cost, next.diesel_cost);
+                    const totalCost = CalculationEngine.calculateTotalCost(next.electricity_cost, next.solar_cost, next.diesel_cost, next.png_cost, next.nitrogen_cost, next.oxygen_cost);
                     next.total_cost = totalCost;
 
                     const ODU = Number(next.odu) || 0;
@@ -7618,13 +7618,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                              <ProductionKpiCard production={kpiTotals.production} odu={kpiTotals.odu} idu={kpiTotals.idu} compact={true} />
                                          </div>
 
-                                         {/* Deck 2: 8 Gas, Auxiliary Utilities & Waste Cards */}
-                                         <div className={`grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 transition-all duration-300 ease-in-out transform ${dashboardDeck === 'gas' ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none absolute inset-0'}`}>
-                                             <KpiCard label="PNG Gas (kg)" value={`${fmtNum(kpiTotals.png)} kg`} icon="propane_tank" tone="pink" compact={true} />
-                                             <KpiCard label="Nitrogen Gas (kg)" value={`${fmtNum(kpiTotals.nitrogen)} kg`} icon="bubble_chart" tone="teal" compact={true} />
-                                             <KpiCard label="Oxygen Gas (kg)" value={`${fmtNum(kpiTotals.oxygen)} kg`} icon="air" tone="blue" compact={true} />
-                                             <KpiCard label="Compressed Air" value={`${fmtNum(kpiTotals.air)} units`} icon="air" tone="indigo" compact={true} />
-                                             <KpiCard label="LPG Used" value={`${fmtNum(kpiTotals.lpg)} kg`} icon="propane_tank" tone="amber" compact={true} />
+                                         {/* Deck 2: 6 Gas & Waste Cards (Compressed Air and LPG removed as requested) */}
+                                         <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 transition-all duration-300 ease-in-out transform ${dashboardDeck === 'gas' ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none absolute inset-0'}`}>
+                                             <KpiCard label="PNG Gas (MMBTU)" value={`${fmtNum(kpiTotals.png)} MMBTU`} icon="propane_tank" tone="pink" compact={true} />
+                                             <KpiCard label="Nitrogen Gas (m³)" value={`${fmtNum(kpiTotals.nitrogen)} m³`} icon="bubble_chart" tone="teal" compact={true} />
+                                             <KpiCard label="Oxygen Gas (m³)" value={`${fmtNum(kpiTotals.oxygen)} m³`} icon="air" tone="blue" compact={true} />
                                              <KpiCard label="Waste Haz" value={`${fmtNum(kpiTotals.wasteHaz)} kg`} icon="delete_forever" tone="red" compact={true} />
                                              <KpiCard label="Waste Non-Haz" value={`${fmtNum(kpiTotals.wasteNHaz)} kg`} icon="delete" tone="gray" compact={true} />
                                              <KpiCard label="Waste Recycled" value={`${fmtNum(kpiTotals.wasteRec)} kg`} sub={`${kpiTotals.wasteNHaz > 0 ? (kpiTotals.wasteRec / (kpiTotals.wasteHaz + kpiTotals.wasteNHaz) * 100).toFixed(0) : 0}% recovery`} icon="recycling" tone="emerald" compact={true} />
@@ -8121,7 +8119,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
                                                  <div className="mb-0.5 flex items-center justify-between">
                                                      <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily PNG Gas (kg)</h4>
+                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily PNG Gas (MMBTU)</h4>
                                                          <p className="text-[9px] text-slate-400">Last 7 days PNG gas consumption</p>
                                                      </div>
                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/50">7 Days</span>
@@ -8140,7 +8138,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <Tooltip
                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v, name, item) => [`${fmtNum(v)} kg (₹${fmtINR(item.payload.pngCost, { compact: true })})`, "PNG Gas"]}
+                                                             formatter={(v, name, item) => [`${fmtNum(v)} MMBTU (₹${fmtINR(item.payload.pngCost, { compact: true })})`, "PNG Gas"]}
                                                          />
                                                          <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#e11d48" fill="url(#colorDailyPng7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#e11d48', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                              <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#e11d48' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
@@ -8152,7 +8150,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
                                                  <div className="mb-0.5 flex items-center justify-between">
                                                      <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Nitrogen Gas (kg)</h4>
+                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Nitrogen Gas (m³)</h4>
                                                          <p className="text-[9px] text-slate-400">Last 7 days N2 gas consumption</p>
                                                      </div>
                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">7 Days</span>
@@ -8171,7 +8169,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <Tooltip
                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v, name, item) => [`${fmtNum(v)} kg (₹${fmtINR(item.payload.nitrogenCost, { compact: true })})`, "Nitrogen Gas"]}
+                                                             formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.nitrogenCost, { compact: true })})`, "Nitrogen Gas"]}
                                                          />
                                                          <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#0d9488" fill="url(#colorDailyNitrogen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                              <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0d9488' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
@@ -8183,7 +8181,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
                                                  <div className="mb-0.5 flex items-center justify-between">
                                                      <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Oxygen Gas (kg)</h4>
+                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Oxygen Gas (m³)</h4>
                                                          <p className="text-[9px] text-slate-400">Last 7 days O2 gas consumption</p>
                                                      </div>
                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200/50">7 Days</span>
@@ -8202,7 +8200,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <Tooltip
                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v, name, item) => [`${fmtNum(v)} kg (₹${fmtINR(item.payload.oxygenCost, { compact: true })})`, "Oxygen Gas"]}
+                                                             formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.oxygenCost, { compact: true })})`, "Oxygen Gas"]}
                                                          />
                                                          <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0284c7" fill="url(#colorDailyOxygen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                              <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0284c7' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
@@ -8216,7 +8214,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
                                                  <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly PNG Gas (kg)</h4>
+                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly PNG Gas (MMBTU)</h4>
                                                      <p className="text-[9px] text-slate-400">Last 5 months PNG gas consumption</p>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={215}>
@@ -8230,7 +8228,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Monthly PNG"]} />
+                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Monthly PNG"]} />
                                                          <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#ea580c" fill="url(#colorPngM)" strokeWidth={3} dot={{ r: 5, fill: '#ea580c', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                              <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#ea580c' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
                                                          </Area>
@@ -8240,7 +8238,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
                                                  <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Nitrogen Gas (kg)</h4>
+                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Nitrogen Gas (m³)</h4>
                                                      <p className="text-[9px] text-slate-400">Last 5 months Nitrogen gas consumption</p>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={215}>
@@ -8254,7 +8252,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Monthly Nitrogen"]} />
+                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Nitrogen"]} />
                                                          <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#059669" fill="url(#colorNitrogenM)" strokeWidth={3} dot={{ r: 5, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                              <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#059669' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
                                                          </Area>
@@ -8264,7 +8262,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
                                                  <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Oxygen Gas (kg)</h4>
+                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Oxygen Gas (m³)</h4>
                                                      <p className="text-[9px] text-slate-400">Last 5 months Oxygen gas consumption</p>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={215}>
@@ -8278,7 +8276,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Monthly Oxygen"]} />
+                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Oxygen"]} />
                                                          <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#2563eb" fill="url(#colorOxygenM)" strokeWidth={3} dot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                              <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#2563eb' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
                                                          </Area>
@@ -8291,7 +8289,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
                                                  <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year PNG Gas (kg)</h4>
+                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year PNG Gas (MMBTU)</h4>
                                                      <p className="text-[9px] text-slate-400">Last 4 financial years PNG annual totals</p>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={215}>
@@ -8305,7 +8303,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Financial Year PNG"]} />
+                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Financial Year PNG"]} />
                                                          <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#9333ea" fill="url(#colorPngY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#9333ea', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                              <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#9333ea' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
                                                          </Area>
@@ -8315,7 +8313,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
                                                  <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Nitrogen Gas (kg)</h4>
+                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Nitrogen Gas (m³)</h4>
                                                      <p className="text-[9px] text-slate-400">Last 4 financial years Nitrogen annual totals</p>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={215}>
@@ -8329,7 +8327,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Financial Year Nitrogen"]} />
+                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Nitrogen"]} />
                                                          <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#16a34a" fill="url(#colorNitrogenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#16a34a', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                              <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#16a34a' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
                                                          </Area>
@@ -8339,7 +8337,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
                                                  <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Oxygen Gas (kg)</h4>
+                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Oxygen Gas (m³)</h4>
                                                      <p className="text-[9px] text-slate-400">Last 4 financial years Oxygen annual totals</p>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={215}>
@@ -8353,7 +8351,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Financial Year Oxygen"]} />
+                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Oxygen"]} />
                                                          <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0891b2" fill="url(#colorOxygenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#0891b2', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                              <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0891b2' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
                                                          </Area>
@@ -9020,6 +9018,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                     <th className="py-3 px-2.5 text-right">₹/L Diesel</th>
                                                     <th className="py-3 px-2.5 text-right">Diesel (L)</th>
                                                     <th className="py-3 px-2.5 text-right">₹ Diesel</th>
+                                                    <th className="py-3 px-2.5 text-right">PNG (MMBTU)</th>
+                                                    <th className="py-3 px-2.5 text-right">₹ PNG</th>
+                                                    <th className="py-3 px-2.5 text-right">N₂ (m³)</th>
+                                                    <th className="py-3 px-2.5 text-right">₹ N₂</th>
+                                                    <th className="py-3 px-2.5 text-right">O₂ (m³)</th>
+                                                    <th className="py-3 px-2.5 text-right">₹ O₂</th>
                                                     <th className="py-3 px-2.5 text-right">₹ Total</th>
                                                     <th className="py-3 px-2.5 text-right">ODU</th>
                                                     <th className="py-3 px-2.5 text-right">IDU</th>
@@ -9032,7 +9036,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             <tbody className="divide-y divide-slate-100 text-slate-700">
                                                 {paginatedEntries.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan="21" className="py-12 text-center text-slate-400 font-semibold">No operational entries logged in system</td>
+                                                        <td colSpan="27" className="py-12 text-center text-slate-400 font-semibold">No operational entries logged in system</td>
                                                     </tr>
                                                 ) : (
                                                     paginatedEntries.map(e => {
@@ -9046,8 +9050,22 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                         const totalUnits = msebUnits + solarUnits;
                                                         const msebRate = msebUnits > 0 ? (Number(e.electricity_cost) || 0) / msebUnits : null;
                                                         const dieselRate = dieselL > 0 ? (Number(e.diesel_cost) || 0) / dieselL : null;
+                                                        const hRow = hydrateEntryWithRemarks(e);
+                                                        const pngUnits = Number(hRow.png_consumption) || 0;
+                                                        const pngCost = Number(hRow.png_cost) || 0;
+                                                        const n2Units = Number(hRow.nitrogen_consumption) || 0;
+                                                        const n2Cost = Number(hRow.nitrogen_cost) || 0;
+                                                        const o2Units = Number(hRow.oxygen_consumption) || 0;
+                                                        const o2Cost = Number(hRow.oxygen_cost) || 0;
+                                                        const totalGasCost = pngCost + n2Cost + o2Cost;
+
+                                                        const electCost = Number(hRow.electricity_cost) || 0;
+                                                        const solarCost = Number(hRow.solar_cost) || 0;
+                                                        const dieselCost = Number(hRow.diesel_cost) || 0;
+                                                        const rowTotalCost = electCost + solarCost + dieselCost + totalGasCost;
+
                                                         const prodQty = Number(e.production_qty) || 0;
-                                                        const prodSetCost = prodQty > 0 ? (Number(e.total_cost) || 0) / prodQty : null;
+                                                        const prodSetCost = prodQty > 0 ? (rowTotalCost / prodQty) : null;
                                                         return (
                                                         <tr
                                                             key={e.id}
@@ -9120,12 +9138,18 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             <td className="py-3 px-2.5 text-right text-slate-500">{fmtNum(dieselRate, 2)}</td>
                                                             <td className="py-3 px-2.5 text-right text-slate-800">{fmtNum(dieselL, 2)}</td>
                                                             <td className="py-3 px-2.5 text-right font-mono text-slate-800">{fmtMoney(e.diesel_cost)}</td>
-                                                            <td className="py-3 px-2.5 text-right font-mono font-bold text-emerald-600">{fmtMoney(e.total_cost)}</td>
+                                                            <td className="py-3 px-2.5 text-right font-medium text-pink-700">{fmtNum(pngUnits, 2)}</td>
+                                                            <td className="py-3 px-2.5 text-right font-mono text-slate-800">{fmtMoney(pngCost)}</td>
+                                                            <td className="py-3 px-2.5 text-right font-medium text-teal-700">{fmtNum(n2Units, 2)}</td>
+                                                            <td className="py-3 px-2.5 text-right font-mono text-slate-800">{fmtMoney(n2Cost)}</td>
+                                                            <td className="py-3 px-2.5 text-right font-medium text-sky-700">{fmtNum(o2Units, 2)}</td>
+                                                            <td className="py-3 px-2.5 text-right font-mono text-slate-800">{fmtMoney(o2Cost)}</td>
+                                                            <td className="py-3 px-2.5 text-right font-mono font-bold text-emerald-600">{fmtMoney(rowTotalCost)}</td>
                                                             <td className="py-3 px-2.5 text-right text-slate-800">{fmtNum(e.odu)}</td>
                                                             <td className="py-3 px-2.5 text-right text-slate-800">{fmtNum(e.idu)}</td>
                                                             <td className="py-3 px-2.5 text-right font-semibold text-slate-800">{fmtNum(prodQty)}</td>
                                                             <td className="py-3 px-2.5 text-right font-mono text-slate-800">{fmtMoney(prodSetCost)}</td>
-                                                            <td className="py-3 px-2.5 text-slate-400 max-w-[130px] truncate" title={e.remarks}>{e.remarks || "—"}</td>
+                                                            <td className="py-3 px-2.5 text-slate-400 max-w-[130px] truncate" title={getCleanRemarks(e.remarks)}>{getCleanRemarks(e.remarks) || "—"}</td>
                                                             <td className="py-3 px-2.5 text-right space-x-3 whitespace-nowrap" onClick={(ev) => ev.stopPropagation()}>
                                                                 <button onClick={() => openDailyForm(e)} className="text-[#0284c7] hover:text-[#0369a1] font-bold bg-transparent border-none cursor-pointer transition">
                                                                     Edit
@@ -11741,7 +11765,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                                             <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-pink-50/50">
                                                 <span className="material-symbols-outlined text-[16px] text-pink-600">propane_tank</span>
-                                                <span className="text-[11px] font-semibold text-slate-700">Gas Consumption (kg)</span>
+                                                <span className="text-[11px] font-semibold text-slate-700">Gas Consumption</span>
                                             </div>
                                             <div className="p-4 space-y-4">
                                                 {/* PNG Gas */}
@@ -11752,12 +11776,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             PNG Gas
                                                         </span>
                                                         <span className="text-[10px] text-slate-400 font-medium">
-                                                            Rate: ₹{entryRateContext.pngRate || 80}/kg · Consumption: <strong className="text-pink-600 font-bold">{fmtNum(entryFormValues.png_consumption || 0)} kg</strong> (₹{fmtNum(entryFormValues.png_cost || 0)})
+                                                            Rate: ₹{entryRateContext.pngRate || 80}/MMBTU · Consumption: <strong className="text-pink-600 font-bold">{fmtNum(entryFormValues.png_consumption || 0)} MMBTU</strong> (₹{fmtNum(entryFormValues.png_cost || 0)})
                                                         </span>
                                                     </div>
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                         <div>
-                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kg)</label>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (MMBTU)</label>
                                                             <input
                                                                 type="number"
                                                                 step="any"
@@ -11769,7 +11793,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             />
                                                         </div>
                                                         <div>
-                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Daily Reading (kg)</label>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Daily Reading (MMBTU)</label>
                                                             <input
                                                                 type="number"
                                                                 step="any"
@@ -11791,12 +11815,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             Nitrogen Gas
                                                         </span>
                                                         <span className="text-[10px] text-slate-400 font-medium">
-                                                            Rate: ₹{entryRateContext.nitrogenRate || 50}/kg · Consumption: <strong className="text-teal-600 font-bold">{fmtNum(entryFormValues.nitrogen_consumption || 0)} kg</strong> (₹{fmtNum(entryFormValues.nitrogen_cost || 0)})
+                                                            Rate: ₹{entryRateContext.nitrogenRate || 50}/m³ · Consumption: <strong className="text-teal-600 font-bold">{fmtNum(entryFormValues.nitrogen_consumption || 0)} m³</strong> (₹{fmtNum(entryFormValues.nitrogen_cost || 0)})
                                                         </span>
                                                     </div>
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                         <div>
-                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kg)</label>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (m³)</label>
                                                             <input
                                                                 type="number"
                                                                 step="any"
@@ -11808,7 +11832,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             />
                                                         </div>
                                                         <div>
-                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Daily Reading (kg)</label>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Daily Reading (m³)</label>
                                                             <input
                                                                 type="number"
                                                                 step="any"
@@ -11830,12 +11854,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             Oxygen Gas
                                                         </span>
                                                         <span className="text-[10px] text-slate-400 font-medium">
-                                                            Rate: ₹{entryRateContext.oxygenRate || 60}/kg · Consumption: <strong className="text-sky-600 font-bold">{fmtNum(entryFormValues.oxygen_consumption || 0)} kg</strong> (₹{fmtNum(entryFormValues.oxygen_cost || 0)})
+                                                            Rate: ₹{entryRateContext.oxygenRate || 60}/m³ · Consumption: <strong className="text-sky-600 font-bold">{fmtNum(entryFormValues.oxygen_consumption || 0)} m³</strong> (₹{fmtNum(entryFormValues.oxygen_cost || 0)})
                                                         </span>
                                                     </div>
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                         <div>
-                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (kg)</label>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Previous Reading (m³)</label>
                                                             <input
                                                                 type="number"
                                                                 step="any"
@@ -11847,7 +11871,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             />
                                                         </div>
                                                         <div>
-                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Daily Reading (kg)</label>
+                                                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Daily Reading (m³)</label>
                                                             <input
                                                                 type="number"
                                                                 step="any"
@@ -12036,7 +12060,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             <span className="text-cyan-600 font-medium">₹ {fmtNum(entryFormValues.water_cost)}</span>
                                                         </div>
                                                     )}
-                                                    <p className="text-[9px] text-slate-400 pt-1">Rate: Grid: ₹{entryRateContext.electRate}/unit · Solar: ₹{entryRateContext.solarRate}/unit · Diesel: ₹{entryRateContext.dieselRate}/liter · PNG: ₹{entryRateContext.pngRate || 80}/kg</p>
+                                                    <p className="text-[9px] text-slate-400 pt-1">Rate: Grid: ₹{entryRateContext.electRate}/unit · Solar: ₹{entryRateContext.solarRate}/unit · Diesel: ₹{entryRateContext.dieselRate}/liter · PNG: ₹{entryRateContext.pngRate || 80}/MMBTU · N₂: ₹{entryRateContext.nitrogenRate || 50}/m³ · O₂: ₹{entryRateContext.oxygenRate || 60}/m³</p>
                                                 </div>
 
                                                 {/* Total cost */}
@@ -12222,11 +12246,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                                  return (
                                                      <>
-                                                         <DetailField label="PNG Gas (kg)" value={fmtNum(pngC) + " kg"} />
+                                                         <DetailField label="PNG Gas (MMBTU)" value={fmtNum(pngC) + " MMBTU"} />
                                                          <DetailField label="PNG Cost" value={"₹ " + fmtNum(pngCostVal)} />
-                                                         <DetailField label="Nitrogen Gas (kg)" value={fmtNum(nC) + " kg"} />
+                                                         <DetailField label="Nitrogen Gas (m³)" value={fmtNum(nC) + " m³"} />
                                                          <DetailField label="Nitrogen Cost" value={"₹ " + fmtNum(nCostVal)} />
-                                                         <DetailField label="Oxygen Gas (kg)" value={fmtNum(oC) + " kg"} />
+                                                         <DetailField label="Oxygen Gas (m³)" value={fmtNum(oC) + " m³"} />
                                                          <DetailField label="Oxygen Cost" value={"₹ " + fmtNum(oCostVal)} />
                                                          <DetailField label="Water Consumed (kL)" value={fmtNum(wC) + " kL"} />
                                                          <DetailField label="Water Cost" value={"₹ " + fmtNum(wCostVal)} />
@@ -12496,11 +12520,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                 <option value="electricity">Electricity (Grid / MSEB / JVVNL - ₹/kWh)</option>
                                                                 <option value="solar">Solar Power (₹/kWh)</option>
                                                                 <option value="diesel">Diesel / HSD Fuel (₹/Litre)</option>
-                                                                <option value="png">PNG Gas (Piped Natural Gas - ₹/kg or SCM)</option>
+                                                                <option value="png">PNG Gas (Piped Natural Gas - ₹/MMBTU)</option>
                                                                 <option value="lpg">LPG Gas (₹/kg)</option>
                                                                 <option value="water">Water (₹/kL)</option>
-                                                                <option value="nitrogen">Nitrogen Gas (₹/SCM)</option>
-                                                                <option value="oxygen">Oxygen Gas (₹/SCM)</option>
+                                                                <option value="nitrogen">Nitrogen Gas (₹/m³)</option>
+                                                                <option value="oxygen">Oxygen Gas (₹/m³)</option>
                                                             </select>
                                                         ) : h === "location" && (selectedMasterTable === "tariff_rates" || selectedMasterTable === "multiply_factors") ? (
                                                             <select
@@ -12558,12 +12582,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                         <span className="material-symbols-outlined text-[13px]">info</span>
                                                                         <span>
                                                                             Rate Unit: {
-                                                                                masterFormValues.type === "png" ? "₹ / kg (or SCM) for PNG Natural Gas" :
+                                                                                masterFormValues.type === "png" ? "₹ / MMBTU for PNG Natural Gas" :
                                                                                 masterFormValues.type === "lpg" ? "₹ / kg for LPG Gas" :
                                                                                 masterFormValues.type === "diesel" ? "₹ / Litre for HSD Fuel" :
                                                                                 masterFormValues.type === "water" ? "₹ / kL (1000 Litres)" :
-                                                                                masterFormValues.type === "nitrogen" ? "₹ / SCM" :
-                                                                                masterFormValues.type === "oxygen" ? "₹ / SCM" :
+                                                                                masterFormValues.type === "nitrogen" ? "₹ / m³ for Nitrogen Gas" :
+                                                                                masterFormValues.type === "oxygen" ? "₹ / m³ for Oxygen Gas" :
                                                                                 "₹ / kWh (Electricity Unit)"
                                                                             }
                                                                         </span>
