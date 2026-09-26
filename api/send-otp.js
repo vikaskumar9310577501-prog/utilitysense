@@ -28,23 +28,23 @@ export default async function handler(req, res) {
 
     // Configure Microsoft 365 SMTP transport
     const transporter = nodemailer.createTransport({
-      host: 'smtp.office365.com',
-      port: 587,
-      secure: false, // TLS
+      host: process.env.SMTP_HOST || 'smtp.office365.com',
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: false, // STARTTLS
       auth: {
-        user: 'verify.software2040@pgel.in',
-        pass: 'nsxfmjjkskdrbbtt'
+        user: process.env.SMTP_USER || 'verify.software2040@pgel.in',
+        pass: process.env.SMTP_PASS || 'fmdrdczrxkpjrbsv'
       },
       tls: {
-        minVersion: 'TLSv1.2',
+        ciphers: 'SSLv3',
         rejectUnauthorized: false
       }
     });
 
     const mailOptions = {
-      from: '"Utility Sense Support" <verify.software2040@pgel.in>',
+      from: '"PGEL UtilitySense Verification" <verify.software2040@pgel.in>',
       to: email,
-      subject: 'Verify Account OTP - Utility Sense',
+      subject: `PGEL UtilitySense - Login Verification OTP: [${otp}]`,
       html: `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 500px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
           <div style="text-align: center; margin-bottom: 20px;">

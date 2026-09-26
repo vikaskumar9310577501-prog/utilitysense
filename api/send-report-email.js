@@ -34,15 +34,15 @@ export default async function handler(req, res) {
 
     // Configure Microsoft 365 SMTP transport
     const transporter = nodemailer.createTransport({
-      host: 'smtp.office365.com',
-      port: 587,
-      secure: false, // TLS
+      host: process.env.SMTP_HOST || 'smtp.office365.com',
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: false, // STARTTLS
       auth: {
-        user: 'verify.software2040@pgel.in',
-        pass: 'nsxfmjjkskdrbbtt'
+        user: process.env.SMTP_USER || 'verify.software2040@pgel.in',
+        pass: process.env.SMTP_PASS || 'fmdrdczrxkpjrbsv'
       },
       tls: {
-        minVersion: 'TLSv1.2',
+        ciphers: 'SSLv3',
         rejectUnauthorized: false
       }
     });
