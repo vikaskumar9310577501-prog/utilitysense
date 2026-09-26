@@ -6463,50 +6463,18 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 });
             }, [dailyTrendsData]);
 
-            // DUMMY WATER DATA (UI ONLY) - Set USE_DUMMY_WATER_DATA to false when you want to remove it
-            const USE_DUMMY_WATER_DATA = true;
+            // Real Water Trends Data from actual daily entries (Dummy data removed)
             const waterTrendsData = useMemo(() => {
-                if (!USE_DUMMY_WATER_DATA) return last30DaysTrendsData;
-
-                const mockValues = [95, 112, 125, 108, 92, 118, 130, 122, 105, 98, 115, 128, 140, 135, 110, 102, 120, 132, 145, 138, 125, 115, 108, 124, 136, 142, 130, 118, 105, 122];
-
-                if (last30DaysTrendsData && last30DaysTrendsData.length > 0) {
-                    return last30DaysTrendsData.map((d, idx) => ({
-                        ...d,
-                        water: (Number(d.water) > 0) ? Number(d.water) : mockValues[idx % mockValues.length]
-                    }));
-                }
-
-                // Fallback if no entries exist in date range
-                const dummyDays = [];
-                const today = new Date();
-                const pad = (n) => String(n).padStart(2, "0");
-                for (let i = 29; i >= 0; i--) {
-                    const dt = new Date();
-                    dt.setDate(today.getDate() - i);
-                    const key = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
-                    const label = dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-                    dummyDays.push({
-                        date: key,
-                        shortDate: `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}`,
-                        label,
-                        water: mockValues[(29 - i) % mockValues.length]
-                    });
-                }
-                return dummyDays;
+                return last30DaysTrendsData;
             }, [last30DaysTrendsData]);
 
             const displayWaterConsumption = useMemo(() => {
-                if (!USE_DUMMY_WATER_DATA) return kpiTotals.water;
-                if (kpiTotals.water > 0) return kpiTotals.water;
-                return waterTrendsData.reduce((acc, curr) => acc + (Number(curr.water) || 0), 0);
-            }, [kpiTotals.water, waterTrendsData]);
+                return Number(kpiTotals.water) || 0;
+            }, [kpiTotals.water]);
 
             const displayWaterCost = useMemo(() => {
-                if (!USE_DUMMY_WATER_DATA) return aggregatedCosts.waterCost;
-                if (aggregatedCosts.waterCost > 0) return aggregatedCosts.waterCost;
-                return displayWaterConsumption * (Number(activeWaterRate) || 45);
-            }, [aggregatedCosts.waterCost, displayWaterConsumption, activeWaterRate]);
+                return Number(aggregatedCosts.waterCost) || 0;
+            }, [aggregatedCosts.waterCost]);
 
             const monthlyTrendsData = useMemo(() => {
                 const map = {};
@@ -7611,7 +7579,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                              <KpiCard label="Electricity (kWh)" value={fmtNum(kpiTotals.electricity)} icon="electric_bolt" tone="blue" compact={true} />
                                              <KpiCard label="Solar Gen (kWh)" value={fmtNum(kpiTotals.solarGenerated)} icon="wb_sunny" tone="amber" compact={true} />
                                              <KpiCard label="Total Consumption" value={fmtNum(aggregatedCosts.totalConsumption)} sub={`${dashboardGridLabel} + Solar (filter)`} icon="bolt" tone="orange" compact={true} />
-                                             <KpiCard label="Water (KL)" value={fmtNum(kpiTotals.water || displayWaterConsumption)} icon="water_drop" tone="teal" compact={true} />
+                                             <KpiCard label="Water (KL)" value={`${fmtNum(displayWaterConsumption)} KL`} icon="water_drop" tone="teal" compact={true} />
                                              <KpiCard label="Diesel (L)" value={`${fmtNum(kpiTotals.diesel)} L`} icon="local_gas_station" tone="red" compact={true} />
                                              <KpiCard label="Energy Cost" value={fmtINR(aggregatedCosts.energyCost, { compact: true })} sub={`Tariff ₹ ${Number(aggregatedCosts.electRate || 0).toFixed(2)}/unit`} icon="currency_rupee" tone="purple" compact={true} />
                                              <KpiCard label="Water Cost" value={fmtINR(displayWaterCost, { compact: true })} icon="payments" tone="teal" compact={true} />
