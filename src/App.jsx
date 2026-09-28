@@ -1158,7 +1158,6 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             // Authentication Forms States
             const [loginEmail, setLoginEmail] = useState("");
             const [loginOtp, setLoginOtp] = useState("");
-            const [activeScreenOtp, setActiveScreenOtp] = useState("");
             const [otpSent, setOtpSent] = useState(false);
             const [loginLoading, setLoginLoading] = useState(false);
             const [loginError, setLoginError] = useState("");
@@ -4265,17 +4264,20 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                     if (otpErr) throw otpErr;
 
-                    // Background email dispatch attempt (non-blocking)
-                    fetch("/api/send-otp", {
+                    // Send verification code directly to user's registered corporate email
+                    const mailRes = await fetch("/api/send-otp", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ email: emailVal, otp: randomOtp })
-                    }).catch(() => {});
+                    });
+                    const mailData = await mailRes.json().catch(() => ({}));
+                    if (!mailRes.ok || (mailData && mailData.success === false)) {
+                        throw new Error(mailData?.error || "Failed to dispatch verification email. Please try again.");
+                    }
 
-                    setActiveScreenOtp(randomOtp);
-                    setLoginOtp(randomOtp);
                     setOtpSent(true);
-                    setLoginMessage("Verification code generated! Code is shown on screen and auto-filled below.");
+                    setLoginOtp("");
+                    setLoginMessage(`Verification code sent to ${emailVal}. Please check your inbox or spam folder.`);
                 } catch (err) {
                     setLoginError(err.message || "Failed to request OTP.");
                 } finally {
@@ -4311,9 +4313,20 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         throw new Error("No active OTP request found for this email.");
                     }
 
+                    if (otpRecs[0].status === 'Used') {
+                        throw new Error("This verification code has already been used. Please request a new OTP.");
+                    }
+
                     if (otpRecs[0].otp !== otpVal) {
                         throw new Error("Invalid OTP code. Please try again.");
                     }
+
+                    // Mark OTP as used
+                    await supabase
+                        .from('otp_logs')
+                        .update({ status: 'Used' })
+                        .eq('id', otpRecs[0].id)
+                        .catch(() => {});
 
                     // Get user profile
                     const { data: userRec, error: userErr } = await supabase
@@ -7472,20 +7485,15 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                 </form>
                             ) : (
                                 <form onSubmit={handleVerifyOTP} className="space-y-4">
-                                    {activeScreenOtp && (
-                                        <div className="rounded-2xl bg-gradient-to-br from-sky-50 to-indigo-50 border border-sky-200/90 p-4 text-center shadow-sm">
-                                            <div className="text-[11px] font-bold text-sky-800 uppercase tracking-wider mb-1 flex items-center justify-center gap-1.5">
-                                                <span className="material-symbols-outlined text-[16px] text-sky-600">verified_user</span>
-                                                <span>Your Verification Code</span>
-                                            </div>
-                                            <div className="text-3xl font-black tracking-[0.35em] font-mono text-slate-900 bg-white py-2.5 px-4 rounded-xl border border-sky-200 shadow-inner inline-block select-all my-1.5">
-                                                {activeScreenOtp}
-                                            </div>
-                                            <p className="text-[11px] font-medium text-slate-500 mt-1 mb-0">
-                                                Code auto-filled. Click &quot;Verify &amp; Access System&quot; to continue.
-                                            </p>
+                                    <div className="rounded-2xl bg-sky-50/80 border border-sky-100 p-3.5 text-center">
+                                        <div className="flex items-center justify-center gap-1.5 text-sky-800 text-xs font-bold mb-1">
+                                            <span className="material-symbols-outlined text-[16px] text-sky-600">mark_email_read</span>
+                                            <span>Email Verification Code Sent</span>
                                         </div>
-                                    )}
+                                        <p className="text-[11px] text-slate-600 m-0">
+                                            We sent a 6-digit code to <span className="font-semibold text-slate-800">{loginEmail}</span>. Please enter it below.
+                                        </p>
+                                    </div>
 
                                     <div>
                                         <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Verification Code (OTP)</label>
@@ -7498,6 +7506,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                 value={loginOtp}
                                                 onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, ''))}
                                                 className="w-full h-11 rounded-xl border border-slate-200 pl-10 pr-4 text-center tracking-[0.3em] text-sm font-bold bg-slate-50 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                                autoFocus
                                             />
                                             <span className="material-symbols-outlined absolute left-3.5 top-3.5 text-[18px] text-slate-400">lock</span>
                                         </div>
@@ -7513,10 +7522,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     </button>
 
                                     <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 pt-2">
-                                        <button type="button" onClick={() => { setOtpSent(false); setLoginOtp(""); setActiveScreenOtp(""); setLoginMessage(""); }} className="hover:text-[#0284c7] bg-transparent border-none cursor-pointer">
+                                        <button type="button" onClick={() => { setOtpSent(false); setLoginOtp(""); setLoginMessage(""); setLoginError(""); }} className="hover:text-[#0284c7] bg-transparent border-none cursor-pointer">
                                             Change Email
                                         </button>
-                                        <button type="button" onClick={handleSendOTP} className="hover:text-[#0284c7] bg-transparent border-none cursor-pointer">
+                                        <button type="button" onClick={handleSendOTP} disabled={loginLoading} className="hover:text-[#0284c7] bg-transparent border-none cursor-pointer disabled:opacity-50">
                                             Resend OTP
                                         </button>
                                     </div>
