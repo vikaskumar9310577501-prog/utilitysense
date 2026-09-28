@@ -7485,15 +7485,6 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                 </form>
                             ) : (
                                 <form onSubmit={handleVerifyOTP} className="space-y-4">
-                                    <div className="rounded-2xl bg-sky-50/80 border border-sky-100 p-3.5 text-center">
-                                        <div className="flex items-center justify-center gap-1.5 text-sky-800 text-xs font-bold mb-1">
-                                            <span className="material-symbols-outlined text-[16px] text-sky-600">mark_email_read</span>
-                                            <span>Email Verification Code Sent</span>
-                                        </div>
-                                        <p className="text-[11px] text-slate-600 m-0">
-                                            We sent a 6-digit code to <span className="font-semibold text-slate-800">{loginEmail}</span>. Please enter it below.
-                                        </p>
-                                    </div>
 
                                     <div>
                                         <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Verification Code (OTP)</label>
