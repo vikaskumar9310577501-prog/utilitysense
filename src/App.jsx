@@ -4313,21 +4313,9 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         throw new Error("No active OTP request found for this email.");
                     }
 
-                    if (otpRecs[0].status === 'Used') {
-                        throw new Error("This verification code has already been used. Please request a new OTP.");
-                    }
-
                     if (otpRecs[0].otp !== otpVal) {
                         throw new Error("Invalid OTP code. Please try again.");
                     }
-
-                    // Mark OTP as used
-                    try {
-                        await supabase
-                            .from('otp_logs')
-                            .update({ status: 'Used' })
-                            .eq('id', otpRecs[0].id);
-                    } catch (_) {}
 
                     // Get user profile
                     const { data: userRec, error: userErr } = await supabase
