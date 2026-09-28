@@ -4322,11 +4322,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     }
 
                     // Mark OTP as used
-                    await supabase
-                        .from('otp_logs')
-                        .update({ status: 'Used' })
-                        .eq('id', otpRecs[0].id)
-                        .catch(() => {});
+                    try {
+                        await supabase
+                            .from('otp_logs')
+                            .update({ status: 'Used' })
+                            .eq('id', otpRecs[0].id);
+                    } catch (_) {}
 
                     // Get user profile
                     const { data: userRec, error: userErr } = await supabase
