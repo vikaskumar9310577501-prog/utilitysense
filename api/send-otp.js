@@ -65,7 +65,7 @@ export default async function handler(req, res) {
     let messageId = null;
     let lastError = null;
 
-    // Primary Attempt: Direct Office 365 SMTP
+    // Primary Attempt: Direct Office 365 SMTP (with strict 3.5s timeout for serverless environments)
     try {
       const transporter = nodemailer.createTransport({
         host: 'smtp.office365.com',
@@ -75,6 +75,9 @@ export default async function handler(req, res) {
           user: SMTP_USER,
           pass: SMTP_PASS
         },
+        connectionTimeout: 3500,
+        greetingTimeout: 3500,
+        socketTimeout: 4000,
         tls: {
           ciphers: 'SSLv3',
           rejectUnauthorized: false
@@ -84,38 +87,19 @@ export default async function handler(req, res) {
       emailSent = true;
       messageId = info?.messageId;
     } catch (primaryErr) {
-      console.warn('Primary Office 365 SMTP attempt failed:', primaryErr.message);
+      console.warn('Primary Office 365 SMTP attempt failed or timed out:', primaryErr.message);
       lastError = primaryErr;
-
-      // Secondary Attempt: Fallback TLS configuration
-      try {
-        const fallbackTransporter = nodemailer.createTransport({
-          host: 'smtp.office365.com',
-          port: 587,
-          secure: false,
-          auth: {
-            user: SMTP_USER,
-            pass: SMTP_PASS
-          },
-          tls: {
-            rejectUnauthorized: false
-          }
-        });
-        const info = await fallbackTransporter.sendMail(mailOptions);
-        emailSent = true;
-        messageId = info?.messageId;
-      } catch (tlsErr) {
-        console.warn('Fallback Office 365 SMTP failed:', tlsErr.message);
-        lastError = tlsErr;
-      }
     }
 
-    // Tertiary Attempt / Cloud Serverless IP Bypass:
-    // When Microsoft 365 blocks serverless/cloud hosting IPs (535 Authentication error),
-    // automatically relay through the Corporate HTTP Webhook Relay
+    // Secondary Attempt / Corporate HTTP Webhook Relay:
+    // When Microsoft 365 blocks serverless/cloud hosting IPs (535 Authentication error)
+    // or when connection is dropped, immediately relay through Corporate Webhook
     if (!emailSent) {
-      console.log('Office 365 direct SMTP blocked by cloud IP policy; engaging Corporate HTTP Relay for:', email);
+      console.log('Engaging Corporate HTTP Relay for:', email);
       try {
+        const relayController = new AbortController();
+        const relayTimeout = setTimeout(() => relayController.abort(), 4500);
+
         const relayRes = await fetch(SENDER_RELAY_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -127,8 +111,11 @@ export default async function handler(req, res) {
             html: htmlBody,
             otp: otp
           }),
-          redirect: 'follow'
+          redirect: 'follow',
+          signal: relayController.signal
         });
+        clearTimeout(relayTimeout);
+
         if (relayRes.status === 200 || relayRes.status === 302) {
           emailSent = true;
           messageId = `relay-${Date.now()}`;

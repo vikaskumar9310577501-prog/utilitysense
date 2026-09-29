@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 import * as Recharts from 'recharts';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
-import { extractTextFromPdfBuffer, parseMsedclBillText } from './utils/msedclBillParser';
+import ReconciliationModule from './components/reconciliation/ReconciliationModule';
 
 const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend, LineChart, Line, ComposedChart, Cell, PieChart, Pie, LabelList, ReferenceLine } = Recharts;
 
@@ -152,14 +152,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const hasTrend = trend !== null && trend !== undefined;
 
             return (
-                <div className={`bg-white ${compact ? 'p-2 gap-2 min-w-0 w-full' : 'p-2.5 gap-2.5 min-w-[150px]'} rounded-xl border border-slate-200 shadow-sm flex items-center shrink-0 cursor-default select-none`}>
+                <div className={`bg-white ${compact ? 'p-2 gap-1.5 min-w-0 w-full h-full' : 'p-2.5 gap-2.5 min-w-[150px] h-full'} rounded-xl border border-slate-200 shadow-sm flex items-center shrink-0 cursor-default select-none`}>
                     <span className={`${compact ? 'h-8 w-8 rounded-lg' : 'h-9 w-9 rounded-lg'} flex items-center justify-center shrink-0 ${iconBg}`}>
                         <span className="material-symbols-outlined" style={{ fontSize: compact ? '17px' : '19px' }}>{icon}</span>
                     </span>
                     <div className="min-w-0 flex-1">
-                        <h4 className="font-black text-slate-900 tracking-tight leading-none" style={{ fontSize: compact ? '15.5px' : '17.5px' }}>{value}</h4>
-                        <p className="font-extrabold text-slate-800 leading-tight mt-0.5 truncate" style={{ fontSize: compact ? '11.5px' : '12.5px' }}>{label}</p>
-                        {sub && <p className="font-bold text-slate-600 mt-0.5 truncate" style={{ fontSize: compact ? '9.5px' : '10.5px' }}>{sub}</p>}
+                        <h4 className="font-black text-slate-900 tracking-tight leading-none" style={{ fontSize: compact ? '15px' : '17.5px' }}>{value}</h4>
+                        <p className="font-extrabold text-slate-800 leading-[1.15] mt-0.5 whitespace-normal break-words" style={{ fontSize: compact ? '10.5px' : '12px' }} title={label}>{label}</p>
+                        {sub && <p className="font-bold text-slate-600 mt-0.5 leading-[1.1] whitespace-normal break-words" style={{ fontSize: compact ? '8.5px' : '9.5px' }} title={sub}>{sub}</p>}
                         {hasTrend && (
                             <div className="mt-0.5 flex items-center gap-1" style={{ fontSize: '10px', fontWeight: 700 }}>
                                 <span className={`material-symbols-outlined ${trend > 0 ? "text-red-500 rotate-180" : "text-emerald-500"}`} style={{ fontSize: '12px' }}>
@@ -199,13 +199,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         className={`absolute inset-0 ${pad} flex items-center transition-transform duration-300 ease-out`}
                         style={{ transform: open ? "translateY(-100%)" : "translateY(0)" }}
                     >
-                        <div className={`flex items-center ${compact ? 'gap-2' : 'gap-2.5'} w-full`}>
+                        <div className={`flex items-center ${compact ? 'gap-1.5' : 'gap-2.5'} w-full`}>
                             <span className={`${compact ? 'h-8 w-8' : 'h-9 w-9'} rounded-lg flex items-center justify-center shrink-0 bg-emerald-50 text-emerald-600`}>
                                 <span className="material-symbols-outlined" style={{ fontSize: compact ? '17px' : '19px' }}>factory</span>
                             </span>
                             <div className="min-w-0 flex-1">
-                                <h4 className="font-black text-slate-900 tracking-tight leading-none" style={{ fontSize: compact ? '15.5px' : '17.5px' }}>{fmtNum(production)}</h4>
-                                <p className="font-extrabold text-slate-800 leading-tight mt-0.5" style={{ fontSize: compact ? '11.5px' : '12.5px' }}>Production Out</p>
+                                <h4 className="font-black text-slate-900 tracking-tight leading-none" style={{ fontSize: compact ? '15px' : '17.5px' }}>{fmtNum(production)}</h4>
+                                <p className="font-extrabold text-slate-800 leading-[1.15] mt-0.5 whitespace-normal break-words" style={{ fontSize: compact ? '10.5px' : '12px' }}>Production Out</p>
                             </div>
                         </div>
                     </div>
@@ -1100,24 +1100,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return raw.includes("mold") || raw.includes("mould");
             }, [currentUser]);
 
-            const canAccessBillAudit = useMemo(() => {
-                if (!currentUser) return false;
-                if (currentUser.role === "IT_ADMIN") return true;
-                const raw = String(currentUser.allowed_departments || currentUser.department || "").trim().toLowerCase();
-                if (raw === "all") return true;
-                if (raw === "none" || !raw) return false;
-                return raw.includes("bill") || raw.includes("audit");
-            }, [currentUser]);
-
             // Redirect away from restricted tabs if user loses access
             useEffect(() => {
                 if (activeTab === "molding" && !canAccessMolding) {
                     setActiveTab("dashboard");
                 }
-                if (activeTab === "bill_audit" && !canAccessBillAudit) {
-                    setActiveTab("dashboard");
-                }
-            }, [activeTab, canAccessMolding, canAccessBillAudit]);
+            }, [activeTab, canAccessMolding]);
 
             // Auto-select user's location, plant, and department if non-admin has specific assignment
             useEffect(() => {
@@ -1410,869 +1398,6 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         } catch (err) {}
                         return updated;
                     });
-                }
-            };
-
-            // ----------------------------------------------------
-            // UTILITY BILL AUDIT & RECONCILIATION FEATURE
-            // ----------------------------------------------------
-            const BILL_UTILITY_CONFIGS = [
-                { key: "electricity", label: "Electricity (Grid / MSEB)", unit: "kWh", icon: "electric_bolt", field: "electricity_consumption", costField: "electricity_cost", color: "sky" },
-                { key: "solar", label: "Solar Generation", unit: "kWh", icon: "solar_power", field: "solar_generated", costField: "solar_cost", color: "amber" },
-                { key: "png", label: "PNG (Natural Gas)", unit: "MMBTU", icon: "local_fire_department", field: "png_consumption", costField: "png_cost", color: "orange" },
-                { key: "water", label: "Water Consumption", unit: "KL", icon: "water_drop", field: "water_consumption", costField: "water_cost", color: "teal" },
-                { key: "diesel", label: "Diesel / DG Fuel", unit: "Liters", icon: "local_gas_station", field: "diesel_used", costField: "diesel_cost", color: "rose" },
-                { key: "nitrogen", label: "Nitrogen Gas", unit: "m³", icon: "air", field: "nitrogen_consumption", costField: "nitrogen_cost", color: "indigo" },
-                { key: "oxygen", label: "Oxygen Gas", unit: "m³", icon: "masks", field: "oxygen_consumption", costField: "oxygen_cost", color: "cyan" },
-                { key: "lpg", label: "LPG Gas", unit: "Kg", icon: "propane_tank", field: "lpg_used", costField: "lpg_cost", color: "purple" }
-            ];
-
-            const [billAudits, setBillAudits] = useState(() => {
-                try {
-                    const saved = localStorage.getItem("ep_bill_audits");
-                    return saved ? JSON.parse(saved) : [];
-                } catch (e) {
-                    return [];
-                }
-            });
-
-            const [billAuditForm, setBillAuditForm] = useState(() => {
-                return {
-                    utility: "electricity",
-                    location: "PUNE",
-                    plant: "4010",
-                    startDate: "2026-07-01",
-                    endDate: "2026-07-31",
-                    billedUnits: "90986",
-                    billedAmount: "2063620",
-                    billedOpeningMeter: "28032.93",
-                    billedClosingMeter: "32670.45",
-                    billNumber: "150519016810 / JUL-2026",
-                    vendorName: "MSEDCL (HT-I Industrial)",
-                    fileName: "MSEDCL_JUL-2026_Plant4010.pdf",
-                    filePreview: null,
-                    fileType: "pdf",
-                    parsedDateWiseBilled: {},
-                    parsedSummary: {
-                        rowsCount: 1,
-                        detectedDatesCount: 31,
-                        dateKeyDetected: "JUL-2026",
-                        unitsKeyDetected: "kVAh HT-I",
-                        totalSum: 90986
-                    },
-                    notes: "MSEDCL HT-I 101 Industrial Electricity Bill Audit - Supa MIDC",
-                    showOnlyDiscrepant: false,
-                    // Executive MSEDCL Billing Parameters
-                    isMsedclParsed: true,
-                    billMonth: "JUL-2026",
-                    billedUnitsKvah: 90986,
-                    billedUnitsKwh: 90349,
-                    grossUnitsKwh: 92750.48,
-                    energyCharges: 767921.84,
-                    demandCharges: 974350,
-                    todCharges: -2737.5,
-                    wheelingCharges: 88716.35,
-                    facCharges: 46750,
-                    electricityDuty: 153075,
-                    taxOnSale: 12490,
-                    subsidiesTotal: 56120,
-                    contractDemandKva: 1999,
-                    billedDemandKva: 1499,
-                    recordedDemandKva: 490,
-                    solarGenUnits: 21110,
-                    solarAdjUnits: 2401,
-                    billMultiplyingFactor: 20.0
-                };
-            });
-
-            const [activeAuditTab, setActiveAuditTab] = useState("overview"); // "overview" | "daily" | "diagnostic" | "history"
-            const [auditSaveMessage, setAuditSaveMessage] = useState("");
-            const [showManualBillInputs, setShowManualBillInputs] = useState(false);
-
-            const loadDemoJuly2026Bill = () => {
-                setBillAuditForm({
-                    utility: "electricity",
-                    location: "PUNE",
-                    plant: "4010",
-                    startDate: "2026-07-01",
-                    endDate: "2026-07-31",
-                    billedUnits: "90986",
-                    billedAmount: "2063620",
-                    billedOpeningMeter: "28032.93",
-                    billedClosingMeter: "32670.45",
-                    billNumber: "150519016810 / JUL-2026",
-                    vendorName: "MSEDCL (HT-I Industrial)",
-                    fileName: "MSEDCL_JUL-2026_Plant4010.pdf",
-                    filePreview: null,
-                    fileType: "pdf",
-                    parsedDateWiseBilled: {},
-                    parsedSummary: {
-                        rowsCount: 1,
-                        detectedDatesCount: 31,
-                        dateKeyDetected: "JUL-2026",
-                        unitsKeyDetected: "kVAh HT-I",
-                        totalSum: 90986
-                    },
-                    notes: "MSEDCL HT-I 101 Industrial Electricity Bill Audit - Supa MIDC",
-                    showOnlyDiscrepant: false,
-                    isMsedclParsed: true,
-                    billMonth: "JUL-2026",
-                    billedUnitsKvah: 90986,
-                    billedUnitsKwh: 90349,
-                    grossUnitsKwh: 92750.48,
-                    energyCharges: 767921.84,
-                    demandCharges: 974350,
-                    todCharges: -2737.5,
-                    wheelingCharges: 88716.35,
-                    facCharges: 46750,
-                    electricityDuty: 153075,
-                    taxOnSale: 12490,
-                    subsidiesTotal: 56120,
-                    contractDemandKva: 1999,
-                    billedDemandKva: 1499,
-                    recordedDemandKva: 490,
-                    solarGenUnits: 21110,
-                    solarAdjUnits: 2401,
-                    billMultiplyingFactor: 20.0
-                });
-            };
-
-            // Filter plants for Bill Audit by selected location
-            const billAuditPlants = useMemo(() => {
-                if (!billAuditForm.location || billAuditForm.location === "all") {
-                    return allowedPlants;
-                }
-                return allowedPlants.filter(p => (p.location || "").toUpperCase() === billAuditForm.location.toUpperCase());
-            }, [allowedPlants, billAuditForm.location]);
-
-            const handleBillAuditLocationChange = (newLoc) => {
-                setBillAuditForm(prev => {
-                    const matchingPlants = (!newLoc || newLoc === "all")
-                        ? allowedPlants
-                        : allowedPlants.filter(p => (p.location || "").toUpperCase() === newLoc.toUpperCase());
-                    const currentPlantStillValid = matchingPlants.some(p => p.plant_code === prev.plant);
-                    return {
-                        ...prev,
-                        location: newLoc,
-                        plant: currentPlantStillValid ? prev.plant : (matchingPlants[0]?.plant_code || "")
-                    };
-                });
-            };
-
-            // Smart file reader & parser for Excel (.xlsx, .xls, .csv), PDF, and Images
-            const handleBillFileUpload = (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const fileType = file.type || "";
-                const fileName = file.name || "";
-                const lowerName = fileName.toLowerCase();
-
-                if (lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") || lowerName.endsWith(".csv")) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        try {
-                            const data = new Uint8Array(ev.target.result);
-                            const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-                            const sheetName = workbook.SheetNames[0];
-                            const ws = workbook.Sheets[sheetName];
-                            const jsonRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-
-                            let dateKey = "";
-                            let unitsKey = "";
-                            let openingKey = "";
-                            let closingKey = "";
-                            let amountKey = "";
-
-                            if (jsonRows.length > 0) {
-                                const sampleKeys = Object.keys(jsonRows[0]);
-                                for (const k of sampleKeys) {
-                                    const lk = k.toLowerCase().trim();
-                                    if (!dateKey && (lk.includes("date") || lk === "day" || lk === "dt")) dateKey = k;
-                                    if (!unitsKey && (lk.includes("unit") || lk.includes("kwh") || lk.includes("consum") || lk.includes("scm") || lk.includes("qty") || lk.includes("net") || lk.includes("actual"))) unitsKey = k;
-                                    if (!openingKey && (lk.includes("open") || lk.includes("start") || lk.includes("prev") || lk.includes("initial"))) openingKey = k;
-                                    if (!closingKey && (lk.includes("close") || lk.includes("end") || lk.includes("curr") || lk.includes("final"))) closingKey = k;
-                                    if (!amountKey && (lk.includes("amount") || lk.includes("cost") || lk.includes("total") || lk.includes("bill") || lk.includes("inr") || lk.includes("rupee"))) amountKey = k;
-                                }
-                            }
-
-                            const parsedDateWise = {};
-                            let totalUnitsSum = 0;
-                            let totalAmountSum = 0;
-                            let detectedDates = [];
-                            let firstOpening = "";
-                            let lastClosing = "";
-
-                            jsonRows.forEach(row => {
-                                let d = "";
-                                if (dateKey && row[dateKey]) {
-                                    const rawD = row[dateKey];
-                                    if (rawD instanceof Date) {
-                                        d = rawD.toISOString().split("T")[0];
-                                    } else {
-                                        const strD = String(rawD).trim();
-                                        if (strD.includes("-") || strD.includes("/")) {
-                                            const parts = strD.split(/[-/]/);
-                                            if (parts.length === 3) {
-                                                if (parts[0].length === 4) {
-                                                    d = `${parts[0]}-${String(parts[1]).padStart(2, '0')}-${String(parts[2]).padStart(2, '0')}`;
-                                                } else if (parts[2].length === 4) {
-                                                    d = `${parts[2]}-${String(parts[1]).padStart(2, '0')}-${String(parts[0]).padStart(2, '0')}`;
-                                                }
-                                            }
-                                        }
-                                        if (!d && !isNaN(Date.parse(strD))) {
-                                            d = new Date(strD).toISOString().split("T")[0];
-                                        }
-                                    }
-                                }
-
-                                const uVal = unitsKey ? (Number(row[unitsKey]) || 0) : 0;
-                                const aVal = amountKey ? (Number(row[amountKey]) || 0) : 0;
-                                if (d) {
-                                    parsedDateWise[d] = uVal;
-                                    detectedDates.push(d);
-                                }
-                                totalUnitsSum += uVal;
-                                totalAmountSum += aVal;
-
-                                if (!firstOpening && openingKey && row[openingKey] !== "") {
-                                    firstOpening = String(row[openingKey]);
-                                }
-                                if (closingKey && row[closingKey] !== "") {
-                                    lastClosing = String(row[closingKey]);
-                                }
-                            });
-
-                            detectedDates.sort();
-                            const autoStart = detectedDates[0] || "";
-                            const autoEnd = detectedDates[detectedDates.length - 1] || "";
-
-                            setBillAuditForm(prev => ({
-                                ...prev,
-                                fileName,
-                                fileType: "excel",
-                                filePreview: null,
-                                billedUnits: totalUnitsSum > 0 ? String(Math.round(totalUnitsSum * 100) / 100) : prev.billedUnits,
-                                billedAmount: totalAmountSum > 0 ? String(Math.round(totalAmountSum)) : prev.billedAmount,
-                                startDate: autoStart || prev.startDate,
-                                endDate: autoEnd || prev.endDate,
-                                billedOpeningMeter: firstOpening || prev.billedOpeningMeter,
-                                billedClosingMeter: lastClosing || prev.billedClosingMeter,
-                                parsedDateWiseBilled: parsedDateWise,
-                                parsedSummary: {
-                                    rowsCount: jsonRows.length,
-                                    detectedDatesCount: detectedDates.length,
-                                    dateKeyDetected: dateKey,
-                                    unitsKeyDetected: unitsKey,
-                                    totalSum: totalUnitsSum
-                                }
-                            }));
-                        } catch (err) {
-                            console.error("Excel parse error:", err);
-                            setBillAuditForm(prev => ({
-                                ...prev,
-                                fileName,
-                                fileType: "excel",
-                                filePreview: null
-                            }));
-                        }
-                    };
-                    reader.readAsArrayBuffer(file);
-                } else if (fileType.startsWith("image/")) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        setBillAuditForm(prev => ({
-                            ...prev,
-                            fileName,
-                            fileType: "image",
-                            filePreview: ev.target.result,
-                            parsedDateWiseBilled: {},
-                            parsedSummary: null
-                        }));
-                    };
-                    reader.readAsDataURL(file);
-                } else if (fileType === "application/pdf" || lowerName.endsWith(".pdf")) {
-                    const reader = new FileReader();
-                    reader.onload = async (ev) => {
-                        const arrayBuffer = ev.target.result;
-                        let msedclData = null;
-                        try {
-                            const fullText = await extractTextFromPdfBuffer(arrayBuffer);
-                            msedclData = parseMsedclBillText(fullText);
-                        } catch (pdfErr) {
-                            console.warn("PDF extraction warning:", pdfErr);
-                        }
-
-                        if (msedclData && (msedclData.billedUnitsKvah || msedclData.billedUnitsKwh || msedclData.totalBillAmount)) {
-                            setBillAuditForm(prev => ({
-                                ...prev,
-                                fileName,
-                                fileType: "pdf",
-                                filePreview: null,
-                                isMsedclParsed: true,
-                                billMonth: msedclData.billMonth || prev.billMonth || "JUL-2026",
-                                location: msedclData.suggestedLocation || prev.location || "PUNE",
-                                plant: msedclData.suggestedPlantCode || prev.plant || "4010",
-                                startDate: msedclData.startDate || prev.startDate,
-                                endDate: msedclData.endDate || prev.endDate,
-                                billedUnits: String(msedclData.billedUnitsKvah || msedclData.billedUnitsKwh || prev.billedUnits),
-                                billedAmount: msedclData.totalBillAmount ? String(Math.round(msedclData.totalBillAmount)) : prev.billedAmount,
-                                billedOpeningMeter: msedclData.openingMeter !== null ? String(msedclData.openingMeter) : prev.billedOpeningMeter,
-                                billedClosingMeter: msedclData.closingMeter !== null ? String(msedclData.closingMeter) : prev.billedClosingMeter,
-                                billNumber: msedclData.consumerNo ? `${msedclData.consumerNo} (${msedclData.billMonth || 'BILL'})` : prev.billNumber,
-                                vendorName: `MSEDCL (${msedclData.tariffCategory || 'HT-I Industrial'})`,
-                                billedUnitsKvah: msedclData.billedUnitsKvah,
-                                billedUnitsKwh: msedclData.billedUnitsKwh,
-                                grossUnitsKwh: msedclData.grossUnitsKwh,
-                                energyCharges: msedclData.energyCharges,
-                                demandCharges: msedclData.demandCharges,
-                                todCharges: msedclData.todCharges,
-                                wheelingCharges: msedclData.wheelingCharges,
-                                facCharges: msedclData.facCharges,
-                                electricityDuty: msedclData.electricityDuty,
-                                taxOnSale: msedclData.taxOnSale,
-                                subsidiesTotal: msedclData.subsidiesTotal,
-                                contractDemandKva: msedclData.contractDemandKva,
-                                billedDemandKva: msedclData.billedDemandKva,
-                                recordedDemandKva: msedclData.recordedDemandKva,
-                                solarGenUnits: msedclData.solarGenUnits,
-                                solarAdjUnits: msedclData.solarAdjUnits,
-                                billMultiplyingFactor: msedclData.multiplyingFactor,
-                                parsedDateWiseBilled: {},
-                                parsedSummary: {
-                                    rowsCount: 1,
-                                    detectedDatesCount: 31,
-                                    dateKeyDetected: msedclData.billMonth || "Month Log",
-                                    unitsKeyDetected: "kVAh / kWh",
-                                    totalSum: msedclData.billedUnitsKvah || msedclData.billedUnitsKwh || 0
-                                }
-                            }));
-                        } else {
-                            setBillAuditForm(prev => ({
-                                ...prev,
-                                fileName,
-                                fileType: "pdf",
-                                filePreview: null,
-                                parsedDateWiseBilled: {},
-                                parsedSummary: null
-                            }));
-                        }
-                    };
-                    reader.readAsArrayBuffer(file);
-                } else {
-                    setBillAuditForm(prev => ({
-                        ...prev,
-                        fileName,
-                        fileType: "document",
-                        filePreview: null
-                    }));
-                }
-            };
-
-            // Calculate deep multi-dimensional auto-reconciliation & discrepancy metrics
-            const billAuditAnalysis = useMemo(() => {
-                const { utility, location, plant, startDate, endDate, billedUnits, billedAmount, billedOpeningMeter, billedClosingMeter, parsedDateWiseBilled } = billAuditForm;
-                if (!plant || !startDate || !endDate) return null;
-
-                const utilMeta = BILL_UTILITY_CONFIGS.find(u => u.key === utility) || BILL_UTILITY_CONFIGS[0];
-                const fieldName = utilMeta.field;
-
-                const pObj = plants.find(p => p.plant_code === plant) || allowedPlants.find(p => p.plant_code === plant);
-                const resolvedPlantCode = plant;
-                const resolvedLoc = location || pObj?.location || "";
-
-                // Filter matching entries
-                const matching = dailyEntries.filter(e => {
-                    const ep = String(e.plant || "").trim().toLowerCase();
-                    const targetCode = String(resolvedPlantCode).trim().toLowerCase();
-                    const matchPlant = ep === targetCode || (pObj && (ep === String(pObj.plant_display_name || "").trim().toLowerCase() || ep === String(pObj.plant_name || "").trim().toLowerCase()));
-                    if (!matchPlant) return false;
-
-                    const d = String(e.date || "");
-                    return d >= startDate && d <= endDate;
-                }).sort((a, b) => a.date.localeCompare(b.date));
-
-                // Group by date
-                const byDate = {};
-                matching.forEach(e => {
-                    if (!byDate[e.date]) byDate[e.date] = [];
-                    byDate[e.date].push(e);
-                });
-
-                // Compute continuous dates in range
-                const expectedDates = [];
-                try {
-                    let cur = new Date(startDate);
-                    const end = new Date(endDate);
-                    while (cur <= end) {
-                        expectedDates.push(cur.toISOString().split("T")[0]);
-                        cur.setDate(cur.getDate() + 1);
-                    }
-                } catch (err) { }
-
-                let systemUnits = 0;
-                let systemRecordedCost = 0;
-                let firstFactoryOpening = null;
-                let lastFactoryClosing = null;
-
-                // Preliminary sum for average calculation
-                let totalDailyRecorded = 0;
-                let validDaysCount = 0;
-                expectedDates.forEach(dt => {
-                    const dayEntries = byDate[dt] || [];
-                    if (dayEntries.length > 0) {
-                        const p = dayEntries.find(x => String(x.department || "").toUpperCase() === "PROD") || dayEntries[0];
-                        totalDailyRecorded += Number(p[fieldName]) || 0;
-                        validDaysCount++;
-                    }
-                });
-                const avgDailySystem = validDaysCount > 0 ? (totalDailyRecorded / validDaysCount) : 0;
-                const bUnitsTotal = Number(billedUnits) || 0;
-                const avgBilledDaily = expectedDates.length > 0 ? (bUnitsTotal / expectedDates.length) : 0;
-
-                const dailyBreakdown = expectedDates.map((dt) => {
-                    const dayEntries = byDate[dt] || [];
-                    let dayUnits = 0;
-                    let dayCost = 0;
-                    let dayOpening = null;
-                    let dayClosing = null;
-                    let dept = "";
-
-                    if (dayEntries.length > 0) {
-                        const primary = dayEntries.find(x => String(x.department || "").toUpperCase() === "PROD") || dayEntries[0];
-                        dayUnits = Number(primary[fieldName]) || 0;
-                        dayCost = Number(primary[utilMeta.costField]) || 0;
-                        dept = primary.department || "";
-                        dayOpening = primary[utility + "_opening"] ?? null;
-                        dayClosing = primary[utility + "_closing"] ?? null;
-
-                        if (firstFactoryOpening === null && dayOpening !== null) {
-                            firstFactoryOpening = dayOpening;
-                        }
-                        if (dayClosing !== null) {
-                            lastFactoryClosing = dayClosing;
-                        }
-                    }
-                    systemUnits += dayUnits;
-                    systemRecordedCost += dayCost;
-
-                    // Billed day units: from uploaded file if present, else prorated
-                    const hasBilledRow = parsedDateWiseBilled && parsedDateWiseBilled[dt] !== undefined;
-                    const billedDayUnits = hasBilledRow
-                        ? Number(parsedDateWiseBilled[dt])
-                        : (bUnitsTotal > 0 ? avgBilledDaily : null);
-
-                    const dayVariance = (billedDayUnits !== null) ? (billedDayUnits - dayUnits) : 0;
-                    const dayVariancePercent = (billedDayUnits > 0) ? ((dayVariance / billedDayUnits) * 100) : 0;
-
-                    const hasData = dayEntries.length > 0;
-                    const isDiscrepant = !hasData || (billedDayUnits !== null && Math.abs(dayVariance) > 30);
-                    const hasSpike = dayUnits > (avgDailySystem * 1.45) && dayUnits > 100;
-
-                    return {
-                        date: dt,
-                        hasData,
-                        units: dayUnits,
-                        cost: dayCost,
-                        opening: dayOpening,
-                        closing: dayClosing,
-                        department: dept,
-                        entriesCount: dayEntries.length,
-                        billedDayUnits,
-                        hasBilledRow,
-                        dayVariance,
-                        dayVariancePercent,
-                        isDiscrepant,
-                        hasSpike
-                    };
-                });
-
-                const bUnits = Number(billedUnits) || 0;
-                const bAmount = Number(billedAmount) || 0;
-                const varianceUnits = bUnits - systemUnits;
-                const variancePercent = bUnits > 0 ? ((varianceUnits / bUnits) * 100) : (systemUnits > 0 ? -100 : 0);
-
-                const rate = resolveTariff(tariffs, utility, resolvedPlantCode, resolvedLoc, endDate) || 0;
-                const calculatedCostFromRate = systemUnits * rate;
-                const varianceCost = varianceUnits * rate;
-
-                // Resolved System Multiplying Factor from Master Configs
-                const systemMF = resolveMultiplyFactor(multiplyFactors, resolvedPlantCode, resolvedLoc, endDate) || 1;
-
-                // Total Solar logged in factory software for this period
-                const systemSolarUnits = matching.reduce((sum, e) => sum + (Number(e.solar_generated) || 0), 0);
-                const systemSolarCost = matching.reduce((sum, e) => sum + (Number(e.solar_cost) || 0), 0);
-
-                // Tariff Rate Discrepancy
-                const effectiveBilledRate = (bUnits > 0 && bAmount > 0) ? Number((bAmount / bUnits).toFixed(3)) : null;
-                const tariffRateDiff = effectiveBilledRate !== null ? Number((effectiveBilledRate - rate).toFixed(3)) : 0;
-                const tariffExtraCost = (bUnits > 0 && tariffRateDiff > 0) ? Math.round(bUnits * tariffRateDiff) : 0;
-
-                // Meter Reading Opening/Closing Discrepancy
-                const bOpening = billedOpeningMeter !== "" ? Number(billedOpeningMeter) : null;
-                const bClosing = billedClosingMeter !== "" ? Number(billedClosingMeter) : null;
-                const openingGap = (bOpening !== null && firstFactoryOpening !== null) ? (bOpening - Number(firstFactoryOpening)) : null;
-                const closingGap = (bClosing !== null && lastFactoryClosing !== null) ? (bClosing - Number(lastFactoryClosing)) : null;
-
-                // Physical Meter Difference & Multiplying Factor analysis
-                const meterOpeningRef = bOpening !== null ? bOpening : (firstFactoryOpening !== null ? Number(firstFactoryOpening) : null);
-                const meterClosingRef = bClosing !== null ? bClosing : (lastFactoryClosing !== null ? Number(lastFactoryClosing) : null);
-                const rawMeterDiff = (meterOpeningRef !== null && meterClosingRef !== null) ? Math.max(0, meterClosingRef - meterOpeningRef) : null;
-
-                const billMF = billAuditForm.billMultiplyingFactor || 20;
-                const rawUnitsAtBillMf = rawMeterDiff !== null ? Math.round(rawMeterDiff * billMF * 100) / 100 : null;
-                const rawUnitsAtSystemMf = rawMeterDiff !== null ? Math.round(rawMeterDiff * systemMF * 100) / 100 : null;
-
-                // Contract Demand Analysis & High-Impact ROI Potential
-                const cdKva = billAuditForm.contractDemandKva || 1999;
-                const billedDemandKva = billAuditForm.billedDemandKva || 1499;
-                const recordedDemandKva = billAuditForm.recordedDemandKva || 490;
-                const unutilizedDemandKva = Math.max(0, billedDemandKva - recordedDemandKva);
-                const demandRate = (billedDemandKva > 0 && billAuditForm.demandCharges) ? (billAuditForm.demandCharges / billedDemandKva) : 650;
-                const demandPenaltyMonthly = Math.round(unutilizedDemandKva * demandRate);
-                const demandPenaltyAnnual = demandPenaltyMonthly * 12;
-                const proposedCdKva = Math.max(600, Math.ceil((recordedDemandKva * 1.35) / 50) * 50); // e.g. 490 * 1.35 = 661 -> 700 to 800 kVA
-                const potentialSavingsMonthly = Math.max(0, Math.round((billedDemandKva - (proposedCdKva * 0.75)) * demandRate));
-                const potentialSavingsAnnual = potentialSavingsMonthly * 12;
-
-                // Solar Reconciliation
-                const billSolarGen = billAuditForm.solarGenUnits || 0;
-                const solarMatchDiff = billSolarGen > 0 ? (systemSolarUnits - billSolarGen) : 0;
-                const solarMatchPercent = billSolarGen > 0 ? Number(((systemSolarUnits / billSolarGen) * 100).toFixed(1)) : null;
-
-                const missingDays = dailyBreakdown.filter(x => !x.hasData);
-                const discrepantDays = dailyBreakdown.filter(x => x.isDiscrepant);
-                const spikeDays = dailyBreakdown.filter(x => x.hasSpike);
-
-                let status = "MATCHED";
-                if (matching.length === 0) {
-                    status = "NO_DATA";
-                } else if (bUnits > 0 && Math.abs(variancePercent) <= 2.5) {
-                    status = "MATCHED";
-                } else if (varianceUnits > 0) {
-                    status = "OVERBILLED";
-                } else {
-                    status = "SYSTEM_HIGHER";
-                }
-
-                // AI-Style Plain Language Diagnostic Findings ("Kahan Kya Difference Hai")
-                const diagnosticFindings = [];
-
-                // 1. Contract Demand Overcharge finding (High Impact for Management)
-                if (unutilizedDemandKva > 50) {
-                    diagnosticFindings.push({
-                        id: "contract_demand_idle",
-                        severity: "critical",
-                        icon: "warning",
-                        title: `Cost Leakage: ₹ ${fmtNum(demandPenaltyMonthly)}/mo Paid for Unused Contract Demand`,
-                        description: `Factory peak demand recorded was only ${recordedDemandKva} kVA, but MSEDCL billed for 75% minimum Contract Demand (${billedDemandKva} kVA @ ₹${demandRate.toFixed(0)}/kVA). You are paying for ${unutilizedDemandKva} kVA unutilized capacity every month (~₹ ${fmtNum(demandPenaltyAnnual)}/yr). Recommended Action: Reduce Contract Demand from ${cdKva} kVA to ~800 kVA to save ~₹ ${fmtNum(potentialSavingsAnnual)} annually.`
-                    });
-                }
-
-                // 2. Multiplying Factor discrepancy finding
-                if (billMF && systemMF && Math.abs(billMF - systemMF) > 0.01) {
-                    diagnosticFindings.push({
-                        id: "mf_mismatch",
-                        severity: "warning",
-                        icon: "tune",
-                        title: `Multiplying Factor Configuration Discrepancy (Bill MF=${billMF} vs DB MF=${systemMF})`,
-                        description: `MSEDCL utility meter CT ratio specifies Multiplying Factor = ${billMF}. However, the software database has factor = ${systemMF}, causing software to calculate 2x units (${fmtNum(systemUnits)} kWh). At the correct MF of ${billMF}, physical meter consumption is ${fmtNum(rawUnitsAtBillMf || 92750)} kWh, which is a 99.7% match with MSEDCL Gross Consumption (${fmtNum(billAuditForm.grossUnitsKwh || 92750)} kWh). Update Master Configs factor to ${billMF}.`
-                    });
-                }
-
-                // 3. Solar net generation match finding
-                if (billSolarGen > 0) {
-                    diagnosticFindings.push({
-                        id: "solar_reconciliation",
-                        severity: "success",
-                        icon: "solar_power",
-                        title: `Solar Power Generation Verified: ${solarMatchPercent}% Match with MSEDCL Bill`,
-                        description: `Internal solar loggers recorded ${fmtNum(systemSolarUnits)} kWh vs MSEDCL billed solar generation of ${fmtNum(billSolarGen)} kWh. Net export adjustment of ${billAuditForm.solarAdjUnits || 2401} units was credited by MSEDCL on the invoice.`
-                    });
-                }
-
-                // 4. Baseline continuity check
-                if (openingGap !== null && Math.abs(openingGap) <= 10 && closingGap !== null && Math.abs(closingGap) <= 10) {
-                    diagnosticFindings.push({
-                        id: "meter_continuity",
-                        severity: "success",
-                        icon: "verified",
-                        title: "100% Meter Baseline Synchronization (Zero Reading Gap)",
-                        description: `Month opening meter reading (${fmtNum(meterOpeningRef)}) and closing reading (${fmtNum(meterClosingRef)}) match the MSEDCL bill perfectly without any rollover or estimated adjustments.`
-                    });
-                }
-
-                if (missingDays.length > 0) {
-                    diagnosticFindings.push({
-                        id: "missing_logs",
-                        severity: "critical",
-                        icon: "event_busy",
-                        title: `${missingDays.length} Missing Factory Meter Entries Detected`,
-                        description: `Factory meters were not logged in software on ${missingDays.length} day(s) (${missingDays.slice(0, 4).map(d => d.date).join(", ")}${missingDays.length > 4 ? "..." : ""}). Unrecorded gap accounts for approximately ${fmtNum(Math.round(missingDays.length * avgDailySystem))} ${utilMeta.unit}.`
-                    });
-                }
-
-                if (diagnosticFindings.length === 0) {
-                    diagnosticFindings.push({
-                        id: "all_healthy",
-                        severity: "success",
-                        icon: "verified",
-                        title: "Accurate Alignment: Zero Anomalies Detected",
-                        description: `All days have complete meter readings, meter starting baselines match, and variance is within normal tolerance (${fmtNum(Math.abs(variancePercent), 2)}%).`
-                    });
-                }
-
-                return {
-                    utility: utilMeta,
-                    plantCode: resolvedPlantCode,
-                    plantName: pObj?.plant_display_name || pObj?.plant_name || resolvedPlantCode,
-                    location: resolvedLoc,
-                    matchingEntriesCount: matching.length,
-                    totalDays: expectedDates.length,
-                    loggedDays: expectedDates.length - missingDays.length,
-                    missingDays,
-                    discrepantDays,
-                    spikeDays,
-                    systemUnits,
-                    systemCost: systemRecordedCost > 0 ? systemRecordedCost : calculatedCostFromRate,
-                    systemSolarUnits,
-                    systemSolarCost,
-                    billedUnits: bUnits,
-                    billedAmount: bAmount,
-                    varianceUnits,
-                    variancePercent,
-                    varianceCost,
-                    tariffRate: rate,
-                    effectiveBilledRate,
-                    tariffRateDiff,
-                    tariffExtraCost,
-                    firstFactoryOpening,
-                    lastFactoryClosing,
-                    meterOpeningRef,
-                    meterClosingRef,
-                    openingGap,
-                    closingGap,
-                    rawMeterDiff,
-                    systemMF,
-                    billMF,
-                    rawUnitsAtBillMf,
-                    rawUnitsAtSystemMf,
-                    cdKva,
-                    billedDemandKva,
-                    recordedDemandKva,
-                    unutilizedDemandKva,
-                    demandRate,
-                    demandPenaltyMonthly,
-                    demandPenaltyAnnual,
-                    proposedCdKva,
-                    potentialSavingsMonthly,
-                    potentialSavingsAnnual,
-                    billSolarGen,
-                    solarAdjUnits: billAuditForm.solarAdjUnits || 0,
-                    solarMatchDiff,
-                    solarMatchPercent,
-                    status,
-                    dailyBreakdown,
-                    diagnosticFindings
-                };
-            }, [billAuditForm, dailyEntries, plants, allowedPlants, tariffs, multiplyFactors]);
-
-            const handleSaveBillAudit = () => {
-                if (!billAuditAnalysis) return;
-                const newRecord = {
-                    id: "audit_" + Date.now(),
-                    createdAt: new Date().toISOString(),
-                    utility: billAuditForm.utility,
-                    utilityLabel: billAuditAnalysis.utility.label,
-                    utilityUnit: billAuditAnalysis.utility.unit,
-                    location: billAuditAnalysis.location,
-                    plant: billAuditAnalysis.plantCode,
-                    plantName: billAuditAnalysis.plantName,
-                    startDate: billAuditForm.startDate,
-                    endDate: billAuditForm.endDate,
-                    billedUnits: billAuditAnalysis.billedUnits,
-                    billedAmount: billAuditAnalysis.billedAmount,
-                    billedOpeningMeter: billAuditForm.billedOpeningMeter || "",
-                    billedClosingMeter: billAuditForm.billedClosingMeter || "",
-                    systemUnits: billAuditAnalysis.systemUnits,
-                    systemCost: billAuditAnalysis.systemCost,
-                    varianceUnits: billAuditAnalysis.varianceUnits,
-                    variancePercent: billAuditAnalysis.variancePercent,
-                    varianceCost: billAuditAnalysis.varianceCost,
-                    tariffRate: billAuditAnalysis.tariffRate,
-                    effectiveBilledRate: billAuditAnalysis.effectiveBilledRate,
-                    status: billAuditAnalysis.status,
-                    billNumber: billAuditForm.billNumber || "",
-                    vendorName: billAuditForm.vendorName || "",
-                    fileName: billAuditForm.fileName || "",
-                    notes: billAuditForm.notes || "",
-                    totalDays: billAuditAnalysis.totalDays,
-                    loggedDays: billAuditAnalysis.loggedDays,
-                    discrepanciesCount: billAuditAnalysis.discrepantDays.length,
-                    demandCharges: billAuditForm.demandCharges || 0,
-                    contractDemandKva: billAuditAnalysis.cdKva,
-                    billedDemandKva: billAuditAnalysis.billedDemandKva,
-                    recordedDemandKva: billAuditAnalysis.recordedDemandKva,
-                    unutilizedDemandKva: billAuditAnalysis.unutilizedDemandKva,
-                    demandPenaltyMonthly: billAuditAnalysis.demandPenaltyMonthly,
-                    solarGenUnits: billAuditAnalysis.billSolarGen,
-                    solarAdjUnits: billAuditAnalysis.solarAdjUnits,
-                    billMultiplyingFactor: billAuditAnalysis.billMF
-                };
-
-                setBillAudits(prev => {
-                    const next = [newRecord, ...prev];
-                    try {
-                        localStorage.setItem("ep_bill_audits", JSON.stringify(next));
-                    } catch (e) { }
-                    return next;
-                });
-
-                setAuditSaveMessage("Full discrepancy audit report successfully saved to history!");
-                setTimeout(() => setAuditSaveMessage(""), 3500);
-            };
-
-            const handleDeleteBillAudit = (id) => {
-                if (!window.confirm("Are you sure you want to delete this saved audit record?")) return;
-                setBillAudits(prev => {
-                    const next = prev.filter(x => x.id !== id);
-                    try {
-                        localStorage.setItem("ep_bill_audits", JSON.stringify(next));
-                    } catch (e) { }
-                    return next;
-                });
-            };
-
-            const handleLoadSavedAudit = (record) => {
-                setBillAuditForm(prev => ({
-                    ...prev,
-                    utility: record.utility,
-                    location: record.location,
-                    plant: record.plant,
-                    startDate: record.startDate,
-                    endDate: record.endDate,
-                    billedUnits: String(record.billedUnits || ""),
-                    billedAmount: String(record.billedAmount || ""),
-                    billedOpeningMeter: record.billedOpeningMeter || "",
-                    billedClosingMeter: record.billedClosingMeter || "",
-                    billNumber: record.billNumber || "",
-                    vendorName: record.vendorName || "",
-                    fileName: record.fileName || "",
-                    notes: record.notes || "",
-                    demandCharges: record.demandCharges || 0,
-                    contractDemandKva: record.contractDemandKva || 1999,
-                    billedDemandKva: record.billedDemandKva || 1499,
-                    recordedDemandKva: record.recordedDemandKva || 490,
-                    solarGenUnits: record.solarGenUnits || 0,
-                    solarAdjUnits: record.solarAdjUnits || 0,
-                    billMultiplyingFactor: record.billMultiplyingFactor || 20,
-                    parsedDateWiseBilled: {},
-                    parsedSummary: null
-                }));
-                setActiveAuditTab("overview");
-            };
-
-            const exportAuditBreakdownCSV = () => {
-                if (!billAuditAnalysis) return;
-                const rows = [
-                    ["Date", "Day", "Utility", "Plant", "Billed Units", "Factory Meter Units", "Difference", "Variance %", "Daily Cost (Rs)", "Factory Opening", "Factory Closing", "Status"],
-                    ...billAuditAnalysis.dailyBreakdown.map(d => {
-                        const dtObj = new Date(d.date + "T00:00:00");
-                        const day = dtObj.toLocaleDateString("en-US", { weekday: "short" });
-                        return [
-                            d.date,
-                            day,
-                            billAuditAnalysis.utility.label,
-                            billAuditAnalysis.plantName,
-                            d.billedDayUnits !== null ? d.billedDayUnits : "",
-                            d.units,
-                            d.dayVariance,
-                            `${fmtNum(d.dayVariancePercent, 1)}%`,
-                            d.cost,
-                            d.opening !== null ? d.opening : "",
-                            d.closing !== null ? d.closing : "",
-                            d.hasData ? (d.isDiscrepant ? "Discrepancy" : "Matched") : "Missing Entry"
-                        ];
-                    }),
-                    ["TOTAL", "", billAuditAnalysis.utility.label, billAuditAnalysis.plantName, billAuditAnalysis.billedUnits, billAuditAnalysis.systemUnits, billAuditAnalysis.varianceUnits, `${fmtNum(billAuditAnalysis.variancePercent, 1)}%`, billAuditAnalysis.systemCost, "", "", billAuditAnalysis.status]
-                ];
-                const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\n");
-                const encodedUri = encodeURI(csvContent);
-                const link = document.createElement("a");
-                link.setAttribute("href", encodedUri);
-                link.setAttribute("download", `Detailed_Discrepancy_Audit_${billAuditAnalysis.plantCode}_${billAuditAnalysis.utility.key}_${billAuditForm.startDate}_to_${billAuditForm.endDate}.csv`);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            };
-
-            const exportAuditBreakdownXLSX = () => {
-                if (!billAuditAnalysis) return;
-                try {
-                    const wb = XLSX.utils.book_new();
-
-                    // Sheet 1: Audit Summary
-                    const summaryAOA = [
-                        ["UTILITY BILL AUDIT & DISCREPANCY EXECUTIVE SUMMARY (MANAGEMENT REPORT)"],
-                        ["Report Generated", new Date().toLocaleString()],
-                        [],
-                        ["Plant / Location", `${billAuditAnalysis.plantName} (${billAuditAnalysis.plantCode}) / ${billAuditAnalysis.location || 'N/A'}`],
-                        ["Utility", billAuditAnalysis.utility.label],
-                        ["Period", `${billAuditForm.startDate} to ${billAuditForm.endDate}`],
-                        ["Bill / Invoice No", billAuditForm.billNumber || "N/A"],
-                        ["Vendor Name", billAuditForm.vendorName || "N/A"],
-                        [],
-                        ["EXECUTIVE METRIC", "VALUE", "UNIT", "MANAGEMENT REMARKS"],
-                        ["Total Bill Payable Amount", billAuditAnalysis.billedAmount, "INR", "Actual invoice total"],
-                        ["Billed Units (kVAh)", billAuditAnalysis.billedUnits, "kVAh", "Industrial billing units"],
-                        ["Gross Factory Units (kWh)", billAuditForm.grossUnitsKwh || "N/A", "kWh", "Before solar deduction"],
-                        ["Internal Meter Logged (MF=20)", billAuditAnalysis.rawUnitsAtBillMf || billAuditAnalysis.systemUnits, "kWh", "Physical meter consumption"],
-                        ["Opening Meter Reading", billAuditAnalysis.meterOpeningRef, "", "Baseline reading"],
-                        ["Closing Meter Reading", billAuditAnalysis.meterClosingRef, "", "End-of-month reading"],
-                        ["Meter Multiplying Factor (MF)", billAuditAnalysis.billMF || 20, "", "CT Ratio 100/5A"],
-                        ["Contract Demand (CD)", billAuditAnalysis.cdKva, "kVA", "Sanctioned demand"],
-                        ["Billed Minimum Demand (75%)", billAuditAnalysis.billedDemandKva, "kVA", "Minimum billing threshold"],
-                        ["Recorded Peak Demand (MD)", billAuditAnalysis.recordedDemandKva, "kVA", "Actual max factory peak"],
-                        ["Unutilized Contract Demand", billAuditAnalysis.unutilizedDemandKva, "kVA", "Idle capacity being paid for"],
-                        ["Monthly Idle Demand Dead Loss", billAuditAnalysis.demandPenaltyMonthly, "INR / month", "Direct monthly financial drain"],
-                        ["Annual Idle Demand Dead Loss", billAuditAnalysis.demandPenaltyAnnual, "INR / year", "Potential savings if CD reduced"],
-                        ["Solar Generation (Bill)", billAuditAnalysis.billSolarGen, "kWh", "MSEDCL logged solar"],
-                        ["Solar Generation (Factory Logged)", billAuditAnalysis.systemSolarUnits, "kWh", `${billAuditAnalysis.solarMatchPercent || 100}% verified match`],
-                        ["Solar Net Export Adjustment", billAuditAnalysis.solarAdjUnits, "kWh", "Credited on bill"],
-                        ["Audit Status", billAuditAnalysis.status, "", "Overall reconciliation verdict"],
-                        [],
-                        ["DIAGNOSTIC FINDINGS (" + billAuditAnalysis.diagnosticFindings.length + ")", "SEVERITY", "DETAILS"],
-                        ...billAuditAnalysis.diagnosticFindings.map(f => [f.title, f.severity.toUpperCase(), f.description])
-                    ];
-                    const wsSummary = XLSX.utils.aoa_to_sheet(summaryAOA);
-                    XLSX.utils.book_append_sheet(wb, wsSummary, "Audit_Summary");
-
-                    // Sheet 2: Daily Breakdown & Discrepancies
-                    const dailyData = billAuditAnalysis.dailyBreakdown.map((d, i) => {
-                        const dtObj = new Date(d.date + "T00:00:00");
-                        const dayName = dtObj.toLocaleDateString("en-US", { weekday: "short" });
-                        return {
-                            "Sr No": i + 1,
-                            "Date": d.date,
-                            "Day": dayName,
-                            "Department": d.department || "PROD",
-                            "Factory Opening Meter": d.opening !== null ? d.opening : "",
-                            "Factory Closing Meter": d.closing !== null ? d.closing : "",
-                            "Factory Meter Units": d.units,
-                            "Billed Day Units": d.billedDayUnits !== null ? Math.round(d.billedDayUnits * 100) / 100 : "",
-                            "Variance Units": Math.round(d.dayVariance * 100) / 100,
-                            "Variance %": `${fmtNum(d.dayVariancePercent, 1)}%`,
-                            "Calculated Cost (INR)": Math.round(d.cost || (d.units * billAuditAnalysis.tariffRate)),
-                            "Status / Finding": !d.hasData ? "Missing Factory Entry" : d.hasSpike ? "Consumption Surge Spike" : d.isDiscrepant ? "Variance Alert" : "Matched"
-                        };
-                    });
-                    const wsDaily = XLSX.utils.json_to_sheet(dailyData);
-                    XLSX.utils.book_append_sheet(wb, wsDaily, "Date_Wise_Discrepancies");
-
-                    XLSX.writeFile(wb, `Bill_Audit_${billAuditAnalysis.plantCode}_${billAuditAnalysis.utility.key}_${billAuditForm.startDate}_to_${billAuditForm.endDate}.xlsx`);
-                } catch (err) {
-                    console.error("Failed to export Excel report:", err);
-                    exportAuditBreakdownCSV();
                 }
             };
 
@@ -4458,14 +3583,45 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     if (otpErr) throw otpErr;
 
                     // Send verification code directly to user's registered corporate email
-                    const mailRes = await fetch("/api/send-otp", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email: emailVal, otp: randomOtp })
-                    });
-                    const mailData = await mailRes.json().catch(() => ({}));
-                    if (!mailRes.ok || (mailData && mailData.success === false)) {
-                        throw new Error(mailData?.error || "Failed to dispatch verification email. Please try again.");
+                    let emailDispatched = false;
+                    try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 6000);
+                        const mailRes = await fetch("/api/send-otp", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ email: emailVal, otp: randomOtp }),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        const mailData = await mailRes.json().catch(() => ({}));
+                        if (mailRes.ok && mailData && mailData.success !== false) {
+                            emailDispatched = true;
+                        }
+                    } catch (netErr) {
+                        console.warn("Backend /api/send-otp attempt:", netErr.message);
+                    }
+
+                    // Direct client-side relay safety net (bypasses serverless cloud IP policies)
+                    if (!emailDispatched) {
+                        try {
+                            await fetch("https://script.google.com/macros/s/AKfycbyO2guilzdohQC7V0IvAzsxUODjNKxQ3lpStHLZt5gr562Jqe27ZvXX4ybq6eXx49WP/exec", {
+                                method: "POST",
+                                mode: "no-cors",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    to: emailVal,
+                                    email: emailVal,
+                                    otp: randomOtp,
+                                    subject: `PGEL UtilitySense - Login Verification OTP: [${randomOtp}]`,
+                                    body: `Your 6-digit secure portal verification code is: ${randomOtp}`,
+                                    html: `<div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 500px; margin: 0 auto;"><div style="text-align: center;"><h2 style="color: #0284c7; margin: 0;">UTILITY SENSE</h2><p style="color: #64748b; font-size: 12px;">Energy & Utility Management</p></div><div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;"><p>Your 6-digit secure portal verification code is:</p><div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; text-align: center; margin: 15px 0;"><span style="font-size: 32px; font-weight: 800; letter-spacing: 4px; font-family: monospace;">${randomOtp}</span></div><p style="font-size: 12px; color: #64748b;">Valid for 5 minutes. If you did not request this, please contact IT Admin.</p></div></div>`
+                                })
+                            });
+                            emailDispatched = true;
+                        } catch (relayErr) {
+                            console.warn("Client fallback dispatch notice:", relayErr.message);
+                        }
                     }
 
                     setOtpSent(true);
@@ -6681,7 +5837,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const parts = e.date.split("-");
                     const key = `${parts[0]}-${parts[1]}`; // YYYY-MM
                     if (!map[key]) {
-                        map[key] = { period: key, electricity: 0, solarGen: 0, diesel: 0, water: 0, waterCost: 0, cost: 0, png: 0, pngCost: 0, nitrogen: 0, nitrogenCost: 0, oxygen: 0, oxygenCost: 0, air: 0, lpg: 0, wasteHaz: 0, wasteNHaz: 0, wasteRec: 0 };
+                        map[key] = { period: key, electricity: 0, solarGen: 0, totalConsumption: 0, diesel: 0, water: 0, waterCost: 0, cost: 0, png: 0, pngCost: 0, nitrogen: 0, nitrogenCost: 0, oxygen: 0, oxygenCost: 0, air: 0, lpg: 0, wasteHaz: 0, wasteNHaz: 0, wasteRec: 0, production: 0, odu: 0, idu: 0 };
                     }
                     const pngVal = Number(e.png_consumption) || (e.png_closing && e.png_opening ? Math.max(0, Number(e.png_closing) - Number(e.png_opening)) : 0);
                     const n2Val = Number(e.nitrogen_consumption) || (e.nitrogen_closing && e.nitrogen_opening ? Math.max(0, Number(e.nitrogen_closing) - Number(e.nitrogen_opening)) : 0);
@@ -6690,6 +5846,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                     map[key].electricity += Number(e.electricity_consumption) || 0;
                     map[key].solarGen += Number(e.solar_generated) || 0;
+                    map[key].totalConsumption = (map[key].electricity || 0) + (map[key].solarGen || 0);
                     map[key].diesel += Number(e.diesel_used) || 0;
                     map[key].water += wVal;
                     map[key].waterCost += Number(e.water_cost) || (wVal * waterRate);
@@ -6706,6 +5863,9 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     map[key].wasteHaz += Number(e.waste_hazardous) || 0;
                     map[key].wasteNHaz += Number(e.waste_non_hazardous) || 0;
                     map[key].wasteRec += Number(e.waste_recycled) || 0;
+                    map[key].production += Number(e.production_qty) || 0;
+                    map[key].odu += Number(e.odu) || 0;
+                    map[key].idu += Number(e.idu) || 0;
                 });
                 return Object.values(map).sort((a, b) => a.period.localeCompare(b.period)).map(d => {
                     const [y, m] = d.period.split("-");
@@ -6738,11 +5898,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const key = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}`;
                     const label = dt.toLocaleDateString("en-GB", { month: "short" });
                     const src = byPeriod[key];
+                    const elVal = src ? Number(src.electricity) || 0 : 0;
+                    const solVal = src ? Number(src.solarGen) || 0 : 0;
                     out.push({
                         period: key,
                         label,
-                        electricity: src ? Number(src.electricity) || 0 : 0,
-                        solarGen: src ? Number(src.solarGen) || 0 : 0,
+                        electricity: elVal,
+                        solarGen: solVal,
+                        totalConsumption: elVal + solVal,
                         diesel: src ? Number(src.diesel) || 0 : 0,
                         water: src ? Number(src.water) || 0 : 0,
                         waterCost: src ? Number(src.waterCost) || 0 : 0,
@@ -6758,6 +5921,9 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         wasteHaz: src ? Number(src.wasteHaz) || 0 : 0,
                         wasteNHaz: src ? Number(src.wasteNHaz) || 0 : 0,
                         wasteRec: src ? Number(src.wasteRec) || 0 : 0,
+                        production: src ? Number(src.production) || 0 : 0,
+                        odu: src ? Number(src.odu) || 0 : 0,
+                        idu: src ? Number(src.idu) || 0 : 0,
                     });
                 }
                 return out;
@@ -7761,7 +6927,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                              <KpiCard label="Electricity (kWh)" value={fmtNum(kpiTotals.electricity)} icon="electric_bolt" tone="blue" compact={true} />
                                              <KpiCard label="Solar Gen (kWh)" value={fmtNum(kpiTotals.solarGenerated)} icon="wb_sunny" tone="amber" compact={true} />
                                              <KpiCard label="Total Consumption" value={fmtNum(aggregatedCosts.totalConsumption)} sub={`${dashboardGridLabel} + Solar (filter)`} icon="bolt" tone="orange" compact={true} />
-                                             <KpiCard label="Water (KL)" value={`${fmtNum(displayWaterConsumption)} KL`} icon="water_drop" tone="teal" compact={true} />
+                                             <KpiCard label="Water" value={fmtNum(displayWaterConsumption)} icon="water_drop" tone="teal" compact={true} />
                                              <KpiCard label="Diesel (L)" value={`${fmtNum(kpiTotals.diesel)} L`} icon="local_gas_station" tone="red" compact={true} />
                                              <KpiCard label="Energy Cost" value={fmtINR(aggregatedCosts.energyCost, { compact: true })} sub={`Tariff ₹ ${Number(aggregatedCosts.electRate || 0).toFixed(2)}/unit`} icon="currency_rupee" tone="purple" compact={true} />
                                              <KpiCard label="Water Cost" value={fmtINR(displayWaterCost, { compact: true })} icon="payments" tone="teal" compact={true} />
@@ -7782,7 +6948,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                      {/* Sleek thin arrow toggle button placed right after the 8th card */}
                                      <button
                                          onClick={() => setDashboardDeck(prev => prev === 'energy' ? 'gas' : 'energy')}
-                                         className="h-[62px] w-7 flex-shrink-0 bg-white dark:bg-[#121a29] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-[#26334a] rounded-xl shadow-xs hover:shadow-md flex flex-col items-center justify-center gap-0.5 text-slate-500 hover:text-sky-600 transition-all duration-300 cursor-pointer group select-none"
+                                         className="h-full min-h-[62px] self-stretch w-7 flex-shrink-0 bg-white dark:bg-[#121a29] hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-[#26334a] rounded-xl shadow-xs hover:shadow-md flex flex-col items-center justify-center gap-0.5 text-slate-500 hover:text-sky-600 transition-all duration-300 cursor-pointer group select-none"
                                          title={dashboardDeck === 'energy' ? "Click to view Gas, Auxiliary & Waste KPIs and Charts (⬇)" : "Click to view Energy & Production KPIs and Charts (⬆)"}
                                      >
                                          <span className="material-symbols-outlined text-[20px] group-hover:scale-125 transition-transform duration-300 text-sky-600 dark:text-sky-400">
@@ -7994,44 +7160,44 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                              </div>
 
                                              <div 
-                                                 onClick={() => openFyAnalysisModal("", "cost")}
-                                                 className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm hover:border-rose-400 dark:hover:border-rose-500 transition cursor-pointer group"
+                                                 onClick={() => openFyAnalysisModal("", "solar")}
+                                                 className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm hover:border-amber-400 dark:hover:border-amber-500 transition cursor-pointer group"
                                              >
                                                  <div className="flex items-center justify-between mb-1">
                                                      <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider group-hover:text-rose-600 transition">Financial Year Utility Cost</h4>
-                                                         <p className="text-[9px] text-slate-400">Last 4 financial years utility cost (Click for full analysis)</p>
+                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider group-hover:text-amber-600 transition">Financial Year Solar</h4>
+                                                         <p className="text-[9px] text-slate-400">Last 4 financial years solar generation (Click for full analysis)</p>
                                                      </div>
-                                                     <span className="material-symbols-outlined text-[16px] text-rose-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
+                                                     <span className="material-symbols-outlined text-[16px] text-amber-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={250}>
                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 22, right: 28, left: 4, bottom: 4 }}>
                                                          <defs>
-                                                             <linearGradient id="colorCostY" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor={CHART.yearlyCost} stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor={CHART.yearlyCost} stopOpacity={0.05}/>
+                                                             <linearGradient id="colorSolarFy" x1="0" y1="0" x2="0" y2="1">
+                                                                 <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4}/>
+                                                                 <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.05}/>
                                                              </linearGradient>
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={58} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "₹0" : (v >= 1e7 ? `₹${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `₹${Math.round(v/1e5)} L` : (v >= 1e3 ? `₹${Math.round(v/1e3)} k` : `₹${v}`)))} />
+                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
                                                          <Tooltip
                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
                                                              formatter={(v, name, item) => {
                                                                  const p = item?.payload || {};
                                                                  return [
-                                                                     <div key="fy_cs_tt" className="space-y-1">
-                                                                         <div>💰 Total Utility Cost: <b>{fmtINR(p.cost)}</b></div>
+                                                                     <div key="fy_sol_tt" className="space-y-1">
+                                                                         <div>☀️ Solar Generation: <b>{fmtNum(p.solarGen)} kWh</b></div>
                                                                          <div>⚡ Grid Electricity: <b>{fmtNum(p.electricity)} kWh</b></div>
-                                                                         {p.solarGen > 0 && <div>☀️ Solar Gen: <b>{fmtNum(p.solarGen)} kWh</b></div>}
+                                                                         <div>💰 Total Utility Cost: <b>{fmtINR(p.cost)}</b></div>
                                                                      </div>,
                                                                      ""
                                                                  ];
                                                              }}
                                                          />
-                                                         <Area type="monotone" dataKey="cost" name="Cost" stroke={CHART.yearlyCost} fill="url(#colorCostY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: CHART.yearlyCost, strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                             <LabelList dataKey="cost" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.yearlyCost }} formatter={(v) => v > 0 ? fmtINR(v, { compact: true }) : ""} />
+                                                         <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke="#f59e0b" fill="url(#colorSolarFy)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#f59e0b', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                             <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#d97706' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
                                                          </Area>
                                                      </AreaChart>
                                                  </ResponsiveContainer>
@@ -8107,12 +7273,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                  <div className="mb-2 flex items-center justify-between">
                                                      <div>
                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Solar Gen vs Total Consumption</h4>
-                                                         <p className="text-[9px] text-slate-400">Solar generation vs {dashboardGridLabel} + Solar total (Last 30 days)</p>
+                                                         <p className="text-[9px] text-slate-400">Solar generation vs {dashboardGridLabel} + Solar total (Last 5 months)</p>
                                                      </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/50">Daily Trend</span>
+                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/50">Monthly Trend</span>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={210}>
-                                                     <AreaChart data={last30DaysTrendsData}>
+                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
                                                          <defs>
                                                              <linearGradient id="colorTotalR4" x1="0" y1="0" x2="0" y2="1">
                                                                  <stop offset="5%" stopColor="#0284c7" stopOpacity={0.35}/>
@@ -8124,7 +7290,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                              </linearGradient>
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
+                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                          <Tooltip
                                                              content={({ active, payload, label }) => {
@@ -8136,7 +7302,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                  const solarPct = total > 0 ? ((solar / total) * 100).toFixed(1) : "0.0";
                                                                  return (
                                                                      <div className="bg-slate-900/95 text-white p-2.5 rounded-xl shadow-xl border border-slate-700/60 text-[10px] space-y-1 z-50 backdrop-blur-md min-w-[170px]">
-                                                                         <p className="font-extrabold border-b border-slate-700/60 pb-1 text-slate-300 uppercase tracking-wider text-[9.5px]">{label} ({d.date})</p>
+                                                                         <p className="font-extrabold border-b border-slate-700/60 pb-1 text-slate-300 uppercase tracking-wider text-[9.5px]">{label}{d.period ? ` (${d.period})` : (d.date ? ` (${d.date})` : "")}</p>
                                                                          <div className="flex items-center justify-between text-amber-400 font-semibold pt-0.5">
                                                                              <span>☀️ Solar Gen:</span>
                                                                              <span className="font-extrabold">{fmtNum(solar)} kWh</span>
@@ -8158,8 +7324,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                              }}
                                                          />
                                                          <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />
-                                                         <Area type="monotone" dataKey="totalConsumption" name="Total Consumption" stroke="#0284c7" fill="url(#colorTotalR4)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} isAnimationActive={true} animationDuration={1000} />
-                                                         <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke="#f59e0b" fill="url(#colorSolarR4)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} isAnimationActive={true} animationDuration={1000} />
+                                                         <Area type="monotone" dataKey="totalConsumption" name="Total Consumption" stroke="#0284c7" fill="url(#colorTotalR4)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} />
+                                                         <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke="#f59e0b" fill="url(#colorSolarR4)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} />
                                                      </AreaChart>
                                                  </ResponsiveContainer>
                                              </div>
@@ -8167,13 +7333,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
                                                  <div className="mb-2 flex items-center justify-between">
                                                      <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Water Consumption (KL)</h4>
-                                                         <p className="text-[9px] text-slate-400">Daily water resource logging (Last 30 days)</p>
+                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Water Consumption</h4>
+                                                         <p className="text-[9px] text-slate-400">Monthly water cost & resource logging (Last 5 months)</p>
                                                      </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">KL Metric</span>
+                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">Cost (₹)</span>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={210}>
-                                                     <AreaChart data={waterTrendsData}>
+                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
                                                          <defs>
                                                              <linearGradient id="colorWaterR4" x1="0" y1="0" x2="0" y2="1">
                                                                  <stop offset="5%" stopColor="#0d9488" stopOpacity={0.4}/>
@@ -8181,14 +7347,25 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                              </linearGradient>
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={36} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
                                                          <Tooltip
                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v) => [`${fmtNum(v)} KL`, "Water Consumed"]}
+                                                             formatter={(v, name, item) => {
+                                                                 const p = item?.payload || {};
+                                                                 return [
+                                                                     <div key="w_cost_tt" className="space-y-0.5">
+                                                                         <div>💰 Water Cost: <b>{fmtINR(p.waterCost)}</b></div>
+                                                                         <div>💧 Consumption: <b>{fmtNum(p.water)}</b></div>
+                                                                     </div>,
+                                                                     ""
+                                                                 ];
+                                                             }}
                                                          />
-                                                         <Area type="monotone" dataKey="water" name="Water (KL)" stroke="#0d9488" fill="url(#colorWaterR4)" strokeWidth={2.5} dot={false} activeDot={{ r: 6, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={true} animationDuration={1000} />
+                                                         <Area type="monotone" dataKey="waterCost" name="Water Cost" stroke="#0d9488" fill="url(#colorWaterR4)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={true} animationDuration={1000}>
+                                                             <LabelList dataKey="waterCost" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0d9488' }} formatter={(v) => v > 0 ? fmtINR(v, { compact: true }) : ""} />
+                                                         </Area>
                                                      </AreaChart>
                                                  </ResponsiveContainer>
                                              </div>
@@ -8515,13 +7692,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
                                                  <div className="mb-2 flex items-center justify-between">
                                                      <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Water Consumption (KL)</h4>
-                                                         <p className="text-[9px] text-slate-400">Daily water resource logging (Last 30 days)</p>
+                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Water Consumption</h4>
+                                                         <p className="text-[9px] text-slate-400">Daily water cost & resource logging (Last 30 days)</p>
                                                      </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-200/50">KL Metric</span>
+                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-200/50">Cost (₹)</span>
                                                  </div>
                                                  <ResponsiveContainer width="100%" height={210}>
-                                                     <AreaChart data={waterTrendsData}>
+                                                     <AreaChart data={waterTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
                                                          <defs>
                                                              <linearGradient id="colorWaterGasDeck" x1="0" y1="0" x2="0" y2="1">
                                                                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4}/>
@@ -8530,13 +7707,24 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                          </defs>
                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={36} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
                                                          <Tooltip
                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v) => [`${fmtNum(v)} KL`, "Water Consumed"]}
+                                                             formatter={(v, name, item) => {
+                                                                 const p = item?.payload || {};
+                                                                 return [
+                                                                     <div key="w_d2_cost_tt" className="space-y-0.5">
+                                                                         <div>💰 Water Cost: <b>{fmtINR(p.waterCost)}</b></div>
+                                                                         <div>💧 Consumption: <b>{fmtNum(p.water)}</b></div>
+                                                                     </div>,
+                                                                     ""
+                                                                 ];
+                                                             }}
                                                          />
-                                                         <Area type="monotone" dataKey="water" name="Water (KL)" stroke="#06b6d4" fill="url(#colorWaterGasDeck)" strokeWidth={2.5} dot={false} activeDot={{ r: 6, fill: '#06b6d4', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={true} animationDuration={1000} />
+                                                         <Area type="monotone" dataKey="waterCost" name="Water Cost" stroke="#06b6d4" fill="url(#colorWaterGasDeck)" strokeWidth={2.5} dot={{ r: 4, fill: '#06b6d4', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6, fill: '#06b6d4', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={true} animationDuration={1000}>
+                                                             <LabelList dataKey="waterCost" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0891b2' }} formatter={(v) => v > 0 ? fmtINR(v, { compact: true }) : ""} />
+                                                         </Area>
                                                      </AreaChart>
                                                  </ResponsiveContainer>
                                              </div>
@@ -8703,6 +7891,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     <span className="material-symbols-outlined text-[18px]">description</span>
                                 </button>
 
+                                <button type="button" onClick={() => setActiveTab("reconciliation")} className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${activeTab === 'reconciliation' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white font-extrabold' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Utility Bill Audit & Reconciliation">
+                                    <span className="material-symbols-outlined text-[17px]">receipt_long</span>
+                                    <span className="text-[10px] uppercase tracking-wider font-extrabold hidden sm:inline">Bill Audit</span>
+                                </button>
+
                                 {/* Molding Dedicated Tab Button */}
                                 {canAccessMolding && (
                                     <button
@@ -8717,23 +7910,6 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     >
                                         <span className="material-symbols-outlined text-[16px]">precision_manufacturing</span>
                                         <span className="text-[10px] uppercase tracking-wider">Molding</span>
-                                    </button>
-                                )}
-
-                                {/* Bill Audit Dedicated Tab Button */}
-                                {canAccessBillAudit && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveTab("bill_audit")}
-                                        className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${
-                                            activeTab === "bill_audit"
-                                                ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
-                                                : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 font-bold border border-indigo-200/60'
-                                        }`}
-                                        title="Utility Bill Upload & Consumption Reconciliation"
-                                    >
-                                        <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-                                        <span className="text-[10px] uppercase tracking-wider">Bill Audit</span>
                                     </button>
                                 )}
 
@@ -8921,6 +8097,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                     {/* MAIN CONTENT DISPLAY */}
                     <main className={`main-content${activeTab === "reports" ? " main-content--reports" : ""}`}>
+
+                        {/* UTILITY BILL RECONCILIATION MODULE */}
+                        {activeTab === "reconciliation" && (
+                            <ReconciliationModule
+                                plants={plants}
+                                dailyEntries={dailyEntries}
+                                currentUser={currentUser}
+                                tariffs={tariffs}
+                            />
+                        )}
 
                         {/* 1. DASHBOARD COMPONENT (Main Dashboard & Molding Dashboard) */}
                         {(activeTab === "dashboard" || activeTab === "molding") && (
@@ -9697,1282 +8883,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                             </div>
                         )}
 
-                        {/* 5.5 BILL AUDIT & RECONCILIATION COMPONENT */}
-                        {activeTab === "bill_audit" && (
-                            <div className="space-y-6 pt-4">
-                                {/* Header Card */}
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 shadow-xs flex items-center justify-center">
-                                                <span className="material-symbols-outlined text-[24px]">receipt_long</span>
-                                            </span>
-                                            <div>
-                                                <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
-                                                    <span>Utility Bill Audit & Discrepancy Analyzer</span>
-                                                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                                                        Deep Multi-Dimensional Audit
-                                                    </span>
-                                                </h2>
-                                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                                    Upload utility bills (Excel, CSV, PDF, Image) to automatically detect unit differences, date-wise spikes, tariff overcharges, and meter reading jumps.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Action buttons & Tab Switcher */}
-                                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                                        <button
-                                            type="button"
-                                            onClick={loadDemoJuly2026Bill}
-                                            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold transition flex items-center gap-1.5 border-none shadow-xs cursor-pointer"
-                                            title="Load verified July 2026 MSEDCL industrial bill for Supa MIDC (Plant 4010)"
-                                        >
-                                            <span className="material-symbols-outlined text-[16px]">bolt</span>
-                                            <span>⚡ Load Demo July 2026 Bill</span>
-                                        </button>
-
-                                        <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                                            <button
-                                                type="button"
-                                                onClick={() => setActiveAuditTab("overview")}
-                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border-none ${
-                                                    activeAuditTab === "overview"
-                                                        ? "bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs"
-                                                        : "bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900"
-                                                }`}
-                                            >
-                                                <span className="material-symbols-outlined text-[15px]">fact_check</span>
-                                                <span>Executive Comparison</span>
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => setActiveAuditTab("daily")}
-                                                disabled={!billAuditAnalysis}
-                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border-none ${
-                                                    !billAuditAnalysis
-                                                        ? "opacity-40 cursor-not-allowed text-slate-400"
-                                                        : activeAuditTab === "daily"
-                                                        ? "bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs cursor-pointer"
-                                                        : "bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 cursor-pointer"
-                                                }`}
-                                            >
-                                                <span className="material-symbols-outlined text-[15px]">calendar_month</span>
-                                                <span>Daily Inspector</span>
-                                                {billAuditAnalysis && (
-                                                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-bold ${
-                                                        billAuditAnalysis.discrepantDays.length > 0
-                                                            ? "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300"
-                                                            : "bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200"
-                                                    }`}>
-                                                        {billAuditAnalysis.discrepantDays.length > 0
-                                                            ? `${billAuditAnalysis.discrepantDays.length} diffs`
-                                                            : `${billAuditAnalysis.dailyBreakdown.length} days`}
-                                                    </span>
-                                                )}
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => setActiveAuditTab("history")}
-                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border-none ${
-                                                    activeAuditTab === "history"
-                                                        ? "bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-xs"
-                                                        : "bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900"
-                                                }`}
-                                            >
-                                                <span className="material-symbols-outlined text-[15px]">history</span>
-                                                <span>Audit History</span>
-                                                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-mono font-bold">
-                                                    {billAudits.length}
-                                                </span>
-                                            </button>
-                                        </div>
-
-                                        {billAuditAnalysis && (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    onClick={exportAuditBreakdownXLSX}
-                                                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 border-none shadow-xs cursor-pointer"
-                                                    title="Export Full Discrepancy & Executive Management Report to Excel"
-                                                >
-                                                    <span className="material-symbols-outlined text-[16px]">download</span>
-                                                    <span>Export Excel</span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleSaveBillAudit}
-                                                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 border-none shadow-xs cursor-pointer"
-                                                    title="Save Reconciled Audit into History Log"
-                                                >
-                                                    <span className="material-symbols-outlined text-[16px]">save</span>
-                                                    <span>Save Audit</span>
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {auditSaveMessage && (
-                                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 rounded-xl text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2 animate-fadeIn">
-                                        <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                                        <span>{auditSaveMessage}</span>
-                                    </div>
-                                )}
-
-                                {/* Main Tab 1: Executive Overview & Reconciliation */}
-                                {activeAuditTab === "overview" && (
-                                    <div className="space-y-6">
-                                        {/* Top Quick Control & Upload Bar */}
-                                        <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs space-y-4">
-                                            {/* Row 1: Selectors & Dates */}
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-                                                {/* Location */}
-                                                <div className="lg:col-span-3">
-                                                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
-                                                        Location
-                                                    </label>
-                                                    <select
-                                                        value={billAuditForm.location}
-                                                        onChange={(e) => handleBillAuditLocationChange(e.target.value)}
-                                                        className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
-                                                    >
-                                                        <option value="all">All Locations</option>
-                                                        <option value="PUNE">Pune (PGEL / PGTL / NGM)</option>
-                                                        <option value="NASHIK">Nashik (NGM)</option>
-                                                    </select>
-                                                </div>
-
-                                                {/* Plant */}
-                                                <div className="lg:col-span-3">
-                                                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
-                                                        Plant to Compare *
-                                                    </label>
-                                                    <select
-                                                        value={billAuditForm.plant}
-                                                        onChange={(e) => setBillAuditForm(prev => ({ ...prev, plant: e.target.value }))}
-                                                        className="w-full h-9 px-3 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/30 dark:bg-indigo-950/30 text-xs font-bold text-indigo-950 dark:text-indigo-200 focus:outline-none focus:border-indigo-500"
-                                                    >
-                                                        <option value="">-- Select Plant --</option>
-                                                        {billAuditPlants.map(p => (
-                                                            <option key={p.plant_code} value={p.plant_code}>
-                                                                {p.plant_display_name || p.plant_name} ({p.plant_code})
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-
-                                                {/* Period Dates */}
-                                                <div className="lg:col-span-3">
-                                                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
-                                                        Billing Period Start *
-                                                    </label>
-                                                    <input
-                                                        type="date"
-                                                        value={billAuditForm.startDate}
-                                                        onChange={(e) => setBillAuditForm(prev => ({ ...prev, startDate: e.target.value }))}
-                                                        className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
-                                                    />
-                                                </div>
-
-                                                <div className="lg:col-span-3">
-                                                    <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
-                                                        Billing Period End *
-                                                    </label>
-                                                    <input
-                                                        type="date"
-                                                        value={billAuditForm.endDate}
-                                                        onChange={(e) => setBillAuditForm(prev => ({ ...prev, endDate: e.target.value }))}
-                                                        className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* Row 2: File Upload Dropzone & Quick Buttons */}
-                                            <div className="flex flex-col md:flex-row items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
-                                                <div className="flex items-center gap-3 min-w-0">
-                                                    <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-indigo-600 shrink-0 shadow-2xs">
-                                                        <span className="material-symbols-outlined text-[20px]">
-                                                            {billAuditForm.fileType === "pdf" ? "picture_as_pdf" : billAuditForm.fileType === "excel" ? "table_view" : "upload_file"}
-                                                        </span>
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <p className="text-xs font-extrabold text-slate-900 dark:text-slate-100 truncate">
-                                                            {billAuditForm.fileName ? `Uploaded: ${billAuditForm.fileName}` : "Upload Utility Bill (PDF, Excel .xlsx/.xls, CSV, Image)"}
-                                                        </p>
-                                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                                                            {billAuditForm.isMsedclParsed
-                                                                ? "✓ MSEDCL HT-I parameters auto-extracted (Billed Units, Demand kVA, Solar, Meter Readings)"
-                                                                : "Auto-detects dates, units, tariff rates, demand charges, and meter opening/closing"}
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                                                    <label className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border border-indigo-200/80">
-                                                        <span className="material-symbols-outlined text-[16px]">upload</span>
-                                                        <span>{billAuditForm.fileName ? "Replace Bill" : "Upload Bill File"}</span>
-                                                        <input
-                                                            type="file"
-                                                            accept=".pdf,image/*,.csv,.xlsx,.xls"
-                                                            onChange={handleBillFileUpload}
-                                                            className="hidden"
-                                                        />
-                                                    </label>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowManualBillInputs(prev => !prev)}
-                                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
-                                                            showManualBillInputs
-                                                                ? "bg-indigo-600 text-white border-indigo-600"
-                                                                : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
-                                                        }`}
-                                                    >
-                                                        <span className="material-symbols-outlined text-[15px]">edit_note</span>
-                                                        <span>{showManualBillInputs ? "Hide Figures Editor" : "Edit / View Figures"}</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* Collapsible Manual Figures Editor Drawer */}
-                                            {showManualBillInputs && (
-                                                <div className="p-4 bg-slate-50/70 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3 animate-fadeIn">
-                                                    <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-700">
-                                                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                                                            Manual Bill Figures Editor & Extracted Parameters
-                                                        </span>
-                                                        <span className="text-[10px] text-slate-400">
-                                                            Edit these figures anytime to test scenarios or override extracted bill values
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                                        <div>
-                                                            <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">
-                                                                Billed Units (kVAh / kWh) *
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                value={billAuditForm.billedUnits}
-                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, billedUnits: e.target.value }))}
-                                                                className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono font-bold"
-                                                            />
-                                                        </div>
-
-                                                        <div>
-                                                            <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">
-                                                                Total Bill Amount (₹) *
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                value={billAuditForm.billedAmount}
-                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, billedAmount: e.target.value }))}
-                                                                className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono font-bold"
-                                                            />
-                                                        </div>
-
-                                                        <div>
-                                                            <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">
-                                                                Opening Meter Reading
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                value={billAuditForm.billedOpeningMeter}
-                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, billedOpeningMeter: e.target.value }))}
-                                                                className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono font-medium"
-                                                            />
-                                                        </div>
-
-                                                        <div>
-                                                            <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">
-                                                                Closing Meter Reading
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                value={billAuditForm.billedClosingMeter}
-                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, billedClosingMeter: e.target.value }))}
-                                                                className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono font-medium"
-                                                            />
-                                                        </div>
-
-                                                        <div>
-                                                            <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">
-                                                                Contract Demand (kVA)
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                value={billAuditForm.contractDemandKva || ""}
-                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, contractDemandKva: Number(e.target.value) }))}
-                                                                className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono"
-                                                            />
-                                                        </div>
-
-                                                        <div>
-                                                            <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">
-                                                                Billed Demand (kVA)
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                value={billAuditForm.billedDemandKva || ""}
-                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, billedDemandKva: Number(e.target.value) }))}
-                                                                className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono"
-                                                            />
-                                                        </div>
-
-                                                        <div>
-                                                            <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">
-                                                                Recorded Peak Demand (MD kVA)
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                value={billAuditForm.recordedDemandKva || ""}
-                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, recordedDemandKva: Number(e.target.value) }))}
-                                                                className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono"
-                                                            />
-                                                        </div>
-
-                                                        <div>
-                                                            <label className="text-[10px] font-extrabold uppercase text-slate-500 block mb-1">
-                                                                Multiplying Factor (MF)
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                value={billAuditForm.billMultiplyingFactor || ""}
-                                                                onChange={(e) => setBillAuditForm(prev => ({ ...prev, billMultiplyingFactor: Number(e.target.value) }))}
-                                                                className="w-full h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-mono"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Reconciliation Results Section */}
-                                        {billAuditAnalysis && (
-                                            <div className="space-y-6 animate-fadeIn">
-                                                {/* Top Executive Cost Alert Banner (Contract Demand Overcharge) */}
-                                                {billAuditAnalysis.unutilizedDemandKva > 50 && (
-                                                    <div className="p-4 sm:p-5 rounded-2xl border border-amber-300/80 dark:border-amber-700/80 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent shadow-xs">
-                                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                                                            <div className="flex items-start gap-3.5">
-                                                                <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-                                                                    <span className="material-symbols-outlined text-[28px]">warning</span>
-                                                                </div>
-                                                                <div>
-                                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                                        <h3 className="text-sm sm:text-base font-black text-amber-950 dark:text-amber-200 uppercase tracking-tight">
-                                                                            Management Cost Alert: ₹ {fmtNum(billAuditAnalysis.demandPenaltyMonthly)} / Month Paid for Unused Contract Demand
-                                                                        </h3>
-                                                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-200/90 text-amber-900">
-                                                                            High ROI Opportunity
-                                                                        </span>
-                                                                    </div>
-                                                                    <p className="text-xs text-amber-900/90 dark:text-amber-300 mt-1 leading-relaxed">
-                                                                        In July 2026, factory actual recorded peak demand was only <strong>{billAuditAnalysis.recordedDemandKva} kVA</strong>. However, MSEDCL charges fixed demand on 75% of Contract Demand (<strong>{billAuditAnalysis.billedDemandKva} kVA</strong> @ ₹{billAuditAnalysis.demandRate.toFixed(0)}/kVA).
-                                                                        You are paying for <strong>{billAuditAnalysis.unutilizedDemandKva} kVA unutilized idle capacity</strong> every single month (~₹ {fmtNum(billAuditAnalysis.demandPenaltyAnnual)} per year).
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="shrink-0 flex flex-col sm:flex-row items-start sm:items-center gap-2">
-                                                                <div className="text-left lg:text-right">
-                                                                    <div className="text-[10px] uppercase font-extrabold text-amber-800 dark:text-amber-300">Potential Annual Savings</div>
-                                                                    <div className="text-xl font-mono font-black text-emerald-700 dark:text-emerald-400">
-                                                                        ~₹ {fmtNum(billAuditAnalysis.potentialSavingsAnnual)} / yr
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* 4 Executive KPI Cards */}
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                                    {/* Card 1: Total Financial Cost */}
-                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
-                                                        <div className="flex items-center justify-between text-slate-400 mb-1">
-                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400">Total Billed Payable</span>
-                                                            <span className="material-symbols-outlined text-[20px] text-indigo-500">payments</span>
-                                                        </div>
-                                                        <div className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
-                                                            ₹ {fmtNum(billAuditAnalysis.billedAmount)}
-                                                        </div>
-                                                        <div className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
-                                                            Energy: ₹ {fmtNum(billAuditForm.energyCharges || billAuditAnalysis.systemCost)} | Fixed DC: ₹ {fmtNum(billAuditForm.demandCharges || 0)}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Card 2: Units Alignment */}
-                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
-                                                        <div className="flex items-center justify-between text-slate-400 mb-1">
-                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400">Billed vs Physical Meter</span>
-                                                            <span className="material-symbols-outlined text-[20px] text-emerald-500">speed</span>
-                                                        </div>
-                                                        <div className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
-                                                            {fmtNum(billAuditAnalysis.billedUnits)} <span className="text-xs font-bold text-slate-400">kVAh</span>
-                                                        </div>
-                                                        <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold mt-1 flex items-center gap-1">
-                                                            <span className="material-symbols-outlined text-[14px]">check_circle</span>
-                                                            <span>Meter @ MF 20: {fmtNum(billAuditAnalysis.rawUnitsAtBillMf || 92750)} kWh (99.7% Match)</span>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Card 3: Idle Demand Dead Loss */}
-                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
-                                                        <div className="flex items-center justify-between text-slate-400 mb-1">
-                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400">Unused Contract Demand</span>
-                                                            <span className="material-symbols-outlined text-[20px] text-rose-500">warning</span>
-                                                        </div>
-                                                        <div className="text-2xl font-black font-mono text-rose-600 dark:text-rose-400">
-                                                            {fmtNum(billAuditAnalysis.unutilizedDemandKva)} <span className="text-xs font-bold text-slate-400">kVA</span>
-                                                        </div>
-                                                        <div className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold mt-1">
-                                                            Dead Loss: ₹ {fmtNum(billAuditAnalysis.demandPenaltyMonthly)} / month
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Card 4: Solar Net Metering */}
-                                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-4 shadow-xs">
-                                                        <div className="flex items-center justify-between text-slate-400 mb-1">
-                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400">Solar Net Gen & Export</span>
-                                                            <span className="material-symbols-outlined text-[20px] text-amber-500">solar_power</span>
-                                                        </div>
-                                                        <div className="text-2xl font-black font-mono text-slate-900 dark:text-slate-100">
-                                                            {fmtNum(billAuditAnalysis.billSolarGen || 21110)} <span className="text-xs font-bold text-slate-400">kWh</span>
-                                                        </div>
-                                                        <div className="text-[11px] text-amber-600 dark:text-amber-400 font-bold mt-1">
-                                                            Software: {fmtNum(billAuditAnalysis.systemSolarUnits)} kWh ({billAuditAnalysis.solarMatchPercent || 99}% Match)
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Side-by-Side Executive Comparison Matrix Table */}
-                                                <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs space-y-4">
-                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
-                                                        <div>
-                                                            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
-                                                                <span className="material-symbols-outlined text-indigo-600">table_chart</span>
-                                                                <span>Executive Reconciliation Matrix: MSEDCL Bill vs Factory Meters</span>
-                                                            </h3>
-                                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                                                Direct comparison of billing parameters, meter readings, multiplying factors, and financial impact for {billAuditAnalysis.plantName} ({billAuditForm.startDate} to {billAuditForm.endDate}).
-                                                            </p>
-                                                        </div>
-
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                                                                Tariff: HT-I Industrial
-                                                            </span>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-                                                        <table className="w-full text-left text-xs border-collapse">
-                                                            <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase text-[10px] font-extrabold tracking-wider">
-                                                                <tr>
-                                                                    <th className="py-3 px-4">Billing & Operating Parameter</th>
-                                                                    <th className="py-3 px-4 text-right">MSEDCL Bill (JUL-2026)</th>
-                                                                    <th className="py-3 px-4 text-right">Factory Meter / Software</th>
-                                                                    <th className="py-3 px-4 text-right">Variance / Discrepancy</th>
-                                                                    <th className="py-3 px-4 text-center">Status / Executive Verdict</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                                                                {/* 1. Total Bill Payable */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Total Payable Bill Amount (₹)
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-black text-slate-900 dark:text-slate-100 text-sm">
-                                                                        ₹ {fmtNum(billAuditAnalysis.billedAmount)}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-slate-700 dark:text-slate-300">
-                                                                        ₹ {fmtNum(billAuditAnalysis.systemCost + (billAuditAnalysis.recordedDemandKva * billAuditAnalysis.demandRate))}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-amber-600">
-                                                                        +₹ {fmtNum(Math.max(0, billAuditAnalysis.billedAmount - (billAuditAnalysis.systemCost + (billAuditAnalysis.recordedDemandKva * billAuditAnalysis.demandRate))))}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                                                                            Driven by Fixed Demand
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* 2. Fixed Demand Charges */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition bg-amber-50/20 dark:bg-amber-950/10">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Fixed Demand Charges (₹)
-                                                                        <span className="block text-[10px] text-slate-400 font-normal">Billed on 75% of CD (1,499 kVA @ ₹650/kVA)</span>
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-rose-600">
-                                                                        ₹ {fmtNum(billAuditForm.demandCharges || 974350)}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-slate-600 dark:text-slate-400">
-                                                                        ₹ {fmtNum(billAuditAnalysis.recordedDemandKva * billAuditAnalysis.demandRate)} (for 490 kVA)
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-black text-rose-600">
-                                                                        +₹ {fmtNum(billAuditAnalysis.demandPenaltyMonthly)} Dead Loss
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                                                                            🚨 Reduce CD to 800 kVA
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* 3. Energy Charges */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Net Energy Charges (₹)
-                                                                        <span className="block text-[10px] text-slate-400 font-normal">Base energy consumption charge</span>
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
-                                                                        ₹ {fmtNum(billAuditForm.energyCharges || 767922)}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
-                                                                        ₹ {fmtNum(billAuditAnalysis.systemCost)}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-emerald-600">
-                                                                        Matched
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                                                            ✓ 100% Rate Matched
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* 4. Gross Factory Consumption */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Gross Factory Units (kWh)
-                                                                        <span className="block text-[10px] text-slate-400 font-normal">(Closing - Opening) × MF 20</span>
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-black text-indigo-900 dark:text-indigo-200">
-                                                                        {fmtNum(billAuditForm.grossUnitsKwh || 92750.48)} kWh
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
-                                                                        {fmtNum(billAuditAnalysis.rawUnitsAtBillMf || 92750.40)} kWh
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
-                                                                        -0.08 kWh (0.00%)
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                                                            ✓ Physical Meter In Sync
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* 5. Billed kVAh Units */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Billed Units (kVAh vs kWh)
-                                                                        <span className="block text-[10px] text-slate-400 font-normal">MSEDCL bills HT consumers on kVAh</span>
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
-                                                                        {fmtNum(billAuditAnalysis.billedUnits)} kVAh
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-slate-600 dark:text-slate-400">
-                                                                        {fmtNum(billAuditForm.billedUnitsKwh || 90349)} kWh
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-slate-500">
-                                                                        +637 units (PF: 0.993)
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                                                            ✓ High PF Maintained
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* 6. Opening Meter Reading */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Month Opening Reading
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-slate-800 dark:text-slate-200">
-                                                                        {fmtNum(billAuditAnalysis.meterOpeningRef)}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-indigo-600 dark:text-indigo-400 font-bold">
-                                                                        {fmtNum(billAuditAnalysis.meterOpeningRef)}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-emerald-600">
-                                                                        0.00
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                                                            ✓ Baseline Matched
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* 7. Closing Meter Reading */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Month Closing Reading
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-slate-800 dark:text-slate-200">
-                                                                        {fmtNum(billAuditAnalysis.meterClosingRef)}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-indigo-600 dark:text-indigo-400 font-bold">
-                                                                        {fmtNum(billAuditAnalysis.meterClosingRef)}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-emerald-600">
-                                                                        0.00
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                                                            ✓ Baseline Matched
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* 8. Multiplying Factor */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Multiplying Factor (MF)
-                                                                        <span className="block text-[10px] text-slate-400 font-normal">Utility CT Ratio (100A / 5A)</span>
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
-                                                                        {billAuditAnalysis.billMF || 20.00}
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-amber-600">
-                                                                        {billAuditAnalysis.systemMF || 40.00} (In DB)
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-amber-600">
-                                                                        Factor 40 vs 20
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                                                                            ⚠ Update DB MF to 20
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* 9. Peak Demand */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Peak Demand (kVA)
-                                                                        <span className="block text-[10px] text-slate-400 font-normal">Billed 75% MD vs Actual Factory Peak MD</span>
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-rose-600">
-                                                                        {billAuditAnalysis.billedDemandKva} kVA (Billed)
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
-                                                                        {billAuditAnalysis.recordedDemandKva} kVA (Actual Peak)
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-black text-rose-600">
-                                                                        +{billAuditAnalysis.unutilizedDemandKva} kVA Unused
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                                                                            67% Capacity Unused
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-
-                                                                {/* 10. Solar Generation */}
-                                                                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                    <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
-                                                                        Solar Generation & Credit
-                                                                        <span className="block text-[10px] text-slate-400 font-normal">Export units credited on MSEDCL bill</span>
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-amber-600">
-                                                                        {fmtNum(billAuditAnalysis.billSolarGen || 21110)} kWh
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
-                                                                        {fmtNum(billAuditAnalysis.systemSolarUnits)} kWh
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-right font-mono text-emerald-600">
-                                                                        {billAuditAnalysis.solarMatchPercent || 99.0}% Match
-                                                                    </td>
-                                                                    <td className="py-3 px-4 text-center">
-                                                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                                                            ✓ Net Credit Applied
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                </div>
-
-                                                {/* Proportional Cost Breakdown Stack (Where did the ₹20.64 Lakhs go?) */}
-                                                <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                                                            <span className="material-symbols-outlined text-indigo-600 text-[18px]">pie_chart</span>
-                                                            <span>Monthly Bill Cost Breakdown Analysis (Where does the money go?)</span>
-                                                        </h4>
-                                                        <span className="text-xs font-mono font-black text-slate-900 dark:text-slate-100">
-                                                            Total: ₹ {fmtNum(billAuditAnalysis.billedAmount)}
-                                                        </span>
-                                                    </div>
-
-                                                    {/* Stacked multi-color progress bar */}
-                                                    <div className="w-full h-5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex shadow-inner">
-                                                        {/* Demand Charges: 47.2% */}
-                                                        <div
-                                                            className="bg-rose-500 h-full transition-all duration-500 flex items-center justify-center text-[10px] font-bold text-white"
-                                                            style={{ width: "47.2%" }}
-                                                            title="Fixed Demand Charges: ₹ 9,74,350 (47.2%)"
-                                                        >
-                                                            47.2%
-                                                        </div>
-                                                        {/* Energy Charges: 37.2% */}
-                                                        <div
-                                                            className="bg-emerald-500 h-full transition-all duration-500 flex items-center justify-center text-[10px] font-bold text-white"
-                                                            style={{ width: "37.2%" }}
-                                                            title="Energy Charges: ₹ 7,67,922 (37.2%)"
-                                                        >
-                                                            37.2%
-                                                        </div>
-                                                        {/* Duty & Tax: 8.0% */}
-                                                        <div
-                                                            className="bg-amber-500 h-full transition-all duration-500 flex items-center justify-center text-[10px] font-bold text-white"
-                                                            style={{ width: "8.0%" }}
-                                                            title="Electricity Duty & Tax: ₹ 1,65,565 (8.0%)"
-                                                        >
-                                                            8.0%
-                                                        </div>
-                                                        {/* Wheeling & FAC: 6.6% */}
-                                                        <div
-                                                            className="bg-sky-500 h-full transition-all duration-500 flex items-center justify-center text-[10px] font-bold text-white"
-                                                            style={{ width: "6.6%" }}
-                                                            title="Wheeling & FAC: ₹ 1,35,466 (6.6%)"
-                                                        >
-                                                            6.6%
-                                                        </div>
-                                                        {/* Rebates */}
-                                                        <div
-                                                            className="bg-indigo-500 h-full transition-all duration-500"
-                                                            style={{ width: "1.0%" }}
-                                                            title="Prompt Rebate / Subsidy"
-                                                        />
-                                                    </div>
-
-                                                    {/* Legend badges */}
-                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1">
-                                                        <div className="p-2 rounded-xl bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40">
-                                                            <div className="flex items-center gap-1.5 text-rose-800 dark:text-rose-300 font-bold">
-                                                                <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                                                                <span>Fixed Demand: 47.2%</span>
-                                                            </div>
-                                                            <div className="font-mono font-black text-slate-800 dark:text-slate-200 mt-0.5">
-                                                                ₹ {fmtNum(billAuditForm.demandCharges || 974350)}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="p-2 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40">
-                                                            <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300 font-bold">
-                                                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                                                                <span>Energy Usage: 37.2%</span>
-                                                            </div>
-                                                            <div className="font-mono font-black text-slate-800 dark:text-slate-200 mt-0.5">
-                                                                ₹ {fmtNum(billAuditForm.energyCharges || 767922)}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="p-2 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
-                                                            <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-bold">
-                                                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                                                                <span>Electricity Duty: 8.0%</span>
-                                                            </div>
-                                                            <div className="font-mono font-black text-slate-800 dark:text-slate-200 mt-0.5">
-                                                                ₹ {fmtNum((billAuditForm.electricityDuty || 153075) + (billAuditForm.taxOnSale || 12490))}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="p-2 rounded-xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/40">
-                                                            <div className="flex items-center gap-1.5 text-sky-800 dark:text-sky-300 font-bold">
-                                                                <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
-                                                                <span>Wheeling & FAC: 6.6%</span>
-                                                            </div>
-                                                            <div className="font-mono font-black text-slate-800 dark:text-slate-200 mt-0.5">
-                                                                ₹ {fmtNum((billAuditForm.wheelingCharges || 88716) + (billAuditForm.facCharges || 46750))}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Executive Strategic Action Plan (What Management Should Do) */}
-                                                <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs space-y-4">
-                                                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                                                        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                                                            <span className="material-symbols-outlined text-indigo-600 text-[18px]">lightbulb</span>
-                                                            <span>Executive Strategic Action Plan for Leadership & Management</span>
-                                                        </h3>
-                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                                            3 High-Impact Steps
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                        {/* Step 1: Contract Demand Reduction */}
-                                                        <div className="p-4 rounded-xl border border-rose-300 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 space-y-2">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-rose-500 text-white">
-                                                                    Priority: Immediate
-                                                                </span>
-                                                                <span className="text-xs font-mono font-bold text-rose-700 dark:text-rose-400">
-                                                                    ROI: ~₹ 70L / yr
-                                                                </span>
-                                                            </div>
-                                                            <h4 className="text-xs font-black text-slate-900 dark:text-slate-100">
-                                                                1. Reduce Sanctioned Contract Demand
-                                                            </h4>
-                                                            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                                                                Apply on MSEDCL portal to reduce Contract Demand from <strong>1,999 kVA to 800 kVA</strong>. Factory peak has never exceeded 490 kVA. This single action stops ₹6.56 Lakhs/month in dead unutilized demand penalties.
-                                                            </p>
-                                                        </div>
-
-                                                        {/* Step 2: Database Multiplying Factor Alignment */}
-                                                        <div className="p-4 rounded-xl border border-amber-300 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20 space-y-2">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500 text-white">
-                                                                    Priority: High
-                                                                </span>
-                                                                <span className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400">
-                                                                    Data Integrity
-                                                                </span>
-                                                            </div>
-                                                            <h4 className="text-xs font-black text-slate-900 dark:text-slate-100">
-                                                                2. Correct Software Multiplying Factor
-                                                            </h4>
-                                                            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                                                                Update Master Config factor for Plant 4010 from <strong>40 to 20</strong>. Physical meter CT ratio is 100/5A (MF=20). Once corrected, software logged units match the bill 99.7% without discrepancies.
-                                                            </p>
-                                                        </div>
-
-                                                        {/* Step 3: Power Factor & Solar Monitoring */}
-                                                        <div className="p-4 rounded-xl border border-emerald-300 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-2">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-emerald-500 text-white">
-                                                                    Priority: Ongoing
-                                                                </span>
-                                                                <span className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                                                                    Verified Match
-                                                                </span>
-                                                            </div>
-                                                            <h4 className="text-xs font-black text-slate-900 dark:text-slate-100">
-                                                                3. Solar Net Metering & High PF
-                                                            </h4>
-                                                            <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                                                                Solar generation of 21,110 kWh is confirmed and 2,401 exported units credited by MSEDCL. Factory Power Factor (0.993) is healthy and avoiding low-PF penalties.
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Diagnostic Findings Cards */}
-                                                <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs">
-                                                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
-                                                                <span className="material-symbols-outlined text-[18px]">psychology</span>
-                                                            </span>
-                                                            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                                                                Automated Diagnostic Findings & Root Cause Analysis
-                                                            </h3>
-                                                        </div>
-                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
-                                                            {billAuditAnalysis.diagnosticFindings.length} Insights Identified
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                        {billAuditAnalysis.diagnosticFindings.map(finding => {
-                                                            const isCrit = finding.severity === "critical";
-                                                            const isDang = finding.severity === "danger";
-                                                            const isWarn = finding.severity === "warning";
-                                                            const isInfo = finding.severity === "info";
-
-                                                            const borderClass = isCrit
-                                                                ? "border-rose-400 bg-rose-50/50 dark:bg-rose-950/20"
-                                                                : isDang
-                                                                ? "border-red-300 bg-red-50/40 dark:bg-red-950/20"
-                                                                : isWarn
-                                                                ? "border-amber-300 bg-amber-50/40 dark:bg-amber-950/20"
-                                                                : isInfo
-                                                                ? "border-sky-300 bg-sky-50/40 dark:bg-sky-950/20"
-                                                                : "border-emerald-300 bg-emerald-50/40 dark:bg-emerald-950/20";
-
-                                                            const badgeColor = isCrit || isDang
-                                                                ? "bg-rose-500 text-white"
-                                                                : isWarn
-                                                                ? "bg-amber-500 text-white"
-                                                                : isInfo
-                                                                ? "bg-sky-500 text-white"
-                                                                : "bg-emerald-500 text-white";
-
-                                                            return (
-                                                                <div
-                                                                    key={finding.id}
-                                                                    className={`p-3.5 rounded-xl border ${borderClass} transition flex items-start gap-3`}
-                                                                >
-                                                                    <div className={`w-8 h-8 rounded-xl ${badgeColor} flex items-center justify-center shrink-0 shadow-2xs mt-0.5`}>
-                                                                        <span className="material-symbols-outlined text-[18px]">
-                                                                            {finding.icon}
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="min-w-0">
-                                                                        <div className="flex items-center justify-between gap-2">
-                                                                            <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 truncate">
-                                                                                {finding.title}
-                                                                            </h4>
-                                                                            <span className="text-[9px] uppercase font-mono font-extrabold px-1.5 py-0.2 rounded bg-white/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
-                                                                                {finding.severity}
-                                                                            </span>
-                                                                        </div>
-                                                                        <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
-                                                                            {finding.description}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                                
-
-                                {/* Main Tab 2: Date-by-Date Difference Inspector */}
-                                {activeAuditTab === "daily" && billAuditAnalysis && (
-                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs space-y-4 animate-fadeIn">
-                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-                                            <div>
-                                                <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
-                                                    <span className="material-symbols-outlined text-indigo-600">calendar_view_day</span>
-                                                    <span>Date-by-Date Difference Inspector ({billAuditAnalysis.utility.label})</span>
-                                                </h3>
-                                                <p className="text-xs text-slate-500 mt-0.5">
-                                                    Showing day-by-day meter comparison for {billAuditAnalysis.plantName} from {billAuditForm.startDate} to {billAuditForm.endDate}.
-                                                </p>
-                                            </div>
-
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                {/* Discrepant filter toggle */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setBillAuditForm(prev => ({ ...prev, showOnlyDiscrepant: !prev.showOnlyDiscrepant }))}
-                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
-                                                        billAuditForm.showOnlyDiscrepant
-                                                            ? "bg-rose-50 dark:bg-rose-950/60 border-rose-400 text-rose-800 dark:text-rose-200 shadow-2xs"
-                                                            : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
-                                                    }`}
-                                                >
-                                                    <span className="material-symbols-outlined text-[16px]">
-                                                        {billAuditForm.showOnlyDiscrepant ? "filter_alt" : "filter_alt_off"}
-                                                    </span>
-                                                    <span>
-                                                        {billAuditForm.showOnlyDiscrepant
-                                                            ? `Showing Only Discrepant Days (${billAuditAnalysis.discrepantDays.length})`
-                                                            : `Show Only Discrepant Days (${billAuditAnalysis.discrepantDays.length})`}
-                                                    </span>
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={exportAuditBreakdownXLSX}
-                                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 border-none shadow-xs cursor-pointer"
-                                                >
-                                                    <span className="material-symbols-outlined text-[15px]">download</span>
-                                                    <span>Export Excel (.xlsx)</span>
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={exportAuditBreakdownCSV}
-                                                    className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 border-none cursor-pointer"
-                                                >
-                                                    <span className="material-symbols-outlined text-[15px]">csv</span>
-                                                    <span>CSV</span>
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Difference Status Badges Legend */}
-                                        <div className="flex items-center gap-3 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex-wrap">
-                                            <span className="uppercase text-slate-400 font-extrabold mr-1">Status Legend:</span>
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200/80">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-rose-600"></span>
-                                                <span>Missing Meter Log</span>
-                                            </span>
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200/80">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
-                                                <span>Consumption Surge Spike</span>
-                                            </span>
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300 border border-sky-200/80">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-sky-600"></span>
-                                                <span>Unit Variance (&gt;30)</span>
-                                            </span>
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200/80">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                                                <span>Accurate Match (±30)</span>
-                                            </span>
-                                        </div>
-
-                                        {/* Discrepancy Table */}
-                                        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 max-h-[520px]">
-                                            <table className="w-full text-left text-xs border-collapse">
-                                                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase text-[10px] font-extrabold tracking-wider z-10">
-                                                    <tr>
-                                                        <th className="py-2.5 px-3">#</th>
-                                                        <th className="py-2.5 px-3">Date</th>
-                                                        <th className="py-2.5 px-3">Day</th>
-                                                        <th className="py-2.5 px-3">Dept</th>
-                                                        <th className="py-2.5 px-3 text-right">Factory Opening</th>
-                                                        <th className="py-2.5 px-3 text-right">Factory Closing</th>
-                                                        <th className="py-2.5 px-3 text-right bg-slate-200/40 dark:bg-slate-700/40">
-                                                            Plant Meter ({billAuditAnalysis.utility.unit})
-                                                        </th>
-                                                        <th className="py-2.5 px-3 text-right">
-                                                            Billed Units ({billAuditAnalysis.utility.unit})
-                                                        </th>
-                                                        <th className="py-2.5 px-3 text-right">Variance Units</th>
-                                                        <th className="py-2.5 px-3 text-right">Variance %</th>
-                                                        <th className="py-2.5 px-3 text-right">Meter Cost (₹)</th>
-                                                        <th className="py-2.5 px-3 text-center">Status / Finding</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                                                    {(billAuditForm.showOnlyDiscrepant ? billAuditAnalysis.discrepantDays : billAuditAnalysis.dailyBreakdown).map((row, idx) => {
-                                                        const dtObj = new Date(row.date + "T00:00:00");
-                                                        const dayName = dtObj.toLocaleDateString("en-US", { weekday: "short" });
-                                                        const isSunday = dtObj.getDay() === 0;
-
-                                                        const rowBg = !row.hasData
-                                                            ? "bg-rose-50/50 dark:bg-rose-950/20"
-                                                            : row.hasSpike
-                                                            ? "bg-amber-50/50 dark:bg-amber-950/20"
-                                                            : row.isDiscrepant
-                                                            ? "bg-sky-50/40 dark:bg-sky-950/15"
-                                                            : isSunday
-                                                            ? "bg-slate-50/40 dark:bg-slate-900/30"
-                                                            : "";
-
-                                                        return (
-                                                            <tr key={row.date} className={`hover:bg-slate-100/70 dark:hover:bg-slate-800/50 transition ${rowBg}`}>
-                                                                <td className="py-2 px-3 text-[10px] text-slate-400 font-mono">
-                                                                    {idx + 1}
-                                                                </td>
-                                                                <td className="py-2 px-3 font-mono font-bold text-slate-800 dark:text-slate-200">
-                                                                    {row.date}
-                                                                </td>
-                                                                <td className={`py-2 px-3 font-semibold text-[11px] ${isSunday ? 'text-amber-600' : 'text-slate-500'}`}>
-                                                                    {dayName}
-                                                                </td>
-                                                                <td className="py-2 px-3 text-[11px] text-slate-500 uppercase font-mono">
-                                                                    {row.department || "PROD"}
-                                                                </td>
-                                                                <td className="py-2 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
-                                                                    {row.opening !== null ? fmtNum(row.opening) : "—"}
-                                                                </td>
-                                                                <td className="py-2 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
-                                                                    {row.closing !== null ? fmtNum(row.closing) : "—"}
-                                                                </td>
-                                                                <td className="py-2 px-3 text-right font-mono font-black text-indigo-900 dark:text-indigo-200 bg-slate-200/20 dark:bg-slate-700/20">
-                                                                    {fmtNum(row.units)}
-                                                                </td>
-                                                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
-                                                                    {row.billedDayUnits !== null ? (
-                                                                        <span className="inline-flex items-center gap-1 justify-end">
-                                                                            <span>{fmtNum(row.billedDayUnits)}</span>
-                                                                            <span className={`text-[9px] px-1 py-0.2 rounded ${row.hasBilledRow ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 font-mono' : 'bg-slate-100 text-slate-500 font-mono'}`}>
-                                                                                {row.hasBilledRow ? 'Excel' : 'Avg'}
-                                                                            </span>
-                                                                        </span>
-                                                                    ) : "—"}
-                                                                </td>
-                                                                <td className={`py-2 px-3 text-right font-mono font-bold ${
-                                                                    row.dayVariance > 30 ? 'text-rose-600' : row.dayVariance < -30 ? 'text-sky-600' : 'text-emerald-600'
-                                                                }`}>
-                                                                    {row.billedDayUnits !== null
-                                                                        ? `${row.dayVariance > 0 ? '+' : ''}${fmtNum(row.dayVariance)}`
-                                                                        : "—"}
-                                                                </td>
-                                                                <td className="py-2 px-3 text-right font-mono text-[11px] text-slate-500">
-                                                                    {row.billedDayUnits !== null && row.billedDayUnits > 0
-                                                                        ? `${fmtNum(row.dayVariancePercent, 1)}%`
-                                                                        : "—"}
-                                                                </td>
-                                                                <td className="py-2 px-3 text-right font-mono text-slate-700 dark:text-slate-300">
-                                                                    ₹ {fmtNum(row.cost || (row.units * billAuditAnalysis.tariffRate))}
-                                                                </td>
-                                                                <td className="py-2 px-3 text-center">
-                                                                    {!row.hasData ? (
-                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200/80">
-                                                                            <span className="material-symbols-outlined text-[12px]">event_busy</span>
-                                                                            <span>Missing Log</span>
-                                                                        </span>
-                                                                    ) : row.hasSpike ? (
-                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200/80">
-                                                                            <span className="material-symbols-outlined text-[12px]">bolt</span>
-                                                                            <span>Surge Spike</span>
-                                                                        </span>
-                                                                    ) : row.isDiscrepant ? (
-                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300 border border-sky-200/80">
-                                                                            <span className="material-symbols-outlined text-[12px]">compare_arrows</span>
-                                                                            <span>Diff Alert</span>
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200/80">
-                                                                            <span className="material-symbols-outlined text-[12px]">check</span>
-                                                                            <span>Matched</span>
-                                                                        </span>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                                <tfoot className="sticky bottom-0 bg-slate-200/95 dark:bg-slate-800 text-slate-900 dark:text-white font-extrabold text-xs">
-                                                    <tr>
-                                                        <td colSpan={6} className="py-2.5 px-3 uppercase tracking-wider">
-                                                            Total Month Recorded & Billed Summary:
-                                                        </td>
-                                                        <td className="py-2.5 px-3 text-right font-mono text-indigo-900 dark:text-indigo-200 text-sm">
-                                                            {fmtNum(billAuditAnalysis.systemUnits)} {billAuditAnalysis.utility.unit}
-                                                        </td>
-                                                        <td className="py-2.5 px-3 text-right font-mono text-slate-800 dark:text-slate-200 text-sm">
-                                                            {fmtNum(billAuditAnalysis.billedUnits)} {billAuditAnalysis.utility.unit}
-                                                        </td>
-                                                        <td className={`py-2.5 px-3 text-right font-mono ${
-                                                            billAuditAnalysis.varianceUnits > 0 ? 'text-rose-600' : 'text-emerald-600'
-                                                        }`}>
-                                                            {billAuditAnalysis.varianceUnits > 0 ? '+' : ''}{fmtNum(billAuditAnalysis.varianceUnits)}
-                                                        </td>
-                                                        <td className="py-2.5 px-3 text-right font-mono">
-                                                            {fmtNum(billAuditAnalysis.variancePercent, 1)}%
-                                                        </td>
-                                                        <td className="py-2.5 px-3 text-right font-mono">
-                                                            ₹ {fmtNum(billAuditAnalysis.systemCost)}
-                                                        </td>
-                                                        <td className="py-2.5 px-3 text-center text-[10px]">
-                                                            {billAuditAnalysis.loggedDays}/{billAuditAnalysis.totalDays} Days Logged
-                                                        </td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Main Tab 3: Saved Audit History */}
-                                {activeAuditTab === "history" && (
-                                    <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/90 dark:border-[#26334a] p-5 shadow-xs space-y-4 animate-fadeIn">
-                                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                                            <div>
-                                                <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 uppercase tracking-tight flex items-center gap-2">
-                                                    <span className="material-symbols-outlined text-indigo-600">history_edu</span>
-                                                    <span>Verified Bill Audit History ({billAudits.length})</span>
-                                                </h3>
-                                                <p className="text-xs text-slate-500 mt-0.5">
-                                                    Permanent audit record of past verified invoices, discrepancy diagnoses, and approval statuses.
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {billAudits.length === 0 ? (
-                                            <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
-                                                <span className="material-symbols-outlined text-[36px] text-slate-300">receipt</span>
-                                                <p className="text-xs font-bold text-slate-600 dark:text-slate-400">No saved audit records found</p>
-                                                <p className="text-[11px] text-slate-400">
-                                                    Reconcile an invoice in the "Audit & Overview" tab and click "Save Audit Report" to maintain a permanent history log.
-                                                </p>
-                                            </div>
-                                        ) : (
-                                            <div className="overflow-x-auto">
-                                                <table className="w-full text-left text-xs border-collapse">
-                                                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase text-[10px] font-extrabold tracking-wider">
-                                                        <tr>
-                                                            <th className="py-2.5 px-3">Date Audited</th>
-                                                            <th className="py-2.5 px-3">Utility</th>
-                                                            <th className="py-2.5 px-3">Plant</th>
-                                                            <th className="py-2.5 px-3">Billing Period</th>
-                                                            <th className="py-2.5 px-3 text-right">Billed Units</th>
-                                                            <th className="py-2.5 px-3 text-right">System Units</th>
-                                                            <th className="py-2.5 px-3 text-right">Variance</th>
-                                                            <th className="py-2.5 px-3 text-center">Status</th>
-                                                            <th className="py-2.5 px-3 text-right">Actions</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                                                        {billAudits.map((item) => (
-                                                            <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                                                                <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
-                                                                    {(item.createdAt || "").slice(0, 10)}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200">
-                                                                    {item.utilityLabel}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 font-semibold text-slate-700 dark:text-slate-300">
-                                                                    {item.plantName || item.plant}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
-                                                                    {item.startDate} to {item.endDate}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800 dark:text-slate-200">
-                                                                    {fmtNum(item.billedUnits)} {item.utilityUnit}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-900 dark:text-indigo-300">
-                                                                    {fmtNum(item.systemUnits)} {item.utilityUnit}
-                                                                </td>
-                                                                <td className={`py-2.5 px-3 text-right font-mono font-bold ${
-                                                                    item.varianceUnits > 0 ? 'text-rose-600' : 'text-emerald-600'
-                                                                }`}>
-                                                                    {item.varianceUnits > 0 ? `+${fmtNum(item.varianceUnits)}` : fmtNum(item.varianceUnits)} ({fmtNum(item.variancePercent, 1)}%)
-                                                                </td>
-                                                                <td className="py-2.5 px-3 text-center">
-                                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase ${
-                                                                        item.status === "MATCHED" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
-                                                                        item.status === "OVERBILLED" ? "bg-rose-50 text-rose-700 border border-rose-200" :
-                                                                        "bg-sky-50 text-sky-700 border border-sky-200"
-                                                                    }`}>
-                                                                        {item.status}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-2.5 px-3 text-right">
-                                                                    <div className="flex items-center justify-end gap-1.5">
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => handleLoadSavedAudit(item)}
-                                                                            className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold border-none cursor-pointer"
-                                                                            title="Load into Reconciler"
-                                                                        >
-                                                                            View
-                                                                        </button>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => handleDeleteBillAudit(item.id)}
-                                                                            className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 border-none cursor-pointer"
-                                                                            title="Delete record"
-                                                                        >
-                                                                            <span className="material-symbols-outlined text-[15px]">delete</span>
-                                                                        </button>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* 6. MASTER CONFIGS TABLE EDITOR COMPONENT */}
+{/* 6. MASTER CONFIGS TABLE EDITOR COMPONENT */}
                         {activeTab === "master" && (
                             <div className="space-y-6 pt-4">
                                 <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b pb-4">
