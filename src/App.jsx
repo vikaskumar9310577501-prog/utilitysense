@@ -6140,13 +6140,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const n2Cost = aggregatedCosts.nitrogenCost || 0;
                 const o2Cost = aggregatedCosts.oxygenCost || 0;
                 const wCost = displayWaterCost || 0;
-                const lpgCost = aggregatedCosts.lpgCost || 0;
                 const items = [
                     { name: "PNG Gas", value: pngCost, color: "#f43f5e" },
                     { name: "Nitrogen Gas", value: n2Cost, color: "#0d9488" },
                     { name: "Oxygen Gas", value: o2Cost, color: "#0284c7" },
                     { name: "Water Cost", value: wCost, color: "#0891b2" },
-                    { name: "LPG Fuel", value: lpgCost, color: "#f59e0b" },
                 ].filter(d => d.value > 0);
                 return items.length ? items : [{ name: "No Cost Logged", value: 1, color: "#cbd5e1" }];
             }, [aggregatedCosts, displayWaterCost]);
@@ -6217,6 +6215,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 monthlyDiesel: "#4f46e5",
                 yearlyElect: "#1d4ed8",
                 yearlyCost: "#db2777",
+                yearlyDiesel: "#dc2626",
             };
 
             // Active Alert Logs computed from values
@@ -6962,899 +6961,891 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                  {/* Charts Area — Dynamically switched between Energy Dashboard and Gas & Aux Dashboard */}
                                  {dashboardDeck === 'energy' ? (
-                                     <div className="space-y-2.5 no-print transition-all duration-300">
-                                         {/* ROW 1: Daily trends — last 7 calendar days */}
-                                         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Electricity (kWh)</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 7 days grid consumption</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorElect7" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor={CHART.dailyElect} stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor={CHART.dailyElect} stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
-                                                         <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.dailyElect} fill="url(#colorElect7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                             <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyElect }} formatter={(v) => fmtNum(v)} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                      <div className="space-y-2.5 no-print transition-all duration-300">
+                                          {/* ROW 1: ELECTRICITY — Daily -> Monthly -> Yearly */}
+                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                              {/* 1. Daily Electricity */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Electricity (kWh)</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 7 days grid consumption</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorElect7" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor={CHART.dailyElect} stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor={CHART.dailyElect} stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
+                                                          <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.dailyElect} fill="url(#colorElect7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                              <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyElect }} formatter={(v) => fmtNum(v)} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Solar (kWh)</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 7 days solar generation</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorSolar7" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor={CHART.dailySolar} stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor={CHART.dailySolar} stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
-                                                         <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.dailySolar} fill="url(#colorSolar7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                             <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailySolar }} formatter={(v) => fmtNum(v)} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                              {/* 2. Monthly Electricity Load */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Electricity Load</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 5 months grid consumption</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorElectM" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor={CHART.monthlyElect} stopOpacity={0.45}/>
+                                                                  <stop offset="100%" stopColor={CHART.monthlyElect} stopOpacity={0.06}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
+                                                          <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.monthlyElect} fill="url(#colorElectM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                              <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlyElect }} formatter={(v) => fmtNum(v)} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Diesel (L)</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 7 days DG fuel use</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorDiesel7" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor={CHART.dailyDiesel} stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor={CHART.dailyDiesel} stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
-                                                         <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.dailyDiesel} fill="url(#colorDiesel7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                             <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyDiesel }} formatter={(v) => fmtNum(v)} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-                                         </section>
+                                              {/* 3. Financial Year Electricity */}
+                                              <div 
+                                                  onClick={() => openFyAnalysisModal("", "electricity")}
+                                                  className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm hover:border-sky-400 dark:hover:border-sky-500 transition cursor-pointer group"
+                                              >
+                                                  <div className="flex items-center justify-between mb-0.5">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider group-hover:text-sky-600 transition">Financial Year Electricity</h4>
+                                                          <p className="text-[9px] text-slate-400">Last 4 financial years grid load (Click for full analysis)</p>
+                                                      </div>
+                                                      <span className="material-symbols-outlined text-[16px] text-sky-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorElectY" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor={CHART.yearlyElect} stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor={CHART.yearlyElect} stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
+                                                          <Tooltip
+                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
+                                                              formatter={(v, name, item) => {
+                                                                  const p = item?.payload || {};
+                                                                  return [
+                                                                      <div key="fy_el_tt" className="space-y-1">
+                                                                          <div>⚡ Grid Electricity: <b>{fmtNum(p.electricity)} kWh</b></div>
+                                                                          <div>💰 Total Utility Cost: <b>{fmtINR(p.cost)}</b></div>
+                                                                          {p.solarGen > 0 && <div>☀️ Solar Gen: <b>{fmtNum(p.solarGen)} kWh</b></div>}
+                                                                      </div>,
+                                                                      ""
+                                                                  ];
+                                                              }}
+                                                          />
+                                                          <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.yearlyElect} fill="url(#colorElectY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: CHART.yearlyElect, strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                              <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.yearlyElect }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
+                                          </section>
 
-                                         {/* ROW 2: Monthly — smooth area spline */}
-                                         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Electricity Load</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 5 months grid consumption</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorElectM" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor={CHART.monthlyElect} stopOpacity={0.45}/>
-                                                                 <stop offset="100%" stopColor={CHART.monthlyElect} stopOpacity={0.06}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
-                                                         <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.monthlyElect} fill="url(#colorElectM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                             <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlyElect }} formatter={(v) => fmtNum(v)} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                          {/* ROW 2: SOLAR — Daily -> Monthly -> Yearly */}
+                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                              {/* 1. Daily Solar */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Solar (kWh)</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 7 days solar generation</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorSolar7" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor={CHART.dailySolar} stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor={CHART.dailySolar} stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
+                                                          <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.dailySolar} fill="url(#colorSolar7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                              <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailySolar }} formatter={(v) => fmtNum(v)} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Solar Gen</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 5 months solar generation</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorSolarM" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor={CHART.monthlySolar} stopOpacity={0.45}/>
-                                                                 <stop offset="100%" stopColor={CHART.monthlySolar} stopOpacity={0.06}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
-                                                         <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.monthlySolar} fill="url(#colorSolarM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                             <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlySolar }} formatter={(v) => fmtNum(v)} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                              {/* 2. Monthly Solar Gen */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Solar Gen</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 5 months solar generation</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorSolarM" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor={CHART.monthlySolar} stopOpacity={0.45}/>
+                                                                  <stop offset="100%" stopColor={CHART.monthlySolar} stopOpacity={0.06}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
+                                                          <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.monthlySolar} fill="url(#colorSolarM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                              <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlySolar }} formatter={(v) => fmtNum(v)} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Diesel</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 5 months DG fuel use</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorDieselM" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor={CHART.monthlyDiesel} stopOpacity={0.45}/>
-                                                                 <stop offset="100%" stopColor={CHART.monthlyDiesel} stopOpacity={0.06}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
-                                                         <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.monthlyDiesel} fill="url(#colorDieselM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                             <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlyDiesel }} formatter={(v) => fmtNum(v)} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-                                         </section>
+                                              {/* 3. Financial Year Solar */}
+                                              <div 
+                                                  onClick={() => openFyAnalysisModal("", "solar")}
+                                                  className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm hover:border-amber-400 dark:hover:border-amber-500 transition cursor-pointer group"
+                                              >
+                                                  <div className="flex items-center justify-between mb-0.5">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider group-hover:text-amber-600 transition">Financial Year Solar</h4>
+                                                          <p className="text-[9px] text-slate-400">Last 4 financial years solar generation (Click for full analysis)</p>
+                                                      </div>
+                                                      <span className="material-symbols-outlined text-[16px] text-amber-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorSolarFy" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
+                                                          <Tooltip
+                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
+                                                              formatter={(v, name, item) => {
+                                                                  const p = item?.payload || {};
+                                                                  return [
+                                                                      <div key="fy_sol_tt" className="space-y-1">
+                                                                          <div>☀️ Solar Generation: <b>{fmtNum(p.solarGen)} kWh</b></div>
+                                                                          <div>⚡ Grid Electricity: <b>{fmtNum(p.electricity)} kWh</b></div>
+                                                                          <div>💰 Total Utility Cost: <b>{fmtINR(p.cost)}</b></div>
+                                                                      </div>,
+                                                                      ""
+                                                                  ];
+                                                              }}
+                                                          />
+                                                          <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke="#f59e0b" fill="url(#colorSolarFy)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#f59e0b', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                              <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#d97706' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
+                                          </section>
 
-                                         {/* ROW 3: Financial Year area charts + Power Factor trend */}
-                                         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                             <div 
-                                                 onClick={() => openFyAnalysisModal("", "electricity")}
-                                                 className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm hover:border-sky-400 dark:hover:border-sky-500 transition cursor-pointer group"
-                                             >
-                                                 <div className="flex items-center justify-between mb-1">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider group-hover:text-sky-600 transition">Financial Year Electricity</h4>
-                                                         <p className="text-[9px] text-slate-400">Last 4 financial years grid load (Click for full analysis)</p>
-                                                     </div>
-                                                     <span className="material-symbols-outlined text-[16px] text-sky-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={250}>
-                                                     <AreaChart data={last4YearsTrendsData} margin={{ top: 22, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorElectY" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor={CHART.yearlyElect} stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor={CHART.yearlyElect} stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
-                                                         <Tooltip
-                                                             contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                                             labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
-                                                             formatter={(v, name, item) => {
-                                                                 const p = item?.payload || {};
-                                                                 return [
-                                                                     <div key="fy_el_tt" className="space-y-1">
-                                                                         <div>⚡ Grid Electricity: <b>{fmtNum(p.electricity)} kWh</b></div>
-                                                                         <div>💰 Total Utility Cost: <b>{fmtINR(p.cost)}</b></div>
-                                                                         {p.solarGen > 0 && <div>☀️ Solar Gen: <b>{fmtNum(p.solarGen)} kWh</b></div>}
-                                                                     </div>,
-                                                                     ""
-                                                                 ];
-                                                             }}
-                                                         />
-                                                         <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.yearlyElect} fill="url(#colorElectY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: CHART.yearlyElect, strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                             <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.yearlyElect }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                          {/* ROW 3: DIESEL — Daily -> Monthly -> Yearly */}
+                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                              {/* 1. Daily Diesel */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Diesel (L)</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 7 days DG fuel use</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorDiesel7" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor={CHART.dailyDiesel} stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor={CHART.dailyDiesel} stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
+                                                          <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.dailyDiesel} fill="url(#colorDiesel7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                              <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyDiesel }} formatter={(v) => fmtNum(v)} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div 
-                                                 onClick={() => openFyAnalysisModal("", "solar")}
-                                                 className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm hover:border-amber-400 dark:hover:border-amber-500 transition cursor-pointer group"
-                                             >
-                                                 <div className="flex items-center justify-between mb-1">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider group-hover:text-amber-600 transition">Financial Year Solar</h4>
-                                                         <p className="text-[9px] text-slate-400">Last 4 financial years solar generation (Click for full analysis)</p>
-                                                     </div>
-                                                     <span className="material-symbols-outlined text-[16px] text-amber-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={250}>
-                                                     <AreaChart data={last4YearsTrendsData} margin={{ top: 22, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorSolarFy" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
-                                                         <Tooltip
-                                                             contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
-                                                             labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
-                                                             formatter={(v, name, item) => {
-                                                                 const p = item?.payload || {};
-                                                                 return [
-                                                                     <div key="fy_sol_tt" className="space-y-1">
-                                                                         <div>☀️ Solar Generation: <b>{fmtNum(p.solarGen)} kWh</b></div>
-                                                                         <div>⚡ Grid Electricity: <b>{fmtNum(p.electricity)} kWh</b></div>
-                                                                         <div>💰 Total Utility Cost: <b>{fmtINR(p.cost)}</b></div>
-                                                                     </div>,
-                                                                     ""
-                                                                 ];
-                                                             }}
-                                                         />
-                                                         <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke="#f59e0b" fill="url(#colorSolarFy)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#f59e0b', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                             <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#d97706' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                              {/* 2. Monthly Diesel */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Diesel</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 5 months DG fuel use</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorDieselM" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor={CHART.monthlyDiesel} stopOpacity={0.45}/>
+                                                                  <stop offset="100%" stopColor={CHART.monthlyDiesel} stopOpacity={0.06}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
+                                                          <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.monthlyDiesel} fill="url(#colorDieselM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                              <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlyDiesel }} formatter={(v) => fmtNum(v)} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm flex flex-col justify-between">
-                                                 <div>
-                                                     <div className="flex items-start justify-between mb-1">
-                                                         <div>
-                                                             <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Power Factor (PF)</h4>
-                                                             <p className="text-[9px] text-slate-400">Monthly Cos φ & APFC performance (Target ≥ 0.98)</p>
-                                                         </div>
-                                                         <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50">Cos φ</span>
-                                                     </div>
-                                                     <ResponsiveContainer width="100%" height={175}>
-                                                         <AreaChart data={powerFactorTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                             <defs>
-                                                                 <linearGradient id="colorPfTrend" x1="0" y1="0" x2="0" y2="1">
-                                                                     <stop offset="0%" stopColor="#059669" stopOpacity={0.4}/>
-                                                                     <stop offset="100%" stopColor="#059669" stopOpacity={0.05}/>
-                                                                 </linearGradient>
-                                                             </defs>
-                                                             <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                             <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                             <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} domain={[0.90, 1.00]} ticks={[0.90, 0.94, 0.98, 1.00]} tickFormatter={(v) => v.toFixed(2)} />
-                                                             <ReferenceLine y={0.98} stroke="#059669" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: "Target ≥ 0.98", fill: "#059669", fontSize: 9, fontWeight: 700, position: "insideTopRight" }} />
-                                                             <Tooltip
-                                                                 contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
-                                                                 labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                                 formatter={(v, name, item) => [
-                                                                     `${Number(v).toFixed(3)} (${item?.payload?.status || "Active"})`,
-                                                                     "Power Factor"
-                                                                 ]}
-                                                             />
-                                                             <Area
-                                                                 type="monotone"
-                                                                 dataKey="pf"
-                                                                 name="Power Factor"
-                                                                 stroke="#059669"
-                                                                 fill="url(#colorPfTrend)"
-                                                                 strokeWidth={2.5}
-                                                                 dot={{ r: 4.5, fill: '#ffffff', stroke: '#059669', strokeWidth: 2 }}
-                                                                 activeDot={{ r: 6 }}
-                                                                 isAnimationActive={true}
-                                                                 animationDuration={1000}
-                                                                 animationEasing="ease-in-out"
-                                                             >
-                                                                 <LabelList dataKey="pf" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#059669' }} formatter={(v) => v > 0 ? Number(v).toFixed(3) : ""} />
-                                                             </Area>
-                                                         </AreaChart>
-                                                     </ResponsiveContainer>
-                                                 </div>
-                                                 <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
-                                                     <div className="p-1 rounded-lg bg-slate-50 dark:bg-slate-900/40">
-                                                         <p className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">Avg PF</p>
-                                                         <p className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 font-mono">{avgPowerFactor.toFixed(3)}</p>
-                                                     </div>
-                                                     <div className="p-1 rounded-lg bg-slate-50 dark:bg-slate-900/40">
-                                                         <p className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">Regulatory Limit</p>
-                                                         <p className="text-[11px] font-black text-slate-700 dark:text-slate-300 font-mono">≥ 0.900</p>
-                                                     </div>
-                                                     <div className="p-1 rounded-lg bg-slate-50 dark:bg-slate-900/40">
-                                                         <p className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">Billing Incentive</p>
-                                                         <p className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 font-mono">Eligible (~2.5%)</p>
-                                                     </div>
-                                                 </div>
-                                             </div>
-                                         </section>
+                                              {/* 3. Financial Year Diesel */}
+                                              <div 
+                                                  onClick={() => openFyAnalysisModal("", "diesel")}
+                                                  className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm hover:border-red-400 dark:hover:border-red-500 transition cursor-pointer group"
+                                              >
+                                                  <div className="flex items-center justify-between mb-0.5">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider group-hover:text-red-600 transition">Financial Year Diesel</h4>
+                                                          <p className="text-[9px] text-slate-400">Last 4 financial years DG fuel use (Click for full analysis)</p>
+                                                      </div>
+                                                      <span className="material-symbols-outlined text-[16px] text-red-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorDieselFy" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#dc2626" stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor="#dc2626" stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
+                                                          <Tooltip
+                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
+                                                              formatter={(v, name, item) => {
+                                                                  const p = item?.payload || {};
+                                                                  return [
+                                                                      <div key="fy_dsl_tt" className="space-y-1">
+                                                                          <div>⛽ Diesel Used: <b>{fmtNum(p.diesel)} L</b></div>
+                                                                          <div>⚡ Grid Electricity: <b>{fmtNum(p.electricity)} kWh</b></div>
+                                                                          <div>💰 Total Utility Cost: <b>{fmtINR(p.cost)}</b></div>
+                                                                      </div>,
+                                                                      ""
+                                                                  ];
+                                                              }}
+                                                          />
+                                                          <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke="#dc2626" fill="url(#colorDieselFy)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#dc2626', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
+                                                              <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#dc2626' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
+                                          </section>
 
-                                         {/* ROW 4: Solar / Water / Production */}
-                                         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-2 flex items-center justify-between">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Solar Gen vs Total Consumption</h4>
-                                                         <p className="text-[9px] text-slate-400">Solar generation vs {dashboardGridLabel} + Solar total (Last 5 months)</p>
-                                                     </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/50">Monthly Trend</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={210}>
-                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorTotalR4" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="5%" stopColor="#0284c7" stopOpacity={0.35}/>
-                                                                 <stop offset="95%" stopColor="#0284c7" stopOpacity={0.02}/>
-                                                             </linearGradient>
-                                                             <linearGradient id="colorSolarR4" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4}/>
-                                                                 <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.02}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip
-                                                             content={({ active, payload, label }) => {
-                                                                 if (!active || !payload || !payload.length) return null;
-                                                                 const d = payload[0].payload;
-                                                                 const solar = Number(d.solarGen || 0);
-                                                                 const total = Number(d.totalConsumption || 0);
-                                                                 const grid = Math.max(0, total - solar);
-                                                                 const solarPct = total > 0 ? ((solar / total) * 100).toFixed(1) : "0.0";
-                                                                 return (
-                                                                     <div className="bg-slate-900/95 text-white p-2.5 rounded-xl shadow-xl border border-slate-700/60 text-[10px] space-y-1 z-50 backdrop-blur-md min-w-[170px]">
-                                                                         <p className="font-extrabold border-b border-slate-700/60 pb-1 text-slate-300 uppercase tracking-wider text-[9.5px]">{label}{d.period ? ` (${d.period})` : (d.date ? ` (${d.date})` : "")}</p>
-                                                                         <div className="flex items-center justify-between text-amber-400 font-semibold pt-0.5">
-                                                                             <span>☀️ Solar Gen:</span>
-                                                                             <span className="font-extrabold">{fmtNum(solar)} kWh</span>
-                                                                         </div>
-                                                                         <div className="flex items-center justify-between text-sky-400 font-semibold">
-                                                                             <span>⚡ Total Load:</span>
-                                                                             <span className="font-extrabold">{fmtNum(total)} kWh</span>
-                                                                         </div>
-                                                                         <div className="flex items-center justify-between text-slate-400 font-medium">
-                                                                             <span>🔌 Grid Share:</span>
-                                                                             <span>{fmtNum(grid)} kWh</span>
-                                                                         </div>
-                                                                         <div className="flex items-center justify-between text-emerald-400 font-bold border-t border-slate-800 pt-1">
-                                                                             <span>🌱 Solar Share:</span>
-                                                                             <span>{solarPct}%</span>
-                                                                         </div>
-                                                                     </div>
-                                                                 );
-                                                             }}
-                                                         />
-                                                         <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />
-                                                         <Area type="monotone" dataKey="totalConsumption" name="Total Consumption" stroke="#0284c7" fill="url(#colorTotalR4)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} />
-                                                         <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke="#f59e0b" fill="url(#colorSolarR4)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} />
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                          {/* ROW 4: Power Factor, Solar vs Total & Water */}
+                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3.5 shadow-sm flex flex-col justify-between">
+                                                  <div>
+                                                      <div className="flex items-start justify-between mb-1">
+                                                          <div>
+                                                              <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Power Factor (PF)</h4>
+                                                              <p className="text-[9px] text-slate-400">Monthly Cos φ & APFC performance (Target ≥ 0.98)</p>
+                                                          </div>
+                                                          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50">Cos φ</span>
+                                                      </div>
+                                                      <ResponsiveContainer width="100%" height={175}>
+                                                          <AreaChart data={powerFactorTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                              <defs>
+                                                                  <linearGradient id="colorPfTrend" x1="0" y1="0" x2="0" y2="1">
+                                                                      <stop offset="0%" stopColor="#059669" stopOpacity={0.4}/>
+                                                                      <stop offset="100%" stopColor="#059669" stopOpacity={0.05}/>
+                                                                  </linearGradient>
+                                                              </defs>
+                                                              <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} domain={[0.90, 1.00]} ticks={[0.90, 0.94, 0.98, 1.00]} tickFormatter={(v) => v.toFixed(2)} />
+                                                              <ReferenceLine y={0.98} stroke="#059669" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: "Target ≥ 0.98", fill: "#059669", fontSize: 9, fontWeight: 700, position: "insideTopRight" }} />
+                                                              <Tooltip
+                                                                  contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                                  labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
+                                                                  formatter={(v, name, item) => [
+                                                                      `${Number(v).toFixed(3)} (${item?.payload?.status || "Active"})`,
+                                                                      "Power Factor"
+                                                                  ]}
+                                                              />
+                                                              <Area
+                                                                  type="monotone"
+                                                                  dataKey="pf"
+                                                                  name="Power Factor"
+                                                                  stroke="#059669"
+                                                                  fill="url(#colorPfTrend)"
+                                                                  strokeWidth={2.5}
+                                                                  dot={{ r: 4.5, fill: '#ffffff', stroke: '#059669', strokeWidth: 2 }}
+                                                                  activeDot={{ r: 6 }}
+                                                                  isAnimationActive={true}
+                                                                  animationDuration={1000}
+                                                                  animationEasing="ease-in-out"
+                                                              >
+                                                                  <LabelList dataKey="pf" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#059669' }} formatter={(v) => v > 0 ? Number(v).toFixed(3) : ""} />
+                                                              </Area>
+                                                          </AreaChart>
+                                                      </ResponsiveContainer>
+                                                  </div>
+                                                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
+                                                      <div className="p-1 rounded-lg bg-slate-50 dark:bg-slate-900/40">
+                                                          <p className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">Avg PF</p>
+                                                          <p className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 font-mono">{avgPowerFactor.toFixed(3)}</p>
+                                                      </div>
+                                                      <div className="p-1 rounded-lg bg-slate-50 dark:bg-slate-900/40">
+                                                          <p className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">Regulatory Limit</p>
+                                                          <p className="text-[11px] font-black text-slate-700 dark:text-slate-300 font-mono">≥ 0.900</p>
+                                                      </div>
+                                                      <div className="p-1 rounded-lg bg-slate-50 dark:bg-slate-900/40">
+                                                          <p className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">Billing Incentive</p>
+                                                          <p className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 font-mono">Eligible (~2.5%)</p>
+                                                      </div>
+                                                  </div>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-2 flex items-center justify-between">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Water Consumption</h4>
-                                                         <p className="text-[9px] text-slate-400">Monthly water cost & resource logging (Last 5 months)</p>
-                                                     </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">Cost (₹)</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={210}>
-                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorWaterR4" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="5%" stopColor="#0d9488" stopOpacity={0.4}/>
-                                                                 <stop offset="95%" stopColor="#0d9488" stopOpacity={0.02}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
-                                                         <Tooltip
-                                                             contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
-                                                             labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v, name, item) => {
-                                                                 const p = item?.payload || {};
-                                                                 return [
-                                                                     <div key="w_cost_tt" className="space-y-0.5">
-                                                                         <div>💰 Water Cost: <b>{fmtINR(p.waterCost)}</b></div>
-                                                                         <div>💧 Consumption: <b>{fmtNum(p.water)}</b></div>
-                                                                     </div>,
-                                                                     ""
-                                                                 ];
-                                                             }}
-                                                         />
-                                                         <Area type="monotone" dataKey="waterCost" name="Water Cost" stroke="#0d9488" fill="url(#colorWaterR4)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="waterCost" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0d9488' }} formatter={(v) => v > 0 ? fmtINR(v, { compact: true }) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3.5 shadow-sm">
+                                                  <div className="mb-2 flex items-center justify-between">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Solar Gen vs Total Consumption</h4>
+                                                          <p className="text-[9px] text-slate-400">Solar generation vs {dashboardGridLabel} + Solar total (Last 5 months)</p>
+                                                      </div>
+                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/50">Monthly Trend</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={210}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorTotalR4" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="5%" stopColor="#0284c7" stopOpacity={0.35}/>
+                                                                  <stop offset="95%" stopColor="#0284c7" stopOpacity={0.02}/>
+                                                              </linearGradient>
+                                                              <linearGradient id="colorSolarR4" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4}/>
+                                                                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.02}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip
+                                                              content={({ active, payload, label }) => {
+                                                                  if (!active || !payload || !payload.length) return null;
+                                                                  const d = payload[0].payload;
+                                                                  const solar = Number(d.solarGen || 0);
+                                                                  const total = Number(d.totalConsumption || 0);
+                                                                  const grid = Math.max(0, total - solar);
+                                                                  const solarPct = total > 0 ? ((solar / total) * 100).toFixed(1) : "0.0";
+                                                                  return (
+                                                                      <div className="bg-slate-900/95 text-white p-2.5 rounded-xl shadow-xl border border-slate-700/60 text-[10px] space-y-1 z-50 backdrop-blur-md min-w-[170px]">
+                                                                          <p className="font-extrabold border-b border-slate-700/60 pb-1 text-slate-300 uppercase tracking-wider text-[9.5px]">{label}{d.period ? ` (${d.period})` : (d.date ? ` (${d.date})` : "")}</p>
+                                                                          <div className="flex items-center justify-between text-amber-400 font-semibold pt-0.5">
+                                                                              <span>☀️ Solar Gen:</span>
+                                                                              <span className="font-extrabold">{fmtNum(solar)} kWh</span>
+                                                                          </div>
+                                                                          <div className="flex items-center justify-between text-sky-400 font-semibold">
+                                                                              <span>⚡ Total Load:</span>
+                                                                              <span className="font-extrabold">{fmtNum(total)} kWh</span>
+                                                                          </div>
+                                                                          <div className="flex items-center justify-between text-slate-400 font-medium">
+                                                                              <span>🔌 Grid Share:</span>
+                                                                              <span>{fmtNum(grid)} kWh</span>
+                                                                          </div>
+                                                                          <div className="flex items-center justify-between text-emerald-400 font-bold border-t border-slate-800 pt-1">
+                                                                              <span>🌱 Solar Share:</span>
+                                                                              <span>{solarPct}%</span>
+                                                                          </div>
+                                                                      </div>
+                                                                  );
+                                                              }}
+                                                          />
+                                                          <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />
+                                                          <Area type="monotone" dataKey="totalConsumption" name="Total Consumption" stroke="#0284c7" fill="url(#colorTotalR4)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} />
+                                                          <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke="#f59e0b" fill="url(#colorSolarR4)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} />
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-2 flex items-center justify-between">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Production Output</h4>
-                                                         <p className="text-[9px] text-slate-400">Manufactured outputs breakdown (Last 30 days)</p>
-                                                     </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50">Units</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={210}>
-                                                     <BarChart data={last30DaysTrendsData} barGap={2} barCategoryGap="18%">
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v, name) => [`${fmtNum(v)} units`, name]} />
-                                                         <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />
-                                                         <Bar dataKey="production" name="Sets" fill="#4f46e5" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
-                                                         <Bar dataKey="odu" name="ODU" fill="#0891b2" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
-                                                         <Bar dataKey="idu" name="IDU" fill="#c026d3" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
-                                                     </BarChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-                                         </section>
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3.5 shadow-sm">
+                                                  <div className="mb-2 flex items-center justify-between">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Water Consumption</h4>
+                                                          <p className="text-[9px] text-slate-400">Monthly water cost & resource logging (Last 5 months)</p>
+                                                      </div>
+                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">Cost (₹)</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={210}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorWaterR4" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="5%" stopColor="#0d9488" stopOpacity={0.4}/>
+                                                                  <stop offset="95%" stopColor="#0d9488" stopOpacity={0.02}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
+                                                          <Tooltip
+                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
+                                                              formatter={(v, name, item) => {
+                                                                  const p = item?.payload || {};
+                                                                  return [
+                                                                      <div key="w_cost_tt" className="space-y-0.5">
+                                                                          <div>💰 Water Cost: <b>{fmtINR(p.waterCost)}</b></div>
+                                                                          <div>💧 Consumption: <b>{fmtNum(p.water)}</b></div>
+                                                                      </div>,
+                                                                      ""
+                                                                  ];
+                                                              }}
+                                                          />
+                                                          <Area type="monotone" dataKey="waterCost" name="Water Cost" stroke="#0d9488" fill="url(#colorWaterR4)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="waterCost" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0d9488' }} formatter={(v) => v > 0 ? fmtINR(v, { compact: true }) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
+                                          </section>
 
-                                         {/* ROW 5: LPG & Waste */}
-                                         <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                             {canMonitor && (
-                                                 <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                     <div className="mb-2">
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">LPG Fuel Used (kg)</h4>
-                                                         <p className="text-[9px] text-slate-400">Gas fuels utility tracking (Last 30 days)</p>
-                                                     </div>
-                                                     <ResponsiveContainer width="100%" height={200}>
-                                                         <AreaChart data={last30DaysTrendsData}>
-                                                             <defs>
-                                                                 <linearGradient id="colorLpgR5" x1="0" y1="0" x2="0" y2="1">
-                                                                     <stop offset="5%" stopColor={COLORS.purple} stopOpacity={0.4}/>
-                                                                     <stop offset="95%" stopColor={COLORS.purple} stopOpacity={0.02}/>
-                                                                 </linearGradient>
-                                                             </defs>
-                                                             <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                             <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                             <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                             <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "LPG"]} />
-                                                             <Area type="monotone" dataKey="lpg" name="LPG kg" stroke={COLORS.purple} fill="url(#colorLpgR5)" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} />
-                                                         </AreaChart>
-                                                     </ResponsiveContainer>
-                                                 </div>
-                                             )}
+                                          {/* ROW 5: Production Output & Waste */}
+                                          <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3.5 shadow-sm">
+                                                  <div className="mb-2 flex items-center justify-between">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Production Output</h4>
+                                                          <p className="text-[9px] text-slate-400">Manufactured outputs breakdown (Last 30 days)</p>
+                                                      </div>
+                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50">Units</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={210}>
+                                                      <BarChart data={last30DaysTrendsData} barGap={2} barCategoryGap="18%">
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v, name) => [`${fmtNum(v)} units`, name]} />
+                                                          <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />
+                                                          <Bar dataKey="production" name="Sets" fill="#4f46e5" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
+                                                          <Bar dataKey="odu" name="ODU" fill="#0891b2" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
+                                                          <Bar dataKey="idu" name="IDU" fill="#c026d3" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
+                                                      </BarChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             {canMonitor && (
-                                                 <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                     <div className="mb-2">
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Waste Generation</h4>
-                                                         <p className="text-[9px] text-slate-400">Total hazardous & non-hazardous (Last 30 days)</p>
-                                                     </div>
-                                                     <ResponsiveContainer width="100%" height={200}>
-                                                         <BarChart data={last30DaysTrendsData}>
-                                                             <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                             <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                             <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                             <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Waste"]} />
-                                                             <Bar dataKey="waste" name="Waste (kg)" fill={COLORS.red} radius={[4, 4, 0, 0]} isAnimationActive={true} animationDuration={1000} />
-                                                         </BarChart>
-                                                     </ResponsiveContainer>
-                                                 </div>
-                                             )}
-                                         </section>
-                                     </div>
-                                 ) : (
-                                     /* GAS & AUXILIARY PARAMETER DASHBOARD GRAPHS */
-                                     <div className="space-y-2.5 no-print transition-all duration-300">
-                                         {/* ROW 1: Daily Gas Trends — last 7 calendar days (Unique Colors: Crimson, Pine Teal, Sky Blue) */}
-                                         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5 flex items-center justify-between">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily PNG Gas (MMBTU)</h4>
-                                                         <p className="text-[9px] text-slate-400">Last 7 days PNG gas consumption</p>
-                                                     </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/50">7 Days</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorDailyPng7" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#e11d48" stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor="#e11d48" stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} domain={[0, 'auto']} />
-                                                         <Tooltip
-                                                             contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
-                                                             labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v, name, item) => [`${fmtNum(v)} MMBTU (₹${fmtINR(item.payload.pngCost, { compact: true })})`, "PNG Gas"]}
-                                                         />
-                                                         <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#e11d48" fill="url(#colorDailyPng7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#e11d48', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#e11d48' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                              {canMonitor && (
+                                                  <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3.5 shadow-sm">
+                                                      <div className="mb-2">
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Waste Generation</h4>
+                                                          <p className="text-[9px] text-slate-400">Total hazardous & non-hazardous (Last 30 days)</p>
+                                                      </div>
+                                                      <ResponsiveContainer width="100%" height={210}>
+                                                          <BarChart data={last30DaysTrendsData}>
+                                                              <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
+                                                              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                              <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Waste"]} />
+                                                              <Bar dataKey="waste" name="Waste (kg)" fill={COLORS.red} radius={[4, 4, 0, 0]} isAnimationActive={true} animationDuration={1000} />
+                                                          </BarChart>
+                                                      </ResponsiveContainer>
+                                                  </div>
+                                              )}
+                                          </section>
+                                      </div>
+                                  ) : (
+                                      /* GAS & AUXILIARY PARAMETER DASHBOARD GRAPHS */
+                                      <div className="space-y-2.5 no-print transition-all duration-300">
+                                          {/* ROW 1: PNG GAS — Daily -> Monthly -> Yearly */}
+                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                              {/* 1. Daily PNG Gas */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5 flex items-center justify-between">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily PNG Gas (MMBTU)</h4>
+                                                          <p className="text-[9px] text-slate-400">Last 7 days PNG gas consumption</p>
+                                                      </div>
+                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/50">7 Days</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorDailyPng7" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#e11d48" stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor="#e11d48" stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} domain={[0, 'auto']} />
+                                                          <Tooltip
+                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
+                                                              formatter={(v, name, item) => [`${fmtNum(v)} MMBTU (₹${fmtINR(item.payload.pngCost, { compact: true })})`, "PNG Gas"]}
+                                                          />
+                                                          <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#e11d48" fill="url(#colorDailyPng7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#e11d48', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#e11d48' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5 flex items-center justify-between">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Nitrogen Gas (m³)</h4>
-                                                         <p className="text-[9px] text-slate-400">Last 7 days N2 gas consumption</p>
-                                                     </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">7 Days</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorDailyNitrogen7" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor="#0d9488" stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} domain={[0, 'auto']} />
-                                                         <Tooltip
-                                                             contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
-                                                             labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.nitrogenCost, { compact: true })})`, "Nitrogen Gas"]}
-                                                         />
-                                                         <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#0d9488" fill="url(#colorDailyNitrogen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0d9488' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                              {/* 2. Monthly PNG Gas */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly PNG Gas (MMBTU)</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 5 months PNG gas consumption</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorPngM" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#ea580c" stopOpacity={0.45}/>
+                                                                  <stop offset="100%" stopColor="#ea580c" stopOpacity={0.06}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Monthly PNG"]} />
+                                                          <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#ea580c" fill="url(#colorPngM)" strokeWidth={3} dot={{ r: 5, fill: '#ea580c', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#ea580c' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5 flex items-center justify-between">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Oxygen Gas (m³)</h4>
-                                                         <p className="text-[9px] text-slate-400">Last 7 days O2 gas consumption</p>
-                                                     </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200/50">7 Days</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorDailyOxygen7" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#0284c7" stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor="#0284c7" stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} domain={[0, 'auto']} />
-                                                         <Tooltip
-                                                             contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
-                                                             labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.oxygenCost, { compact: true })})`, "Oxygen Gas"]}
-                                                         />
-                                                         <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0284c7" fill="url(#colorDailyOxygen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0284c7' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-                                         </section>
+                                              {/* 3. Financial Year PNG Gas */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year PNG Gas (MMBTU)</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 4 financial years PNG annual totals</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorPngY" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#9333ea" stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor="#9333ea" stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Financial Year PNG"]} />
+                                                          <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#9333ea" fill="url(#colorPngY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#9333ea', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#9333ea' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
+                                          </section>
 
-                                         {/* ROW 2: Monthly Gas Trends — last 5 months (Unique Colors: Warm Coral, Emerald Green, Cobalt Blue) */}
-                                         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly PNG Gas (MMBTU)</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 5 months PNG gas consumption</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorPngM" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#ea580c" stopOpacity={0.45}/>
-                                                                 <stop offset="100%" stopColor="#ea580c" stopOpacity={0.06}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Monthly PNG"]} />
-                                                         <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#ea580c" fill="url(#colorPngM)" strokeWidth={3} dot={{ r: 5, fill: '#ea580c', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#ea580c' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                          {/* ROW 2: NITROGEN GAS (N2) — Daily -> Monthly -> Yearly */}
+                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                              {/* 1. Daily Nitrogen */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5 flex items-center justify-between">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Nitrogen Gas (m³)</h4>
+                                                          <p className="text-[9px] text-slate-400">Last 7 days N2 gas consumption</p>
+                                                      </div>
+                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">7 Days</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorDailyNitrogen7" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor="#0d9488" stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} domain={[0, 'auto']} />
+                                                          <Tooltip
+                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
+                                                              formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.nitrogenCost, { compact: true })})`, "Nitrogen Gas"]}
+                                                          />
+                                                          <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#0d9488" fill="url(#colorDailyNitrogen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0d9488' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Nitrogen Gas (m³)</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 5 months Nitrogen gas consumption</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorNitrogenM" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#059669" stopOpacity={0.45}/>
-                                                                 <stop offset="100%" stopColor="#059669" stopOpacity={0.06}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Nitrogen"]} />
-                                                         <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#059669" fill="url(#colorNitrogenM)" strokeWidth={3} dot={{ r: 5, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#059669' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                              {/* 2. Monthly Nitrogen */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Nitrogen Gas (m³)</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 5 months Nitrogen gas consumption</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorNitrogenM" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#059669" stopOpacity={0.45}/>
+                                                                  <stop offset="100%" stopColor="#059669" stopOpacity={0.06}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Nitrogen"]} />
+                                                          <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#059669" fill="url(#colorNitrogenM)" strokeWidth={3} dot={{ r: 5, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#059669' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Oxygen Gas (m³)</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 5 months Oxygen gas consumption</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorOxygenM" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#2563eb" stopOpacity={0.45}/>
-                                                                 <stop offset="100%" stopColor="#2563eb" stopOpacity={0.06}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Oxygen"]} />
-                                                         <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#2563eb" fill="url(#colorOxygenM)" strokeWidth={3} dot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#2563eb' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-                                         </section>
+                                              {/* 3. Financial Year Nitrogen */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Nitrogen Gas (m³)</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 4 financial years Nitrogen annual totals</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 20, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorNitrogenY" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#16a34a" stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor="#16a34a" stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Nitrogen"]} />
+                                                          <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#16a34a" fill="url(#colorNitrogenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#16a34a', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#16a34a' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
+                                          </section>
 
-                                         {/* ROW 3: Financial Year Gas Trends — last 4 financial years (Unique Colors: Rich Violet Purple, Forest Lime Green, Turquoise Cyan) */}
-                                         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year PNG Gas (MMBTU)</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 4 financial years PNG annual totals</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorPngY" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#9333ea" stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor="#9333ea" stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Financial Year PNG"]} />
-                                                         <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#9333ea" fill="url(#colorPngY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#9333ea', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#9333ea' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                          {/* ROW 3: OXYGEN GAS (O2) — Daily -> Monthly -> Yearly */}
+                                          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                              {/* 1. Daily Oxygen */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5 flex items-center justify-between">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Oxygen Gas (m³)</h4>
+                                                          <p className="text-[9px] text-slate-400">Last 7 days O2 gas consumption</p>
+                                                      </div>
+                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200/50">7 Days</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorDailyOxygen7" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#0284c7" stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor="#0284c7" stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} domain={[0, 'auto']} />
+                                                          <Tooltip
+                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
+                                                              formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.oxygenCost, { compact: true })})`, "Oxygen Gas"]}
+                                                          />
+                                                          <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0284c7" fill="url(#colorDailyOxygen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0284c7' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Nitrogen Gas (m³)</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 4 financial years Nitrogen annual totals</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last4YearsTrendsData} margin={{ top: 20, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorNitrogenY" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#16a34a" stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor="#16a34a" stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Nitrogen"]} />
-                                                         <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#16a34a" fill="url(#colorNitrogenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#16a34a', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#16a34a' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                              {/* 2. Monthly Oxygen */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Oxygen Gas (m³)</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 5 months Oxygen gas consumption</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorOxygenM" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#2563eb" stopOpacity={0.45}/>
+                                                                  <stop offset="100%" stopColor="#2563eb" stopOpacity={0.06}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Oxygen"]} />
+                                                          <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#2563eb" fill="url(#colorOxygenM)" strokeWidth={3} dot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#2563eb' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                 <div className="mb-0.5">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Oxygen Gas (m³)</h4>
-                                                     <p className="text-[9px] text-slate-400">Last 4 financial years Oxygen annual totals</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={215}>
-                                                     <AreaChart data={last4YearsTrendsData} margin={{ top: 20, right: 28, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorOxygenY" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="0%" stopColor="#0891b2" stopOpacity={0.4}/>
-                                                                 <stop offset="100%" stopColor="#0891b2" stopOpacity={0.05}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Oxygen"]} />
-                                                         <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0891b2" fill="url(#colorOxygenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#0891b2', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0891b2' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-                                         </section>
+                                              {/* 3. Financial Year Oxygen */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
+                                                  <div className="mb-0.5">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Oxygen Gas (m³)</h4>
+                                                      <p className="text-[9px] text-slate-400">Last 4 financial years Oxygen annual totals</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={215}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 20, right: 28, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorOxygenY" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="0%" stopColor="#0891b2" stopOpacity={0.4}/>
+                                                                  <stop offset="100%" stopColor="#0891b2" stopOpacity={0.05}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Oxygen"]} />
+                                                          <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0891b2" fill="url(#colorOxygenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#0891b2', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0891b2' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
+                                          </section>
 
-                                         {/* ROW 4: Water, Compressed Air & LPG Trends (Unique Colors: Aqua Cyan, Indigo Purple, Sunset Amber) */}
-                                         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-2 flex items-center justify-between">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Water Consumption</h4>
-                                                         <p className="text-[9px] text-slate-400">Daily water cost & resource logging (Last 30 days)</p>
-                                                     </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-200/50">Cost (₹)</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={210}>
-                                                     <AreaChart data={waterTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
-                                                         <defs>
-                                                             <linearGradient id="colorWaterGasDeck" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4}/>
-                                                                 <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.02}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
-                                                         <Tooltip
-                                                             contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
-                                                             labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                             formatter={(v, name, item) => {
-                                                                 const p = item?.payload || {};
-                                                                 return [
-                                                                     <div key="w_d2_cost_tt" className="space-y-0.5">
-                                                                         <div>💰 Water Cost: <b>{fmtINR(p.waterCost)}</b></div>
-                                                                         <div>💧 Consumption: <b>{fmtNum(p.water)}</b></div>
-                                                                     </div>,
-                                                                     ""
-                                                                 ];
-                                                             }}
-                                                         />
-                                                         <Area type="monotone" dataKey="waterCost" name="Water Cost" stroke="#06b6d4" fill="url(#colorWaterGasDeck)" strokeWidth={2.5} dot={{ r: 4, fill: '#06b6d4', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6, fill: '#06b6d4', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={true} animationDuration={1000}>
-                                                             <LabelList dataKey="waterCost" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0891b2' }} formatter={(v) => v > 0 ? fmtINR(v, { compact: true }) : ""} />
-                                                         </Area>
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                          {/* ROW 4: Auxiliary Resource & Cost Distribution (Water & Cost Share) */}
+                                          <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                              {/* Water Consumption */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
+                                                  <div className="mb-2 flex items-center justify-between">
+                                                      <div>
+                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Water Consumption</h4>
+                                                          <p className="text-[9px] text-slate-400">Daily water cost & resource logging (Last 30 days)</p>
+                                                      </div>
+                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-200/50">Cost (₹)</span>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={210}>
+                                                      <AreaChart data={waterTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
+                                                          <defs>
+                                                              <linearGradient id="colorWaterGasDeck" x1="0" y1="0" x2="0" y2="1">
+                                                                  <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4}/>
+                                                                  <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.02}/>
+                                                              </linearGradient>
+                                                          </defs>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
+                                                          <Tooltip
+                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
+                                                              formatter={(v, name, item) => {
+                                                                  const p = item?.payload || {};
+                                                                  return [
+                                                                      <div key="w_d2_cost_tt" className="space-y-0.5">
+                                                                          <div>💰 Water Cost: <b>{fmtINR(p.waterCost)}</b></div>
+                                                                          <div>💧 Consumption: <b>{fmtNum(p.water)}</b></div>
+                                                                      </div>,
+                                                                      ""
+                                                                  ];
+                                                              }}
+                                                          />
+                                                          <Area type="monotone" dataKey="waterCost" name="Water Cost" stroke="#06b6d4" fill="url(#colorWaterGasDeck)" strokeWidth={2.5} dot={{ r: 4, fill: '#06b6d4', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6, fill: '#06b6d4', stroke: '#ffffff', strokeWidth: 2 }} isAnimationActive={true} animationDuration={1000}>
+                                                              <LabelList dataKey="waterCost" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0891b2' }} formatter={(v) => v > 0 ? fmtINR(v, { compact: true }) : ""} />
+                                                          </Area>
+                                                      </AreaChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-2 flex items-center justify-between">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Compressed Air (Units)</h4>
-                                                         <p className="text-[9px] text-slate-400">Air compressor auxiliary metrics (Last 30 days)</p>
-                                                     </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50">Units</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={210}>
-                                                     <AreaChart data={last30DaysTrendsData}>
-                                                         <defs>
-                                                             <linearGradient id="colorAirGasDeck" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.4}/>
-                                                                 <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.02}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} units`, "Compressed Air"]} />
-                                                         <Area type="monotone" dataKey="air" name="Air Units" stroke="#4f46e5" fill="url(#colorAirGasDeck)" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} />
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
+                                              {/* Gas & Aux Cost Breakdown */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm overflow-visible">
+                                                  <div className="mb-2">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Gas & Aux Cost Breakdown</h4>
+                                                      <p className="text-[9px] text-slate-400">Expenditure share across auxiliary resources</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={210}>
+                                                      <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                                                          <Pie
+                                                              data={gasCostPieData}
+                                                              dataKey="value"
+                                                              nameKey="name"
+                                                              cx="50%"
+                                                              cy="46%"
+                                                              outerRadius={72}
+                                                              innerRadius={40}
+                                                              paddingAngle={3}
+                                                              isAnimationActive={true}
+                                                              animationDuration={1000}
+                                                          >
+                                                              {gasCostPieData.map((d) => (
+                                                                  <Cell key={d.name} fill={d.color || "#94a3b8"} stroke="#fff" strokeWidth={2} />
+                                                              ))}
+                                                          </Pie>
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} formatter={(v) => [fmtINR(v), "Cost"]} />
+                                                          <Legend
+                                                              verticalAlign="bottom"
+                                                              height={48}
+                                                              wrapperStyle={{ fontSize: 10 }}
+                                                              formatter={(value) => {
+                                                                  const row = gasCostPieData.find(d => d.name === value);
+                                                                  return row && row.value > 0 ? `${value}: ${fmtINR(row.value, { compact: true })}` : value;
+                                                              }}
+                                                          />
+                                                      </PieChart>
+                                                  </ResponsiveContainer>
+                                              </div>
+                                          </section>
 
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-2 flex items-center justify-between">
-                                                     <div>
-                                                         <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">LPG Fuel Used (kg)</h4>
-                                                         <p className="text-[9px] text-slate-400">LPG gas cylinder fuel logs (Last 30 days)</p>
-                                                     </div>
-                                                     <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/50">kg Metric</span>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={210}>
-                                                     <AreaChart data={last30DaysTrendsData}>
-                                                         <defs>
-                                                             <linearGradient id="colorLpgGasDeck" x1="0" y1="0" x2="0" y2="1">
-                                                                 <stop offset="5%" stopColor="#d97706" stopOpacity={0.4}/>
-                                                                 <stop offset="95%" stopColor="#d97706" stopOpacity={0.02}/>
-                                                             </linearGradient>
-                                                         </defs>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "LPG"]} />
-                                                         <Area type="monotone" dataKey="lpg" name="LPG kg" stroke="#d97706" fill="url(#colorLpgGasDeck)" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} />
-                                                     </AreaChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-                                         </section>
+                                          {/* ROW 5: Waste Management & Circularity */}
+                                          <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                              {/* Waste Generation Breakdown */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
+                                                  <div className="mb-2">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Waste Generation Breakdown</h4>
+                                                      <p className="text-[9px] text-slate-400">Hazardous vs Non-Hazardous (Last 30 days)</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={210}>
+                                                      <BarChart data={last30DaysTrendsData} barGap={2} barCategoryGap="18%">
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v, name) => [`${fmtNum(v)} kg`, name]} />
+                                                          <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />
+                                                          <Bar dataKey="wasteHaz" name="Hazardous" fill="#dc2626" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
+                                                          <Bar dataKey="wasteNHaz" name="Non-Hazardous" fill="#475569" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
+                                                      </BarChart>
+                                                  </ResponsiveContainer>
+                                              </div>
 
-                                         {/* ROW 5: Waste Management & Gas/Aux Cost Distribution */}
-                                         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-2">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Waste Generation Breakdown</h4>
-                                                     <p className="text-[9px] text-slate-400">Hazardous vs Non-Hazardous (Last 30 days)</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={230}>
-                                                     <BarChart data={last30DaysTrendsData} barGap={2} barCategoryGap="18%">
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v, name) => [`${fmtNum(v)} kg`, name]} />
-                                                         <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />
-                                                         <Bar dataKey="wasteHaz" name="Hazardous" fill="#dc2626" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
-                                                         <Bar dataKey="wasteNHaz" name="Non-Hazardous" fill="#475569" radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={1000} />
-                                                     </BarChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
-                                                 <div className="mb-2">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Waste Recycled (kg)</h4>
-                                                     <p className="text-[9px] text-slate-400">Material circularity & recovery (Last 30 days)</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={230}>
-                                                     <BarChart data={last30DaysTrendsData}>
-                                                         <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                         <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                         <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Recycled"]} />
-                                                         <Bar dataKey="wasteRec" name="Waste Recycled" fill="#10b981" radius={[4, 4, 0, 0]} isAnimationActive={true} animationDuration={1000} />
-                                                     </BarChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-
-                                             <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm overflow-visible">
-                                                 <div className="mb-2">
-                                                     <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Gas & Aux Cost Breakdown</h4>
-                                                     <p className="text-[9px] text-slate-400">Expenditure share across auxiliary resources</p>
-                                                 </div>
-                                                 <ResponsiveContainer width="100%" height={230}>
-                                                     <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
-                                                         <Pie
-                                                             data={gasCostPieData}
-                                                             dataKey="value"
-                                                             nameKey="name"
-                                                             cx="50%"
-                                                             cy="46%"
-                                                             outerRadius={72}
-                                                             innerRadius={40}
-                                                             paddingAngle={3}
-                                                             isAnimationActive={true}
-                                                             animationDuration={1000}
-                                                         >
-                                                             {gasCostPieData.map((d) => (
-                                                                 <Cell key={d.name} fill={d.color || "#94a3b8"} stroke="#fff" strokeWidth={2} />
-                                                             ))}
-                                                         </Pie>
-                                                         <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} formatter={(v) => [fmtINR(v), "Cost"]} />
-                                                         <Legend
-                                                             verticalAlign="bottom"
-                                                             height={48}
-                                                             wrapperStyle={{ fontSize: 10 }}
-                                                             formatter={(value) => {
-                                                                 const row = gasCostPieData.find(d => d.name === value);
-                                                                 return row && row.value > 0 ? `${value}: ${fmtINR(row.value, { compact: true })}` : value;
-                                                             }}
-                                                         />
-                                                     </PieChart>
-                                                 </ResponsiveContainer>
-                                             </div>
-                                         </section>
-                                     </div>
-                                 )}
+                                              {/* Waste Recycled */}
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-4 shadow-sm">
+                                                  <div className="mb-2">
+                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Waste Recycled (kg)</h4>
+                                                      <p className="text-[9px] text-slate-400">Material circularity & recovery (Last 30 days)</p>
+                                                  </div>
+                                                  <ResponsiveContainer width="100%" height={210}>
+                                                      <BarChart data={last30DaysTrendsData}>
+                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} kg`, "Recycled"]} />
+                                                          <Bar dataKey="wasteRec" name="Waste Recycled" fill="#10b981" radius={[4, 4, 0, 0]} isAnimationActive={true} animationDuration={1000} />
+                                                      </BarChart>
+                                                  </ResponsiveContainer>
+                                              </div>
+                                          </section>
+                                      </div>
+                                  )}
                 </React.Fragment>
             );
 
@@ -12018,8 +12009,9 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                 <div className="flex items-center gap-1 bg-slate-200/70 dark:bg-slate-800 p-1 rounded-lg">
                                                     {[
                                                         { id: "electricity", label: "Grid Electricity", icon: "bolt" },
-                                                        { id: "cost", label: "Utility Cost (₹)", icon: "payments" },
-                                                        { id: "solar", label: "Solar Gen (kWh)", icon: "wb_sunny" }
+                                                        { id: "solar", label: "Solar Gen (kWh)", icon: "wb_sunny" },
+                                                        { id: "diesel", label: "Diesel Used (L)", icon: "local_gas_station" },
+                                                        { id: "cost", label: "Utility Cost (₹)", icon: "payments" }
                                                     ].map(m => (
                                                         <button
                                                             key={m.id}
@@ -12084,7 +12076,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     <div className="bg-white dark:bg-[#182234] border border-slate-200 dark:border-[#26334a] p-4 rounded-xl shadow-xs">
                                         <div className="flex items-center justify-between mb-3">
                                             <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                                                12-Month Distribution — {selectedFyForAnalysis} ({selectedFyMetric === "electricity" ? "Grid Load kWh" : (selectedFyMetric === "solar" ? "Solar Generation kWh" : "Electricity Cost ₹")})
+                                                12-Month Distribution — {selectedFyForAnalysis} ({selectedFyMetric === "electricity" ? "Grid Load kWh" : (selectedFyMetric === "solar" ? "Solar Generation kWh" : (selectedFyMetric === "diesel" ? "DG Fuel Used L" : "Electricity Cost ₹"))})
                                             </h4>
                                             <span className="text-[10px] text-slate-400 font-bold">April to March</span>
                                         </div>
@@ -12111,23 +12103,24 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                 <div>💰 Electricity Cost: <b>{fmtINR(p.electricityCost)}</b></div>
                                                                 <div>📈 Effective Rate: <b>₹{p.unitRate.toFixed(2)}/kWh</b></div>
                                                                 {p.solarGen > 0 && <div>☀️ Solar Gen: <b>{fmtNum(p.solarGen)} kWh</b></div>}
+                                                                {p.diesel > 0 && <div>⛽ Diesel Used: <b>{fmtNum(p.diesel)} L</b></div>}
                                                             </div>,
                                                             ""
                                                         ];
                                                     }}
                                                 />
                                                 <Bar 
-                                                    dataKey={selectedFyMetric === "electricity" ? "electricity" : (selectedFyMetric === "solar" ? "solarGen" : "electricityCost")} 
-                                                    name={selectedFyMetric === "electricity" ? "Electricity (kWh)" : (selectedFyMetric === "solar" ? "Solar (kWh)" : "Cost (₹)")} 
-                                                    fill={selectedFyMetric === "electricity" ? "#0284c7" : (selectedFyMetric === "solar" ? "#f59e0b" : "#e11d48")} 
+                                                    dataKey={selectedFyMetric === "electricity" ? "electricity" : (selectedFyMetric === "solar" ? "solarGen" : (selectedFyMetric === "diesel" ? "diesel" : "electricityCost"))} 
+                                                    name={selectedFyMetric === "electricity" ? "Electricity (kWh)" : (selectedFyMetric === "solar" ? "Solar (kWh)" : (selectedFyMetric === "diesel" ? "Diesel (L)" : "Cost (₹)"))} 
+                                                    fill={selectedFyMetric === "electricity" ? "#0284c7" : (selectedFyMetric === "solar" ? "#f59e0b" : (selectedFyMetric === "diesel" ? "#dc2626" : "#e11d48"))} 
                                                     radius={[6, 6, 0, 0]} 
                                                     maxBarSize={45} 
                                                 >
                                                     <LabelList 
-                                                        dataKey={selectedFyMetric === "electricity" ? "electricity" : (selectedFyMetric === "solar" ? "solarGen" : "electricityCost")} 
+                                                        dataKey={selectedFyMetric === "electricity" ? "electricity" : (selectedFyMetric === "solar" ? "solarGen" : (selectedFyMetric === "diesel" ? "diesel" : "electricityCost"))} 
                                                         position="top" 
                                                         offset={6} 
-                                                        style={{ fontSize: 9, fontWeight: 700, fill: selectedFyMetric === "electricity" ? "#0284c7" : (selectedFyMetric === "solar" ? "#f59e0b" : "#e11d48") }} 
+                                                        style={{ fontSize: 9, fontWeight: 700, fill: selectedFyMetric === "electricity" ? "#0284c7" : (selectedFyMetric === "solar" ? "#f59e0b" : (selectedFyMetric === "diesel" ? "#dc2626" : "#e11d48")) }} 
                                                         formatter={(v) => v > 0 ? (selectedFyMetric === "cost" ? fmtINR(v, { compact: true }) : fmtNum(v)) : ""} 
                                                     />
                                                 </Bar>
