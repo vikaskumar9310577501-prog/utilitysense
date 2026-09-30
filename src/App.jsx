@@ -849,6 +849,38 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const [kpiLayout, setKpiLayout] = useState("grid");
             const [dashboardDeck, setDashboardDeck] = useState("energy"); // "energy" | "gas"
 
+            // Daily Trend Charts Historical Sliding Window State
+            const [dailyOffsets, setDailyOffsets] = useState({
+                electricity: 0,
+                solar: 0,
+                diesel: 0,
+                png: 0,
+                nitrogen: 0,
+                oxygen: 0
+            });
+            const [syncDailyCharts, setSyncDailyCharts] = useState(true);
+
+            const handleDailyNavigate = useCallback((metricKey, stepDays) => {
+                setDailyOffsets(prev => {
+                    if (syncDailyCharts) {
+                        const current = prev[metricKey] || 0;
+                        const nextVal = stepDays === 0 ? 0 : Math.max(0, current + stepDays);
+                        return {
+                            electricity: nextVal,
+                            solar: nextVal,
+                            diesel: nextVal,
+                            png: nextVal,
+                            nitrogen: nextVal,
+                            oxygen: nextVal
+                        };
+                    } else {
+                        const current = prev[metricKey] || 0;
+                        const nextVal = stepDays === 0 ? 0 : Math.max(0, current + stepDays);
+                        return { ...prev, [metricKey]: nextVal };
+                    }
+                });
+            }, [syncDailyCharts]);
+
             // Theme States
             const [theme, setTheme] = useState(() => {
                 try { return localStorage.getItem("ep_theme") || "light"; } catch (e) { return "light"; }
@@ -5744,8 +5776,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
             }, [filteredEntries, activePngRate, activeNitrogenRate, activeOxygenRate, activeWaterRate]);
 
-            // Last 7 consecutive calendar days (day-wise) — never sparse month jumps
-            const last7DaysTrendsData = useMemo(() => {
+            // Historical sliding 7 calendar days generator function
+            const getDaily7DaysData = useCallback((offsetDays = 0) => {
                 const byDate = {};
                 dailyTrendsData.forEach(d => {
                     const k = String(d.date || "").slice(0, 10);
@@ -5760,6 +5792,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 }
                 const end = new Date(endRaw + "T00:00:00");
                 if (Number.isNaN(end.getTime())) return [];
+
+                if (offsetDays > 0) {
+                    end.setDate(end.getDate() - offsetDays);
+                }
 
                 const pad = (n) => String(n).padStart(2, "0");
                 const out = [];
@@ -5796,6 +5832,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 }
                 return out;
             }, [dailyTrendsData, filters.endDate]);
+
+            // Memoized 7-day data for each daily chart
+            const dailyElectricityData = useMemo(() => getDaily7DaysData(dailyOffsets.electricity), [getDaily7DaysData, dailyOffsets.electricity]);
+            const dailySolarData = useMemo(() => getDaily7DaysData(dailyOffsets.solar), [getDaily7DaysData, dailyOffsets.solar]);
+            const dailyDieselData = useMemo(() => getDaily7DaysData(dailyOffsets.diesel), [getDaily7DaysData, dailyOffsets.diesel]);
+            const dailyPngData = useMemo(() => getDaily7DaysData(dailyOffsets.png), [getDaily7DaysData, dailyOffsets.png]);
+            const dailyNitrogenData = useMemo(() => getDaily7DaysData(dailyOffsets.nitrogen), [getDaily7DaysData, dailyOffsets.nitrogen]);
+            const dailyOxygenData = useMemo(() => getDaily7DaysData(dailyOffsets.oxygen), [getDaily7DaysData, dailyOffsets.oxygen]);
+            const last7DaysTrendsData = dailyElectricityData;
+
+            const getDailyDateRangeText = useCallback((data, offset = 0, defaultSub = "") => {
+                if (!data || !data.length) return defaultSub || "Last 7 days";
+                const start = data[0].label;
+                const end = data[data.length - 1].label;
+                if (offset === 0) return defaultSub || `${start} – ${end} (Latest)`;
+                return `${start} – ${end} (-${offset}d ago)`;
+            }, []);
 
             // Last 30 calendar days for detailed daily resource charts (Solar vs Total, Water, Production, LPG, Waste)
             const last30DaysTrendsData = useMemo(() => {
@@ -6965,28 +7018,98 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                           {/* ROW 1: ELECTRICITY — Daily -> Monthly -> Yearly */}
                                           <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                               {/* 1. Daily Electricity */}
-                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                  <div className="mb-0.5">
-                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Electricity (kWh)</h4>
-                                                      <p className="text-[9px] text-slate-400">Last 7 days grid consumption</p>
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm flex flex-col justify-between">
+                                                  <div className="mb-0.5 flex items-start justify-between gap-1">
+                                                      <div>
+                                                          <div className="flex items-center gap-1.5">
+                                                              <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Electricity (kWh)</h4>
+                                                              {dailyOffsets.electricity > 0 && (
+                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                                                                      -{dailyOffsets.electricity}d
+                                                                  </span>
+                                                              )}
+                                                          </div>
+                                                          <p className="text-[9px] text-slate-400 font-medium">
+                                                              {getDailyDateRangeText(dailyElectricityData, dailyOffsets.electricity, "Last 7 days grid consumption")}
+                                                          </p>
+                                                      </div>
+                                                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                          {dailyOffsets.electricity > 0 && (
+                                                              <button
+                                                                  type="button"
+                                                                  onClick={() => handleDailyNavigate("electricity", 0)}
+                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-300 hover:bg-sky-100 transition cursor-pointer"
+                                                                  title="Reset to latest 7 days"
+                                                              >
+                                                                  Latest
+                                                              </button>
+                                                          )}
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => handleDailyNavigate("electricity", 7)}
+                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
+                                                              title="Click or click graph left side to view previous 7 days"
+                                                          >
+                                                              ◀
+                                                          </button>
+                                                          <button
+                                                              type="button"
+                                                              disabled={dailyOffsets.electricity === 0}
+                                                              onClick={() => handleDailyNavigate("electricity", -7)}
+                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.electricity === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
+                                                              title="Next 7 days (forward)"
+                                                          >
+                                                              ▶
+                                                          </button>
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => setSyncDailyCharts(prev => !prev)}
+                                                              className={`h-5 w-5 rounded flex items-center justify-center text-[10px] transition cursor-pointer ${syncDailyCharts ? 'text-sky-500 bg-sky-50 dark:bg-sky-950/50' : 'text-slate-400 bg-slate-100 dark:bg-slate-800'}`}
+                                                              title={syncDailyCharts ? "All daily graphs synced (click to unlink)" : "Independent navigation (click to sync)"}
+                                                          >
+                                                              <span className="material-symbols-outlined text-[12px]">{syncDailyCharts ? "link" : "link_off"}</span>
+                                                          </button>
+                                                      </div>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
-                                                          <defs>
-                                                              <linearGradient id="colorElect7" x1="0" y1="0" x2="0" y2="1">
-                                                                  <stop offset="0%" stopColor={CHART.dailyElect} stopOpacity={0.4}/>
-                                                                  <stop offset="100%" stopColor={CHART.dailyElect} stopOpacity={0.05}/>
-                                                              </linearGradient>
-                                                          </defs>
-                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
-                                                          <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.dailyElect} fill="url(#colorElect7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                              <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyElect }} formatter={(v) => fmtNum(v)} />
-                                                          </Area>
-                                                      </AreaChart>
-                                                  </ResponsiveContainer>
+                                                  <div 
+                                                      className="relative group cursor-pointer select-none"
+                                                      onClick={(e) => {
+                                                          const rect = e.currentTarget.getBoundingClientRect();
+                                                          const clickX = e.clientX - rect.left;
+                                                          if (clickX < rect.width / 2) {
+                                                              handleDailyNavigate("electricity", 7);
+                                                          } else {
+                                                              handleDailyNavigate("electricity", dailyOffsets.electricity > 0 ? -7 : 7);
+                                                          }
+                                                      }}
+                                                      title="Click graph: left half to go back 7 days, right half to go forward"
+                                                  >
+                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                          ‹
+                                                      </div>
+                                                      {dailyOffsets.electricity > 0 && (
+                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                              ›
+                                                          </div>
+                                                      )}
+                                                      <ResponsiveContainer width="100%" height={255}>
+                                                          <AreaChart data={dailyElectricityData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                              <defs>
+                                                                  <linearGradient id="colorElect7" x1="0" y1="0" x2="0" y2="1">
+                                                                      <stop offset="0%" stopColor={CHART.dailyElect} stopOpacity={0.4}/>
+                                                                      <stop offset="100%" stopColor={CHART.dailyElect} stopOpacity={0.05}/>
+                                                                  </linearGradient>
+                                                              </defs>
+                                                              <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                              <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
+                                                              <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.dailyElect} fill="url(#colorElect7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={600} animationEasing="ease-in-out">
+                                                                  <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyElect }} formatter={(v) => fmtNum(v)} />
+                                                              </Area>
+                                                          </AreaChart>
+                                                      </ResponsiveContainer>
+                                                  </div>
                                               </div>
 
                                               {/* 2. Monthly Electricity Load */}
@@ -7063,28 +7186,90 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                           {/* ROW 2: SOLAR — Daily -> Monthly -> Yearly */}
                                           <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                               {/* 1. Daily Solar */}
-                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                  <div className="mb-0.5">
-                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Solar (kWh)</h4>
-                                                      <p className="text-[9px] text-slate-400">Last 7 days solar generation</p>
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm flex flex-col justify-between">
+                                                  <div className="mb-0.5 flex items-start justify-between gap-1">
+                                                      <div>
+                                                          <div className="flex items-center gap-1.5">
+                                                              <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Solar (kWh)</h4>
+                                                              {dailyOffsets.solar > 0 && (
+                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                                                                      -{dailyOffsets.solar}d
+                                                                  </span>
+                                                              )}
+                                                          </div>
+                                                          <p className="text-[9px] text-slate-400 font-medium">
+                                                              {getDailyDateRangeText(dailySolarData, dailyOffsets.solar, "Last 7 days solar generation")}
+                                                          </p>
+                                                      </div>
+                                                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                          {dailyOffsets.solar > 0 && (
+                                                              <button
+                                                                  type="button"
+                                                                  onClick={() => handleDailyNavigate("solar", 0)}
+                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-300 hover:bg-amber-100 transition cursor-pointer"
+                                                                  title="Reset to latest 7 days"
+                                                              >
+                                                                  Latest
+                                                              </button>
+                                                          )}
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => handleDailyNavigate("solar", 7)}
+                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
+                                                              title="Click or click graph left side to view previous 7 days"
+                                                          >
+                                                              ◀
+                                                          </button>
+                                                          <button
+                                                              type="button"
+                                                              disabled={dailyOffsets.solar === 0}
+                                                              onClick={() => handleDailyNavigate("solar", -7)}
+                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.solar === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
+                                                              title="Next 7 days (forward)"
+                                                          >
+                                                              ▶
+                                                          </button>
+                                                      </div>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
-                                                          <defs>
-                                                              <linearGradient id="colorSolar7" x1="0" y1="0" x2="0" y2="1">
-                                                                  <stop offset="0%" stopColor={CHART.dailySolar} stopOpacity={0.4}/>
-                                                                  <stop offset="100%" stopColor={CHART.dailySolar} stopOpacity={0.05}/>
-                                                              </linearGradient>
-                                                          </defs>
-                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
-                                                          <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.dailySolar} fill="url(#colorSolar7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                              <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailySolar }} formatter={(v) => fmtNum(v)} />
-                                                          </Area>
-                                                      </AreaChart>
-                                                  </ResponsiveContainer>
+                                                  <div 
+                                                      className="relative group cursor-pointer select-none"
+                                                      onClick={(e) => {
+                                                          const rect = e.currentTarget.getBoundingClientRect();
+                                                          const clickX = e.clientX - rect.left;
+                                                          if (clickX < rect.width / 2) {
+                                                              handleDailyNavigate("solar", 7);
+                                                          } else {
+                                                              handleDailyNavigate("solar", dailyOffsets.solar > 0 ? -7 : 7);
+                                                          }
+                                                      }}
+                                                      title="Click graph: left half to go back 7 days, right half to go forward"
+                                                  >
+                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                          ‹
+                                                      </div>
+                                                      {dailyOffsets.solar > 0 && (
+                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                              ›
+                                                          </div>
+                                                      )}
+                                                      <ResponsiveContainer width="100%" height={255}>
+                                                          <AreaChart data={dailySolarData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                              <defs>
+                                                                  <linearGradient id="colorSolar7" x1="0" y1="0" x2="0" y2="1">
+                                                                      <stop offset="0%" stopColor={CHART.dailySolar} stopOpacity={0.4}/>
+                                                                      <stop offset="100%" stopColor={CHART.dailySolar} stopOpacity={0.05}/>
+                                                                  </linearGradient>
+                                                              </defs>
+                                                              <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                              <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
+                                                              <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.dailySolar} fill="url(#colorSolar7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={600} animationEasing="ease-in-out">
+                                                                  <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailySolar }} formatter={(v) => fmtNum(v)} />
+                                                              </Area>
+                                                          </AreaChart>
+                                                      </ResponsiveContainer>
+                                                  </div>
                                               </div>
 
                                               {/* 2. Monthly Solar Gen */}
@@ -7161,28 +7346,90 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                           {/* ROW 3: DIESEL — Daily -> Monthly -> Yearly */}
                                           <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                               {/* 1. Daily Diesel */}
-                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                  <div className="mb-0.5">
-                                                      <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Diesel (L)</h4>
-                                                      <p className="text-[9px] text-slate-400">Last 7 days DG fuel use</p>
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm flex flex-col justify-between">
+                                                  <div className="mb-0.5 flex items-start justify-between gap-1">
+                                                      <div>
+                                                          <div className="flex items-center gap-1.5">
+                                                              <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Diesel (L)</h4>
+                                                              {dailyOffsets.diesel > 0 && (
+                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                                                                      -{dailyOffsets.diesel}d
+                                                                  </span>
+                                                              )}
+                                                          </div>
+                                                          <p className="text-[9px] text-slate-400 font-medium">
+                                                              {getDailyDateRangeText(dailyDieselData, dailyOffsets.diesel, "Last 7 days DG fuel use")}
+                                                          </p>
+                                                      </div>
+                                                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                          {dailyOffsets.diesel > 0 && (
+                                                              <button
+                                                                  type="button"
+                                                                  onClick={() => handleDailyNavigate("diesel", 0)}
+                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-300 hover:bg-amber-100 transition cursor-pointer"
+                                                                  title="Reset to latest 7 days"
+                                                              >
+                                                                  Latest
+                                                              </button>
+                                                          )}
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => handleDailyNavigate("diesel", 7)}
+                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
+                                                              title="Click or click graph left side to view previous 7 days"
+                                                          >
+                                                              ◀
+                                                          </button>
+                                                          <button
+                                                              type="button"
+                                                              disabled={dailyOffsets.diesel === 0}
+                                                              onClick={() => handleDailyNavigate("diesel", -7)}
+                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.diesel === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
+                                                              title="Next 7 days (forward)"
+                                                          >
+                                                              ▶
+                                                          </button>
+                                                      </div>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
-                                                          <defs>
-                                                              <linearGradient id="colorDiesel7" x1="0" y1="0" x2="0" y2="1">
-                                                                  <stop offset="0%" stopColor={CHART.dailyDiesel} stopOpacity={0.4}/>
-                                                                  <stop offset="100%" stopColor={CHART.dailyDiesel} stopOpacity={0.05}/>
-                                                              </linearGradient>
-                                                          </defs>
-                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
-                                                          <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
-                                                          <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.dailyDiesel} fill="url(#colorDiesel7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
-                                                              <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyDiesel }} formatter={(v) => fmtNum(v)} />
-                                                          </Area>
-                                                      </AreaChart>
-                                                  </ResponsiveContainer>
+                                                  <div 
+                                                      className="relative group cursor-pointer select-none"
+                                                      onClick={(e) => {
+                                                          const rect = e.currentTarget.getBoundingClientRect();
+                                                          const clickX = e.clientX - rect.left;
+                                                          if (clickX < rect.width / 2) {
+                                                              handleDailyNavigate("diesel", 7);
+                                                          } else {
+                                                              handleDailyNavigate("diesel", dailyOffsets.diesel > 0 ? -7 : 7);
+                                                          }
+                                                      }}
+                                                      title="Click graph: left half to go back 7 days, right half to go forward"
+                                                  >
+                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                          ‹
+                                                      </div>
+                                                      {dailyOffsets.diesel > 0 && (
+                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                              ›
+                                                          </div>
+                                                      )}
+                                                      <ResponsiveContainer width="100%" height={255}>
+                                                          <AreaChart data={dailyDieselData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                              <defs>
+                                                                  <linearGradient id="colorDiesel7" x1="0" y1="0" x2="0" y2="1">
+                                                                      <stop offset="0%" stopColor={CHART.dailyDiesel} stopOpacity={0.4}/>
+                                                                      <stop offset="100%" stopColor={CHART.dailyDiesel} stopOpacity={0.05}/>
+                                                                  </linearGradient>
+                                                              </defs>
+                                                              <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                              <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
+                                                              <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.dailyDiesel} fill="url(#colorDiesel7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={600} animationEasing="ease-in-out">
+                                                                  <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyDiesel }} formatter={(v) => fmtNum(v)} />
+                                                              </Area>
+                                                          </AreaChart>
+                                                      </ResponsiveContainer>
+                                                  </div>
                                               </div>
 
                                               {/* 2. Monthly Diesel */}
@@ -7472,35 +7719,94 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                           {/* ROW 1: PNG GAS — Daily -> Monthly -> Yearly */}
                                           <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                               {/* 1. Daily PNG Gas */}
-                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                  <div className="mb-0.5 flex items-center justify-between">
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm flex flex-col justify-between">
+                                                  <div className="mb-0.5 flex items-start justify-between gap-1">
                                                       <div>
-                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily PNG Gas (MMBTU)</h4>
-                                                          <p className="text-[9px] text-slate-400">Last 7 days PNG gas consumption</p>
+                                                          <div className="flex items-center gap-1.5">
+                                                              <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily PNG Gas (MMBTU)</h4>
+                                                              {dailyOffsets.png > 0 && (
+                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">
+                                                                      -{dailyOffsets.png}d
+                                                                  </span>
+                                                              )}
+                                                          </div>
+                                                          <p className="text-[9px] text-slate-400 font-medium">
+                                                              {getDailyDateRangeText(dailyPngData, dailyOffsets.png, "Last 7 days PNG gas consumption")}
+                                                          </p>
                                                       </div>
-                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/50">7 Days</span>
+                                                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                          {dailyOffsets.png > 0 && (
+                                                              <button
+                                                                  type="button"
+                                                                  onClick={() => handleDailyNavigate("png", 0)}
+                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 hover:bg-rose-100 transition cursor-pointer"
+                                                                  title="Reset to latest 7 days"
+                                                              >
+                                                                  Latest
+                                                              </button>
+                                                          )}
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => handleDailyNavigate("png", 7)}
+                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
+                                                              title="Click or click graph left side to view previous 7 days"
+                                                          >
+                                                              ◀
+                                                          </button>
+                                                          <button
+                                                              type="button"
+                                                              disabled={dailyOffsets.png === 0}
+                                                              onClick={() => handleDailyNavigate("png", -7)}
+                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.png === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
+                                                              title="Next 7 days (forward)"
+                                                          >
+                                                              ▶
+                                                          </button>
+                                                      </div>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
-                                                          <defs>
-                                                              <linearGradient id="colorDailyPng7" x1="0" y1="0" x2="0" y2="1">
-                                                                  <stop offset="0%" stopColor="#e11d48" stopOpacity={0.4}/>
-                                                                  <stop offset="100%" stopColor="#e11d48" stopOpacity={0.05}/>
-                                                              </linearGradient>
-                                                          </defs>
-                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
-                                                          <Tooltip
-                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
-                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                              formatter={(v, name, item) => [`${fmtNum(v)} MMBTU (₹${fmtINR(item.payload.pngCost, { compact: true })})`, "PNG Gas"]}
-                                                          />
-                                                          <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#e11d48" fill="url(#colorDailyPng7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#e11d48', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                              <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#e11d48' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                          </Area>
-                                                      </AreaChart>
-                                                  </ResponsiveContainer>
+                                                  <div 
+                                                      className="relative group cursor-pointer select-none"
+                                                      onClick={(e) => {
+                                                          const rect = e.currentTarget.getBoundingClientRect();
+                                                          const clickX = e.clientX - rect.left;
+                                                          if (clickX < rect.width / 2) {
+                                                              handleDailyNavigate("png", 7);
+                                                          } else {
+                                                              handleDailyNavigate("png", dailyOffsets.png > 0 ? -7 : 7);
+                                                          }
+                                                      }}
+                                                      title="Click graph: left half to go back 7 days, right half to go forward"
+                                                  >
+                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                          ‹
+                                                      </div>
+                                                      {dailyOffsets.png > 0 && (
+                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                              ›
+                                                          </div>
+                                                      )}
+                                                      <ResponsiveContainer width="100%" height={255}>
+                                                          <AreaChart data={dailyPngData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                              <defs>
+                                                                  <linearGradient id="colorDailyPng7" x1="0" y1="0" x2="0" y2="1">
+                                                                      <stop offset="0%" stopColor="#e11d48" stopOpacity={0.4}/>
+                                                                      <stop offset="100%" stopColor="#e11d48" stopOpacity={0.05}/>
+                                                                  </linearGradient>
+                                                              </defs>
+                                                              <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
+                                                              <Tooltip
+                                                                  contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                                  labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
+                                                                  formatter={(v, name, item) => [`${fmtNum(v)} MMBTU (₹${fmtINR(item.payload.pngCost, { compact: true })})`, "PNG Gas"]}
+                                                              />
+                                                              <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#e11d48" fill="url(#colorDailyPng7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#e11d48', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={600} animationEasing="ease-in-out">
+                                                                  <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#e11d48' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                              </Area>
+                                                          </AreaChart>
+                                                      </ResponsiveContainer>
+                                                  </div>
                                               </div>
 
                                               {/* 2. Monthly PNG Gas */}
@@ -7557,35 +7863,94 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                           {/* ROW 2: NITROGEN GAS (N2) — Daily -> Monthly -> Yearly */}
                                           <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                               {/* 1. Daily Nitrogen */}
-                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                  <div className="mb-0.5 flex items-center justify-between">
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm flex flex-col justify-between">
+                                                  <div className="mb-0.5 flex items-start justify-between gap-1">
                                                       <div>
-                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Nitrogen Gas (m³)</h4>
-                                                          <p className="text-[9px] text-slate-400">Last 7 days N2 gas consumption</p>
+                                                          <div className="flex items-center gap-1.5">
+                                                              <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Nitrogen Gas (m³)</h4>
+                                                              {dailyOffsets.nitrogen > 0 && (
+                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
+                                                                      -{dailyOffsets.nitrogen}d
+                                                                  </span>
+                                                              )}
+                                                          </div>
+                                                          <p className="text-[9px] text-slate-400 font-medium">
+                                                              {getDailyDateRangeText(dailyNitrogenData, dailyOffsets.nitrogen, "Last 7 days N2 gas consumption")}
+                                                          </p>
                                                       </div>
-                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">7 Days</span>
+                                                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                          {dailyOffsets.nitrogen > 0 && (
+                                                              <button
+                                                                  type="button"
+                                                                  onClick={() => handleDailyNavigate("nitrogen", 0)}
+                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-300 hover:bg-teal-100 transition cursor-pointer"
+                                                                  title="Reset to latest 7 days"
+                                                              >
+                                                                  Latest
+                                                              </button>
+                                                          )}
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => handleDailyNavigate("nitrogen", 7)}
+                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
+                                                              title="Click or click graph left side to view previous 7 days"
+                                                          >
+                                                              ◀
+                                                          </button>
+                                                          <button
+                                                              type="button"
+                                                              disabled={dailyOffsets.nitrogen === 0}
+                                                              onClick={() => handleDailyNavigate("nitrogen", -7)}
+                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.nitrogen === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
+                                                              title="Next 7 days (forward)"
+                                                          >
+                                                              ▶
+                                                          </button>
+                                                      </div>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
-                                                          <defs>
-                                                              <linearGradient id="colorDailyNitrogen7" x1="0" y1="0" x2="0" y2="1">
-                                                                  <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4}/>
-                                                                  <stop offset="100%" stopColor="#0d9488" stopOpacity={0.05}/>
-                                                              </linearGradient>
-                                                          </defs>
-                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
-                                                          <Tooltip
-                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
-                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                              formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.nitrogenCost, { compact: true })})`, "Nitrogen Gas"]}
-                                                          />
-                                                          <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#0d9488" fill="url(#colorDailyNitrogen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                              <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0d9488' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                          </Area>
-                                                      </AreaChart>
-                                                  </ResponsiveContainer>
+                                                  <div 
+                                                      className="relative group cursor-pointer select-none"
+                                                      onClick={(e) => {
+                                                          const rect = e.currentTarget.getBoundingClientRect();
+                                                          const clickX = e.clientX - rect.left;
+                                                          if (clickX < rect.width / 2) {
+                                                              handleDailyNavigate("nitrogen", 7);
+                                                          } else {
+                                                              handleDailyNavigate("nitrogen", dailyOffsets.nitrogen > 0 ? -7 : 7);
+                                                          }
+                                                      }}
+                                                      title="Click graph: left half to go back 7 days, right half to go forward"
+                                                  >
+                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                          ‹
+                                                      </div>
+                                                      {dailyOffsets.nitrogen > 0 && (
+                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                              ›
+                                                          </div>
+                                                      )}
+                                                      <ResponsiveContainer width="100%" height={255}>
+                                                          <AreaChart data={dailyNitrogenData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                              <defs>
+                                                                  <linearGradient id="colorDailyNitrogen7" x1="0" y1="0" x2="0" y2="1">
+                                                                      <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4}/>
+                                                                      <stop offset="100%" stopColor="#0d9488" stopOpacity={0.05}/>
+                                                                  </linearGradient>
+                                                              </defs>
+                                                              <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
+                                                              <Tooltip
+                                                                  contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                                  labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
+                                                                  formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.nitrogenCost, { compact: true })})`, "Nitrogen Gas"]}
+                                                              />
+                                                              <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#0d9488" fill="url(#colorDailyNitrogen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0d9488', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={600} animationEasing="ease-in-out">
+                                                                  <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0d9488' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                              </Area>
+                                                          </AreaChart>
+                                                      </ResponsiveContainer>
+                                                  </div>
                                               </div>
 
                                               {/* 2. Monthly Nitrogen */}
@@ -7642,35 +8007,94 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                           {/* ROW 3: OXYGEN GAS (O2) — Daily -> Monthly -> Yearly */}
                                           <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                               {/* 1. Daily Oxygen */}
-                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm">
-                                                  <div className="mb-0.5 flex items-center justify-between">
+                                              <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/70 dark:border-[#26334a] p-3 shadow-sm flex flex-col justify-between">
+                                                  <div className="mb-0.5 flex items-start justify-between gap-1">
                                                       <div>
-                                                          <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Oxygen Gas (m³)</h4>
-                                                          <p className="text-[9px] text-slate-400">Last 7 days O2 gas consumption</p>
+                                                          <div className="flex items-center gap-1.5">
+                                                              <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Oxygen Gas (m³)</h4>
+                                                              {dailyOffsets.oxygen > 0 && (
+                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300">
+                                                                      -{dailyOffsets.oxygen}d
+                                                                  </span>
+                                                              )}
+                                                          </div>
+                                                          <p className="text-[9px] text-slate-400 font-medium">
+                                                              {getDailyDateRangeText(dailyOxygenData, dailyOffsets.oxygen, "Last 7 days O2 gas consumption")}
+                                                          </p>
                                                       </div>
-                                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200/50">7 Days</span>
+                                                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                          {dailyOffsets.oxygen > 0 && (
+                                                              <button
+                                                                  type="button"
+                                                                  onClick={() => handleDailyNavigate("oxygen", 0)}
+                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-300 hover:bg-sky-100 transition cursor-pointer"
+                                                                  title="Reset to latest 7 days"
+                                                              >
+                                                                  Latest
+                                                              </button>
+                                                          )}
+                                                          <button
+                                                              type="button"
+                                                              onClick={() => handleDailyNavigate("oxygen", 7)}
+                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
+                                                              title="Click or click graph left side to view previous 7 days"
+                                                          >
+                                                              ◀
+                                                          </button>
+                                                          <button
+                                                              type="button"
+                                                              disabled={dailyOffsets.oxygen === 0}
+                                                              onClick={() => handleDailyNavigate("oxygen", -7)}
+                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.oxygen === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
+                                                              title="Next 7 days (forward)"
+                                                          >
+                                                              ▶
+                                                          </button>
+                                                      </div>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
-                                                          <defs>
-                                                              <linearGradient id="colorDailyOxygen7" x1="0" y1="0" x2="0" y2="1">
-                                                                  <stop offset="0%" stopColor="#0284c7" stopOpacity={0.4}/>
-                                                                  <stop offset="100%" stopColor="#0284c7" stopOpacity={0.05}/>
-                                                              </linearGradient>
-                                                          </defs>
-                                                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
-                                                          <Tooltip
-                                                              contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
-                                                              labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
-                                                              formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.oxygenCost, { compact: true })})`, "Oxygen Gas"]}
-                                                          />
-                                                          <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0284c7" fill="url(#colorDailyOxygen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
-                                                              <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0284c7' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
-                                                          </Area>
-                                                      </AreaChart>
-                                                  </ResponsiveContainer>
+                                                  <div 
+                                                      className="relative group cursor-pointer select-none"
+                                                      onClick={(e) => {
+                                                          const rect = e.currentTarget.getBoundingClientRect();
+                                                          const clickX = e.clientX - rect.left;
+                                                          if (clickX < rect.width / 2) {
+                                                              handleDailyNavigate("oxygen", 7);
+                                                          } else {
+                                                              handleDailyNavigate("oxygen", dailyOffsets.oxygen > 0 ? -7 : 7);
+                                                          }
+                                                      }}
+                                                      title="Click graph: left half to go back 7 days, right half to go forward"
+                                                  >
+                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                          ‹
+                                                      </div>
+                                                      {dailyOffsets.oxygen > 0 && (
+                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
+                                                              ›
+                                                          </div>
+                                                      )}
+                                                      <ResponsiveContainer width="100%" height={255}>
+                                                          <AreaChart data={dailyOxygenData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                              <defs>
+                                                                  <linearGradient id="colorDailyOxygen7" x1="0" y1="0" x2="0" y2="1">
+                                                                      <stop offset="0%" stopColor="#0284c7" stopOpacity={0.4}/>
+                                                                      <stop offset="100%" stopColor="#0284c7" stopOpacity={0.05}/>
+                                                                  </linearGradient>
+                                                              </defs>
+                                                              <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
+                                                              <Tooltip
+                                                                  contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
+                                                                  labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
+                                                                  formatter={(v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.oxygenCost, { compact: true })})`, "Oxygen Gas"]}
+                                                              />
+                                                              <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0284c7" fill="url(#colorDailyOxygen7)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#0284c7', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={600} animationEasing="ease-in-out">
+                                                                  <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0284c7' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
+                                                              </Area>
+                                                          </AreaChart>
+                                                      </ResponsiveContainer>
+                                                  </div>
                                               </div>
 
                                               {/* 2. Monthly Oxygen */}
