@@ -849,7 +849,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const [kpiLayout, setKpiLayout] = useState("grid");
             const [dashboardDeck, setDashboardDeck] = useState("energy"); // "energy" | "gas"
 
-            // Daily Trend Charts Historical Sliding Window State
+            // Daily Trend Charts Historical Sliding Window State (Individual per graph)
             const [dailyOffsets, setDailyOffsets] = useState({
                 electricity: 0,
                 solar: 0,
@@ -858,28 +858,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 nitrogen: 0,
                 oxygen: 0
             });
-            const [syncDailyCharts, setSyncDailyCharts] = useState(true);
 
             const handleDailyNavigate = useCallback((metricKey, stepDays) => {
                 setDailyOffsets(prev => {
-                    if (syncDailyCharts) {
-                        const current = prev[metricKey] || 0;
-                        const nextVal = stepDays === 0 ? 0 : Math.max(0, current + stepDays);
-                        return {
-                            electricity: nextVal,
-                            solar: nextVal,
-                            diesel: nextVal,
-                            png: nextVal,
-                            nitrogen: nextVal,
-                            oxygen: nextVal
-                        };
-                    } else {
-                        const current = prev[metricKey] || 0;
-                        const nextVal = stepDays === 0 ? 0 : Math.max(0, current + stepDays);
-                        return { ...prev, [metricKey]: nextVal };
-                    }
+                    const current = prev[metricKey] || 0;
+                    const nextVal = stepDays === 0 ? 0 : Math.max(0, current + stepDays);
+                    return { ...prev, [metricKey]: nextVal };
                 });
-            }, [syncDailyCharts]);
+            }, []);
 
             // Theme States
             const [theme, setTheme] = useState(() => {
@@ -7060,14 +7046,6 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               title="Next 7 days (forward)"
                                                           >
                                                               ▶
-                                                          </button>
-                                                          <button
-                                                              type="button"
-                                                              onClick={() => setSyncDailyCharts(prev => !prev)}
-                                                              className={`h-5 w-5 rounded flex items-center justify-center text-[10px] transition cursor-pointer ${syncDailyCharts ? 'text-sky-500 bg-sky-50 dark:bg-sky-950/50' : 'text-slate-400 bg-slate-100 dark:bg-slate-800'}`}
-                                                              title={syncDailyCharts ? "All daily graphs synced (click to unlink)" : "Independent navigation (click to sync)"}
-                                                          >
-                                                              <span className="material-symbols-outlined text-[12px]">{syncDailyCharts ? "link" : "link_off"}</span>
                                                           </button>
                                                       </div>
                                                   </div>
