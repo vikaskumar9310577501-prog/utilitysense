@@ -6970,8 +6970,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Electricity (kWh)</h4>
                                                       <p className="text-[9px] text-slate-400">Last 7 days grid consumption</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorElect7" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.dailyElect} stopOpacity={0.4}/>
@@ -6979,8 +6979,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                           <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.dailyElect} fill="url(#colorElect7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                               <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyElect }} formatter={(v) => fmtNum(v)} />
@@ -6995,8 +6995,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Electricity Load</h4>
                                                       <p className="text-[9px] text-slate-400">Last 5 months grid consumption</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorElectM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.monthlyElect} stopOpacity={0.45}/>
@@ -7004,8 +7004,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                           <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.monthlyElect} fill="url(#colorElectM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                               <LabelList dataKey="electricity" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlyElect }} formatter={(v) => fmtNum(v)} />
@@ -7026,8 +7026,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="material-symbols-outlined text-[16px] text-sky-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorElectY" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.yearlyElect} stopOpacity={0.4}/>
@@ -7035,8 +7035,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
@@ -7068,8 +7068,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Solar (kWh)</h4>
                                                       <p className="text-[9px] text-slate-400">Last 7 days solar generation</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorSolar7" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.dailySolar} stopOpacity={0.4}/>
@@ -7077,8 +7077,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                           <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.dailySolar} fill="url(#colorSolar7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                               <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailySolar }} formatter={(v) => fmtNum(v)} />
@@ -7093,8 +7093,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Solar Gen</h4>
                                                       <p className="text-[9px] text-slate-400">Last 5 months solar generation</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorSolarM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.monthlySolar} stopOpacity={0.45}/>
@@ -7102,8 +7102,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                           <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.monthlySolar} fill="url(#colorSolarM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                               <LabelList dataKey="solarGen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlySolar }} formatter={(v) => fmtNum(v)} />
@@ -7124,8 +7124,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="material-symbols-outlined text-[16px] text-amber-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorSolarFy" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4}/>
@@ -7133,8 +7133,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
@@ -7166,8 +7166,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Diesel (L)</h4>
                                                       <p className="text-[9px] text-slate-400">Last 7 days DG fuel use</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorDiesel7" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.dailyDiesel} stopOpacity={0.4}/>
@@ -7175,8 +7175,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                           <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.dailyDiesel} fill="url(#colorDiesel7)" strokeWidth={2.5} dot={{ r: 4.5, fill: CHART.dailyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                               <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: CHART.dailyDiesel }} formatter={(v) => fmtNum(v)} />
@@ -7191,8 +7191,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Diesel</h4>
                                                       <p className="text-[9px] text-slate-400">Last 5 months DG fuel use</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorDieselM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.monthlyDiesel} stopOpacity={0.45}/>
@@ -7200,8 +7200,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                           <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.monthlyDiesel} fill="url(#colorDieselM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
                                                               <LabelList dataKey="diesel" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: CHART.monthlyDiesel }} formatter={(v) => fmtNum(v)} />
@@ -7222,8 +7222,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="material-symbols-outlined text-[16px] text-red-500 opacity-60 group-hover:opacity-100 transition">open_in_new</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorDieselFy" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#dc2626" stopOpacity={0.4}/>
@@ -7231,8 +7231,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
@@ -7267,8 +7267,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                           </div>
                                                           <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50">Cos φ</span>
                                                       </div>
-                                                      <ResponsiveContainer width="100%" height={175}>
-                                                          <AreaChart data={powerFactorTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                      <ResponsiveContainer width="100%" height={195}>
+                                                          <AreaChart data={powerFactorTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                               <defs>
                                                                   <linearGradient id="colorPfTrend" x1="0" y1="0" x2="0" y2="1">
                                                                       <stop offset="0%" stopColor="#059669" stopOpacity={0.4}/>
@@ -7276,7 +7276,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                   </linearGradient>
                                                               </defs>
                                                               <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
                                                               <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} domain={[0.90, 1.00]} ticks={[0.90, 0.94, 0.98, 1.00]} tickFormatter={(v) => v.toFixed(2)} />
                                                               <ReferenceLine y={0.98} stroke="#059669" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: "Target ≥ 0.98", fill: "#059669", fontSize: 9, fontWeight: 700, position: "insideTopRight" }} />
                                                               <Tooltip
@@ -7329,8 +7329,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/50">Monthly Trend</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={210}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={240}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorTotalR4" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="5%" stopColor="#0284c7" stopOpacity={0.35}/>
@@ -7342,7 +7342,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip
                                                               content={({ active, payload, label }) => {
@@ -7390,8 +7390,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">Cost (₹)</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={210}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={240}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorWaterR4" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="5%" stopColor="#0d9488" stopOpacity={0.4}/>
@@ -7399,8 +7399,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
@@ -7433,8 +7433,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50">Units</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={210}>
-                                                      <BarChart data={last30DaysTrendsData} barGap={2} barCategoryGap="18%">
+                                                  <ResponsiveContainer width="100%" height={240}>
+                                                      <BarChart data={last30DaysTrendsData} barGap={2} barCategoryGap="18%" margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                           <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => fmtNum(v, { compact: true })} />
@@ -7453,8 +7453,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                           <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Waste Generation</h4>
                                                           <p className="text-[9px] text-slate-400">Total hazardous & non-hazardous (Last 30 days)</p>
                                                       </div>
-                                                      <ResponsiveContainer width="100%" height={210}>
-                                                          <BarChart data={last30DaysTrendsData}>
+                                                      <ResponsiveContainer width="100%" height={240}>
+                                                          <BarChart data={last30DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                               <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                               <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
                                                               <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
@@ -7480,8 +7480,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/50">7 Days</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorDailyPng7" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#e11d48" stopOpacity={0.4}/>
@@ -7489,8 +7489,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} domain={[0, 'auto']} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
@@ -7509,8 +7509,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly PNG Gas (MMBTU)</h4>
                                                       <p className="text-[9px] text-slate-400">Last 5 months PNG gas consumption</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorPngM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#ea580c" stopOpacity={0.45}/>
@@ -7518,8 +7518,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Monthly PNG"]} />
                                                           <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#ea580c" fill="url(#colorPngM)" strokeWidth={3} dot={{ r: 5, fill: '#ea580c', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                               <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#ea580c' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
@@ -7534,8 +7534,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year PNG Gas (MMBTU)</h4>
                                                       <p className="text-[9px] text-slate-400">Last 4 financial years PNG annual totals</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorPngY" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#9333ea" stopOpacity={0.4}/>
@@ -7543,8 +7543,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Financial Year PNG"]} />
                                                           <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#9333ea" fill="url(#colorPngY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#9333ea', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                               <LabelList dataKey="png" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#9333ea' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
@@ -7565,8 +7565,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">7 Days</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorDailyNitrogen7" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4}/>
@@ -7574,8 +7574,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} domain={[0, 'auto']} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
@@ -7594,8 +7594,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Nitrogen Gas (m³)</h4>
                                                       <p className="text-[9px] text-slate-400">Last 5 months Nitrogen gas consumption</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorNitrogenM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#059669" stopOpacity={0.45}/>
@@ -7603,8 +7603,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Nitrogen"]} />
                                                           <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#059669" fill="url(#colorNitrogenM)" strokeWidth={3} dot={{ r: 5, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                               <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#059669' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
@@ -7619,8 +7619,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Nitrogen Gas (m³)</h4>
                                                       <p className="text-[9px] text-slate-400">Last 4 financial years Nitrogen annual totals</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 20, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorNitrogenY" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#16a34a" stopOpacity={0.4}/>
@@ -7628,8 +7628,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Nitrogen"]} />
                                                           <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#16a34a" fill="url(#colorNitrogenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#16a34a', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                               <LabelList dataKey="nitrogen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#16a34a' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
@@ -7650,8 +7650,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200/50">7 Days</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last7DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorDailyOxygen7" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#0284c7" stopOpacity={0.4}/>
@@ -7659,8 +7659,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={44} domain={[0, 'auto']} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} interval={0} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
@@ -7679,8 +7679,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Monthly Oxygen Gas (m³)</h4>
                                                       <p className="text-[9px] text-slate-400">Last 5 months Oxygen gas consumption</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorOxygenM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#2563eb" stopOpacity={0.45}/>
@@ -7688,8 +7688,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={48} domain={[0, 'auto']} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Oxygen"]} />
                                                           <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#2563eb" fill="url(#colorOxygenM)" strokeWidth={3} dot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                               <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 10, fontWeight: 700, fill: '#2563eb' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
@@ -7704,8 +7704,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Financial Year Oxygen Gas (m³)</h4>
                                                       <p className="text-[9px] text-slate-400">Last 4 financial years Oxygen annual totals</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={215}>
-                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 20, right: 28, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={255}>
+                                                      <AreaChart data={last4YearsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorOxygenY" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#0891b2" stopOpacity={0.4}/>
@@ -7713,8 +7713,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 12, right: 12 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={54} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Oxygen"]} />
                                                           <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0891b2" fill="url(#colorOxygenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#0891b2', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
                                                               <LabelList dataKey="oxygen" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#0891b2' }} formatter={(v) => v > 0 ? fmtNum(v) : ""} />
@@ -7735,8 +7735,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       </div>
                                                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-950/40 text-cyan-600 dark:text-cyan-400 border border-cyan-200/50">Cost (₹)</span>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={210}>
-                                                      <AreaChart data={waterTrendsData} margin={{ top: 16, right: 12, left: 4, bottom: 4 }}>
+                                                  <ResponsiveContainer width="100%" height={240}>
+                                                      <AreaChart data={waterTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorWaterGasDeck" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.4}/>
@@ -7745,7 +7745,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                           <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }}
@@ -7773,16 +7773,16 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Gas & Aux Cost Breakdown</h4>
                                                       <p className="text-[9px] text-slate-400">Expenditure share across auxiliary resources</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={210}>
+                                                  <ResponsiveContainer width="100%" height={240}>
                                                       <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                                                           <Pie
                                                               data={gasCostPieData}
                                                               dataKey="value"
                                                               nameKey="name"
                                                               cx="50%"
-                                                              cy="46%"
-                                                              outerRadius={72}
-                                                              innerRadius={40}
+                                                              cy="44%"
+                                                              outerRadius={80}
+                                                              innerRadius={45}
                                                               paddingAngle={3}
                                                               isAnimationActive={true}
                                                               animationDuration={1000}
@@ -7814,8 +7814,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Waste Generation Breakdown</h4>
                                                       <p className="text-[9px] text-slate-400">Hazardous vs Non-Hazardous (Last 30 days)</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={210}>
-                                                      <BarChart data={last30DaysTrendsData} barGap={2} barCategoryGap="18%">
+                                                  <ResponsiveContainer width="100%" height={240}>
+                                                      <BarChart data={last30DaysTrendsData} barGap={2} barCategoryGap="18%" margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                           <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
@@ -7833,8 +7833,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Waste Recycled (kg)</h4>
                                                       <p className="text-[9px] text-slate-400">Material circularity & recovery (Last 30 days)</p>
                                                   </div>
-                                                  <ResponsiveContainer width="100%" height={210}>
-                                                      <BarChart data={last30DaysTrendsData}>
+                                                  <ResponsiveContainer width="100%" height={240}>
+                                                      <BarChart data={last30DaysTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
                                                           <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} minTickGap={25} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickFormatter={(v) => fmtNum(v, { compact: true })} />
