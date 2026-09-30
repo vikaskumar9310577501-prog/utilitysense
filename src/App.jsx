@@ -867,6 +867,29 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 });
             }, []);
 
+            // Month Daily Full Breakdown Modal State
+            const [monthDailyModal, setMonthDailyModal] = useState({
+                open: false,
+                metric: "electricity",
+                year: null,
+                month: null
+            });
+
+            const handleModalMonthChange = useCallback((delta) => {
+                setMonthDailyModal(prev => {
+                    let y = prev.year;
+                    let m = prev.month + delta;
+                    if (m < 1) {
+                        m = 12;
+                        y -= 1;
+                    } else if (m > 12) {
+                        m = 1;
+                        y += 1;
+                    }
+                    return { ...prev, year: y, month: m };
+                });
+            }, []);
+
             // Theme States
             const [theme, setTheme] = useState(() => {
                 try { return localStorage.getItem("ep_theme") || "light"; } catch (e) { return "light"; }
@@ -5789,7 +5812,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     const dt = new Date(end);
                     dt.setDate(end.getDate() - i);
                     const key = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
-                    const label = dt.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+                    const mShort = dt.toLocaleDateString("en-GB", { month: "short" });
+                    const label = `${pad(dt.getDate())} ${mShort}`;
                     const src = byDate[key];
                     out.push({
                         date: key,
@@ -5827,6 +5851,242 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const dailyNitrogenData = useMemo(() => getDaily7DaysData(dailyOffsets.nitrogen), [getDaily7DaysData, dailyOffsets.nitrogen]);
             const dailyOxygenData = useMemo(() => getDaily7DaysData(dailyOffsets.oxygen), [getDaily7DaysData, dailyOffsets.oxygen]);
             const last7DaysTrendsData = dailyElectricityData;
+
+            // Automatically detect the currently selected / active month and calculate days dynamically
+            const activeMonthInfo = useMemo(() => {
+                let refDateStr = filters?.endDate;
+                if (!refDateStr && dailyTrendsData && dailyTrendsData.length > 0) {
+                    refDateStr = dailyTrendsData[dailyTrendsData.length - 1].date;
+                }
+                if (!refDateStr) {
+                    refDateStr = new Date().toISOString().slice(0, 10);
+                }
+                const parts = String(refDateStr).slice(0, 10).split("-");
+                const year = parseInt(parts[0], 10) || new Date().getFullYear();
+                const month = parseInt(parts[1], 10) || (new Date().getMonth() + 1); // 1-indexed (1-12)
+                const daysInMonth = new Date(year, month, 0).getDate();
+                const dateObj = new Date(year, month - 1, 1);
+                const monthName = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString("en-US", { month: "long" }) : "September";
+                const monthShort = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString("en-GB", { month: "short" }) : "Sep";
+                return {
+                    year,
+                    month,
+                    monthKey: `${year}-${String(month).padStart(2, "0")}`,
+                    monthName,
+                    monthShort,
+                    daysInMonth,
+                    buttonText: `${daysInMonth} Days`,
+                    headerText: `${monthName} ${year}`
+                };
+            }, [filters?.endDate, dailyTrendsData]);
+
+            const openMonthDailyModal = useCallback((metricKey) => {
+                setMonthDailyModal({
+                    open: true,
+                    metric: metricKey,
+                    year: activeMonthInfo.year,
+                    month: activeMonthInfo.month
+                });
+            }, [activeMonthInfo]);
+
+            // Complete daily breakdown for all days of the selected month
+            const modalMonthDailyData = useMemo(() => {
+                if (!monthDailyModal.open) return [];
+                const year = monthDailyModal.year || activeMonthInfo.year;
+                const month = monthDailyModal.month || activeMonthInfo.month;
+                const daysCount = new Date(year, month, 0).getDate();
+                const pad = (n) => String(n).padStart(2, "0");
+                const monthPrefix = `${year}-${pad(month)}-`;
+                const dtSample = new Date(year, month - 1, 1);
+                const mShort = !isNaN(dtSample.getTime()) ? dtSample.toLocaleDateString("en-GB", { month: "short" }) : "Sep";
+
+                const plantLocationMap = {};
+                plants.forEach((p) => {
+                    const loc = p.location;
+                    [p.plant_code, p.plant_display_name, p.plant_name].forEach((key) => {
+                        if (key) plantLocationMap[String(key)] = loc;
+                    });
+                });
+                const allowedIds = plantIdentitySet(allowedPlants);
+                const selectedPlant = filters.plant !== "all"
+                    ? plants.find((p) => p.plant_code === filters.plant)
+                    : null;
+                const selectedIds = selectedPlant
+                    ? plantIdentitySet([selectedPlant])
+                    : null;
+
+                const filterLoc = String(filters.location || "").trim().toLowerCase();
+                const pngRate = Number(activePngRate) || 80;
+                const n2Rate = Number(activeNitrogenRate) || 50;
+                const o2Rate = Number(activeOxygenRate) || 60;
+
+                const byDate = {};
+
+                dailyEntries.forEach((e) => {
+                    if (!e.date || !e.date.startsWith(monthPrefix)) return;
+
+                    const ep = entryPlantKey(e.plant);
+                    let matchesPlant;
+                    if (filters.plant === "all") {
+                        if (!plants.length) matchesPlant = true;
+                        else if (!allowedPlants.length) matchesPlant = false;
+                        else matchesPlant = allowedIds.has(ep) || allowedPlants.some(p => p.plant_code === e.plant || p.plant_name === e.plant || p.plant_display_name === e.plant);
+                    } else if (selectedIds) {
+                        matchesPlant = selectedIds.has(ep) || (selectedPlant && (selectedPlant.plant_code === e.plant || selectedPlant.plant_name === e.plant || selectedPlant.plant_display_name === e.plant));
+                    } else {
+                        matchesPlant = e.plant === filters.plant || String(e.plant).trim().toLowerCase() === String(filters.plant).trim().toLowerCase();
+                    }
+                    if (!matchesPlant) return;
+
+                    const entryDept = String(e.department || "").trim().toLowerCase();
+                    const isMoldingEntry = entryDept.includes("mold") || entryDept.includes("mould");
+                    if (isMoldingEntry && !canAccessMolding) return;
+                    if (currentUser && currentUser.role !== "IT_ADMIN" && userHasSpecificDepts) {
+                        const allowed = userSpecificDepts.some(dept => {
+                            const dNorm = (dept.includes("mold") || dept.includes("mould")) ? "molding" : dept;
+                            const eNorm = isMoldingEntry ? "molding" : entryDept;
+                            return dNorm === eNorm || dept === entryDept;
+                        });
+                        if (!allowed) return;
+                    }
+
+                    if (activeTab === "molding") {
+                        if (!isMoldingEntry) return;
+                    } else if (filters.department && filters.department !== "all") {
+                        const selDept = departments.find(d => d.dept_code === filters.department || d.dept_name === filters.department);
+                        const filterKey = String(filters.department).trim().toLowerCase();
+                        const filterNorm = (filterKey.includes("mold") || filterKey.includes("mould")) ? "molding" : filterKey;
+                        const validKeys = new Set([
+                            filterKey,
+                            filterNorm,
+                            selDept?.dept_code ? String(selDept.dept_code).trim().toLowerCase() : null,
+                            selDept?.dept_name ? String(selDept.dept_name).trim().toLowerCase() : null
+                        ].filter(Boolean));
+                        const entryNorm = isMoldingEntry ? "molding" : entryDept;
+                        const matchesDept = filterNorm === "molding" ? (entryNorm === "molding" || validKeys.has(entryDept)) : (validKeys.has(entryDept) || validKeys.has(entryNorm));
+                        if (!matchesDept) return;
+                    } else {
+                        if (isMoldingEntry && activeTab !== "molding") return;
+                    }
+
+                    const entryLoc = String(e.location || plantLocationMap[e.plant] || "").trim().toLowerCase();
+                    const matchesLocation = !filterLoc || filterLoc === "all" ||
+                        entryLoc === filterLoc ||
+                        entryLoc.includes(filterLoc) ||
+                        filterLoc.includes(entryLoc) ||
+                        (filterLoc.includes("roork") && entryLoc.includes("roork"));
+                    if (!matchesLocation) return;
+
+                    const dateKey = String(e.date).slice(0, 10);
+                    if (!byDate[dateKey]) {
+                        byDate[dateKey] = {
+                            date: dateKey,
+                            electricity: 0,
+                            solarGen: 0,
+                            solarUtil: 0,
+                            diesel: 0,
+                            png: 0,
+                            pngCost: 0,
+                            nitrogen: 0,
+                            nitrogenCost: 0,
+                            oxygen: 0,
+                            oxygenCost: 0,
+                        };
+                    }
+
+                    const pngVal = Number(e.png_consumption) || (e.png_closing && e.png_opening ? Math.max(0, Number(e.png_closing) - Number(e.png_opening)) : 0);
+                    const n2Val = Number(e.nitrogen_consumption) || (e.nitrogen_closing && e.nitrogen_opening ? Math.max(0, Number(e.nitrogen_closing) - Number(e.nitrogen_opening)) : 0);
+                    const o2Val = Number(e.oxygen_consumption) || (e.oxygen_closing && e.oxygen_opening ? Math.max(0, Number(e.oxygen_closing) - Number(e.oxygen_opening)) : 0);
+
+                    byDate[dateKey].electricity += Number(e.electricity_consumption) || 0;
+                    byDate[dateKey].solarGen += Number(e.solar_generated) || 0;
+                    byDate[dateKey].solarUtil += Number(e.solar_utilized) || 0;
+                    byDate[dateKey].diesel += Number(e.diesel_used) || 0;
+                    byDate[dateKey].png += pngVal;
+                    byDate[dateKey].pngCost += Number(e.png_cost) || (pngVal * pngRate);
+                    byDate[dateKey].nitrogen += n2Val;
+                    byDate[dateKey].nitrogenCost += Number(e.nitrogen_cost) || (n2Val * n2Rate);
+                    byDate[dateKey].oxygen += o2Val;
+                    byDate[dateKey].oxygenCost += Number(e.oxygen_cost) || (o2Val * o2Rate);
+                });
+
+                const out = [];
+                for (let day = 1; day <= daysCount; day++) {
+                    const dateKey = `${monthPrefix}${pad(day)}`;
+                    const label = `${pad(day)} ${mShort}`;
+                    const src = byDate[dateKey];
+                    out.push({
+                        date: dateKey,
+                        day,
+                        label,
+                        electricity: src ? Number(src.electricity) || 0 : 0,
+                        solarGen: src ? Number(src.solarGen) || 0 : 0,
+                        solarUtil: src ? Number(src.solarUtil) || 0 : 0,
+                        diesel: src ? Number(src.diesel) || 0 : 0,
+                        png: src ? Number(src.png) || 0 : 0,
+                        pngCost: src ? Number(src.pngCost) || 0 : 0,
+                        nitrogen: src ? Number(src.nitrogen) || 0 : 0,
+                        nitrogenCost: src ? Number(src.nitrogenCost) || 0 : 0,
+                        oxygen: src ? Number(src.oxygen) || 0 : 0,
+                        oxygenCost: src ? Number(src.oxygenCost) || 0 : 0,
+                    });
+                }
+                return out;
+            }, [monthDailyModal.open, monthDailyModal.year, monthDailyModal.month, activeMonthInfo, dailyEntries, plants, allowedPlants, filters.plant, filters.location, filters.department, canAccessMolding, currentUser, userHasSpecificDepts, userSpecificDepts, activeTab, departments, activePngRate, activeNitrogenRate, activeOxygenRate]);
+
+            // Summary metrics for the popup modal
+            const modalMonthStats = useMemo(() => {
+                if (!modalMonthDailyData.length || !monthDailyModal.open) {
+                    return { total: 0, avg: 0, peak: 0, peakLabel: "—", totalCost: 0, activeDays: 0, unit: "" };
+                }
+                const metric = monthDailyModal.metric;
+                const keyMap = {
+                    electricity: { val: "electricity", cost: null, unit: "kWh" },
+                    solar: { val: "solarGen", cost: null, unit: "kWh" },
+                    diesel: { val: "diesel", cost: null, unit: "L" },
+                    png: { val: "png", cost: "pngCost", unit: "MMBTU" },
+                    nitrogen: { val: "nitrogen", cost: "nitrogenCost", unit: "m³" },
+                    oxygen: { val: "oxygen", cost: "oxygenCost", unit: "m³" },
+                };
+                const cfg = keyMap[metric] || keyMap.electricity;
+                let sum = 0;
+                let sumCost = 0;
+                let peak = 0;
+                let peakLabel = "—";
+                let activeDays = 0;
+
+                modalMonthDailyData.forEach(d => {
+                    const v = Number(d[cfg.val]) || 0;
+                    sum += v;
+                    if (cfg.cost) sumCost += Number(d[cfg.cost]) || 0;
+                    if (v > 0) activeDays++;
+                    if (v > peak) {
+                        peak = v;
+                        peakLabel = d.label;
+                    }
+                });
+
+                const avg = activeDays > 0 ? (sum / activeDays) : (sum / modalMonthDailyData.length);
+                return {
+                    total: sum,
+                    avg,
+                    peak,
+                    peakLabel,
+                    totalCost: sumCost,
+                    activeDays,
+                    unit: cfg.unit
+                };
+            }, [modalMonthDailyData, monthDailyModal.open, monthDailyModal.metric]);
+
+            // Close month daily modal on Escape key
+            useEffect(() => {
+                if (!monthDailyModal.open) return;
+                const handleKeyDown = (e) => {
+                    if (e.key === "Escape") setMonthDailyModal(prev => ({ ...prev, open: false }));
+                };
+                window.addEventListener("keydown", handleKeyDown);
+                return () => window.removeEventListener("keydown", handleKeyDown);
+            }, [monthDailyModal.open]);
 
             const getDailyDateRangeText = useCallback((data, offset = 0, defaultSub = "") => {
                 if (!data || !data.length) return defaultSub || "Last 7 days";
@@ -5909,9 +6169,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return Object.values(map).sort((a, b) => a.period.localeCompare(b.period)).map(d => {
                     const [y, m] = d.period.split("-");
                     const dt = new Date(Number(y), Number(m) - 1, 1);
+                    const daysInThisMonth = new Date(Number(y), Number(m), 0).getDate();
+                    const pad = (n) => String(n).padStart(2, "0");
+                    const monthShort = !Number.isNaN(dt.getTime()) ? dt.toLocaleDateString("en-GB", { month: "short" }) : d.period;
                     return {
                         ...d,
-                        label: Number.isNaN(dt.getTime()) ? d.period : dt.toLocaleDateString("en-GB", { month: "short" })
+                        label: Number.isNaN(dt.getTime()) ? d.period : `${monthShort} (01-${pad(daysInThisMonth)})`
                     };
                 });
             }, [filteredEntries, activePngRate, activeNitrogenRate, activeOxygenRate, activeWaterRate]);
@@ -5934,8 +6197,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const out = [];
                 for (let i = 4; i >= 0; i--) {
                     const dt = new Date(end.getFullYear(), end.getMonth() - i, 1);
+                    const daysInThisMonth = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
                     const key = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}`;
-                    const label = dt.toLocaleDateString("en-GB", { month: "short" });
+                    const monthShort = dt.toLocaleDateString("en-GB", { month: "short" });
+                    const label = `${monthShort} (01-${pad(daysInThisMonth)})`;
                     const src = byPeriod[key];
                     const elVal = src ? Number(src.electricity) || 0 : 0;
                     const solVal = src ? Number(src.solarGen) || 0 : 0;
@@ -7009,67 +7274,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <div>
                                                           <div className="flex items-center gap-1.5">
                                                               <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Electricity (kWh)</h4>
-                                                              {dailyOffsets.electricity > 0 && (
-                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
-                                                                      -{dailyOffsets.electricity}d
-                                                                  </span>
-                                                              )}
-                                                          </div>
+                                                              </div>
                                                           <p className="text-[9px] text-slate-400 font-medium">
                                                               {getDailyDateRangeText(dailyElectricityData, dailyOffsets.electricity, "Last 7 days grid consumption")}
                                                           </p>
                                                       </div>
                                                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                          {dailyOffsets.electricity > 0 && (
-                                                              <button
-                                                                  type="button"
-                                                                  onClick={() => handleDailyNavigate("electricity", 0)}
-                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-300 hover:bg-sky-100 transition cursor-pointer"
-                                                                  title="Reset to latest 7 days"
-                                                              >
-                                                                  Latest
-                                                              </button>
-                                                          )}
                                                           <button
                                                               type="button"
-                                                              onClick={() => handleDailyNavigate("electricity", 7)}
-                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
-                                                              title="Click or click graph left side to view previous 7 days"
+                                                              onClick={() => openMonthDailyModal("electricity")}
+                                                              className="h-5 px-1.5 text-[8.5px] font-extrabold rounded bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900 border border-sky-200/80 dark:border-sky-800/70 transition cursor-pointer flex items-center gap-0.5 shadow-2xs"
+                                                              title={`View full month daily data (${activeMonthInfo.buttonText})`}
                                                           >
-                                                              ◀
-                                                          </button>
-                                                          <button
-                                                              type="button"
-                                                              disabled={dailyOffsets.electricity === 0}
-                                                              onClick={() => handleDailyNavigate("electricity", -7)}
-                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.electricity === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
-                                                              title="Next 7 days (forward)"
-                                                          >
-                                                              ▶
+                                                              <span>{activeMonthInfo.buttonText}</span>
                                                           </button>
                                                       </div>
                                                   </div>
-                                                  <div 
-                                                      className="relative group cursor-pointer select-none"
-                                                      onClick={(e) => {
-                                                          const rect = e.currentTarget.getBoundingClientRect();
-                                                          const clickX = e.clientX - rect.left;
-                                                          if (clickX < rect.width / 2) {
-                                                              handleDailyNavigate("electricity", 7);
-                                                          } else {
-                                                              handleDailyNavigate("electricity", dailyOffsets.electricity > 0 ? -7 : 7);
-                                                          }
-                                                      }}
-                                                      title="Click graph: left half to go back 7 days, right half to go forward"
-                                                  >
-                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                          ‹
-                                                      </div>
-                                                      {dailyOffsets.electricity > 0 && (
-                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                              ›
-                                                          </div>
-                                                      )}
+                                                  <div className="relative">
                                                       <ResponsiveContainer width="100%" height={255}>
                                                           <AreaChart data={dailyElectricityData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                               <defs>
@@ -7097,7 +7318,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <p className="text-[9px] text-slate-400">Last 5 months grid consumption</p>
                                                   </div>
                                                   <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 24, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorElectM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.monthlyElect} stopOpacity={0.45}/>
@@ -7105,7 +7326,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                           <Area type="monotone" dataKey="electricity" name="Electricity" stroke={CHART.monthlyElect} fill="url(#colorElectM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyElect, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
@@ -7136,7 +7357,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
@@ -7169,67 +7390,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <div>
                                                           <div className="flex items-center gap-1.5">
                                                               <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Solar (kWh)</h4>
-                                                              {dailyOffsets.solar > 0 && (
-                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
-                                                                      -{dailyOffsets.solar}d
-                                                                  </span>
-                                                              )}
-                                                          </div>
+                                                              </div>
                                                           <p className="text-[9px] text-slate-400 font-medium">
                                                               {getDailyDateRangeText(dailySolarData, dailyOffsets.solar, "Last 7 days solar generation")}
                                                           </p>
                                                       </div>
                                                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                          {dailyOffsets.solar > 0 && (
-                                                              <button
-                                                                  type="button"
-                                                                  onClick={() => handleDailyNavigate("solar", 0)}
-                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-300 hover:bg-amber-100 transition cursor-pointer"
-                                                                  title="Reset to latest 7 days"
-                                                              >
-                                                                  Latest
-                                                              </button>
-                                                          )}
                                                           <button
                                                               type="button"
-                                                              onClick={() => handleDailyNavigate("solar", 7)}
-                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
-                                                              title="Click or click graph left side to view previous 7 days"
+                                                              onClick={() => openMonthDailyModal("solar")}
+                                                              className="h-5 px-1.5 text-[8.5px] font-extrabold rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 border border-amber-200/80 dark:border-amber-800/70 transition cursor-pointer flex items-center gap-0.5 shadow-2xs"
+                                                              title={`View full month daily data (${activeMonthInfo.buttonText})`}
                                                           >
-                                                              ◀
-                                                          </button>
-                                                          <button
-                                                              type="button"
-                                                              disabled={dailyOffsets.solar === 0}
-                                                              onClick={() => handleDailyNavigate("solar", -7)}
-                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.solar === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
-                                                              title="Next 7 days (forward)"
-                                                          >
-                                                              ▶
+                                                              <span>{activeMonthInfo.buttonText}</span>
                                                           </button>
                                                       </div>
                                                   </div>
-                                                  <div 
-                                                      className="relative group cursor-pointer select-none"
-                                                      onClick={(e) => {
-                                                          const rect = e.currentTarget.getBoundingClientRect();
-                                                          const clickX = e.clientX - rect.left;
-                                                          if (clickX < rect.width / 2) {
-                                                              handleDailyNavigate("solar", 7);
-                                                          } else {
-                                                              handleDailyNavigate("solar", dailyOffsets.solar > 0 ? -7 : 7);
-                                                          }
-                                                      }}
-                                                      title="Click graph: left half to go back 7 days, right half to go forward"
-                                                  >
-                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                          ‹
-                                                      </div>
-                                                      {dailyOffsets.solar > 0 && (
-                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                              ›
-                                                          </div>
-                                                      )}
+                                                  <div className="relative">
                                                       <ResponsiveContainer width="100%" height={255}>
                                                           <AreaChart data={dailySolarData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                               <defs>
@@ -7257,7 +7434,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <p className="text-[9px] text-slate-400">Last 5 months solar generation</p>
                                                   </div>
                                                   <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 24, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorSolarM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.monthlySolar} stopOpacity={0.45}/>
@@ -7265,7 +7442,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                           <Area type="monotone" dataKey="solarGen" name="Solar Gen" stroke={CHART.monthlySolar} fill="url(#colorSolarM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlySolar, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
@@ -7296,7 +7473,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e7 ? `${(v/1e7).toFixed(1)} Cr` : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v))))} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
@@ -7329,67 +7506,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <div>
                                                           <div className="flex items-center gap-1.5">
                                                               <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Diesel (L)</h4>
-                                                              {dailyOffsets.diesel > 0 && (
-                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
-                                                                      -{dailyOffsets.diesel}d
-                                                                  </span>
-                                                              )}
-                                                          </div>
+                                                              </div>
                                                           <p className="text-[9px] text-slate-400 font-medium">
                                                               {getDailyDateRangeText(dailyDieselData, dailyOffsets.diesel, "Last 7 days DG fuel use")}
                                                           </p>
                                                       </div>
                                                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                          {dailyOffsets.diesel > 0 && (
-                                                              <button
-                                                                  type="button"
-                                                                  onClick={() => handleDailyNavigate("diesel", 0)}
-                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-300 hover:bg-amber-100 transition cursor-pointer"
-                                                                  title="Reset to latest 7 days"
-                                                              >
-                                                                  Latest
-                                                              </button>
-                                                          )}
                                                           <button
                                                               type="button"
-                                                              onClick={() => handleDailyNavigate("diesel", 7)}
-                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
-                                                              title="Click or click graph left side to view previous 7 days"
+                                                              onClick={() => openMonthDailyModal("diesel")}
+                                                              className="h-5 px-1.5 text-[8.5px] font-extrabold rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900 border border-amber-200/80 dark:border-amber-800/70 transition cursor-pointer flex items-center gap-0.5 shadow-2xs"
+                                                              title={`View full month daily data (${activeMonthInfo.buttonText})`}
                                                           >
-                                                              ◀
-                                                          </button>
-                                                          <button
-                                                              type="button"
-                                                              disabled={dailyOffsets.diesel === 0}
-                                                              onClick={() => handleDailyNavigate("diesel", -7)}
-                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.diesel === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
-                                                              title="Next 7 days (forward)"
-                                                          >
-                                                              ▶
+                                                              <span>{activeMonthInfo.buttonText}</span>
                                                           </button>
                                                       </div>
                                                   </div>
-                                                  <div 
-                                                      className="relative group cursor-pointer select-none"
-                                                      onClick={(e) => {
-                                                          const rect = e.currentTarget.getBoundingClientRect();
-                                                          const clickX = e.clientX - rect.left;
-                                                          if (clickX < rect.width / 2) {
-                                                              handleDailyNavigate("diesel", 7);
-                                                          } else {
-                                                              handleDailyNavigate("diesel", dailyOffsets.diesel > 0 ? -7 : 7);
-                                                          }
-                                                      }}
-                                                      title="Click graph: left half to go back 7 days, right half to go forward"
-                                                  >
-                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                          ‹
-                                                      </div>
-                                                      {dailyOffsets.diesel > 0 && (
-                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                              ›
-                                                          </div>
-                                                      )}
+                                                  <div className="relative">
                                                       <ResponsiveContainer width="100%" height={255}>
                                                           <AreaChart data={dailyDieselData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                               <defs>
@@ -7417,7 +7550,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <p className="text-[9px] text-slate-400">Last 5 months DG fuel use</p>
                                                   </div>
                                                   <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 24, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorDieselM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.monthlyDiesel} stopOpacity={0.45}/>
@@ -7425,7 +7558,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip contentStyle={{ fontSize: 9, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} />
                                                           <Area type="monotone" dataKey="diesel" name="Diesel Liters" stroke={CHART.monthlyDiesel} fill="url(#colorDieselM)" strokeWidth={3} dot={{ r: 5, fill: CHART.monthlyDiesel, stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000} animationEasing="ease-in-out">
@@ -7456,7 +7589,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
@@ -7501,7 +7634,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                   </linearGradient>
                                                               </defs>
                                                               <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                              <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                               <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} domain={[0.90, 1.00]} ticks={[0.90, 0.94, 0.98, 1.00]} tickFormatter={(v) => v.toFixed(2)} />
                                                               <ReferenceLine y={0.98} stroke="#059669" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: "Target ≥ 0.98", fill: "#059669", fontSize: 9, fontWeight: 700, position: "insideTopRight" }} />
                                                               <Tooltip
@@ -7555,7 +7688,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/50">Monthly Trend</span>
                                                   </div>
                                                   <ResponsiveContainer width="100%" height={240}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 24, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorTotalR4" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="5%" stopColor="#0284c7" stopOpacity={0.35}/>
@@ -7567,7 +7700,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => fmtNum(v, { compact: true })} />
                                                           <Tooltip
                                                               content={({ active, payload, label }) => {
@@ -7616,7 +7749,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/40 text-teal-600 dark:text-teal-400 border border-teal-200/50">Cost (₹)</span>
                                                   </div>
                                                   <ResponsiveContainer width="100%" height={240}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 24, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorWaterR4" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="5%" stopColor="#0d9488" stopOpacity={0.4}/>
@@ -7624,7 +7757,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickFormatter={(v) => v === 0 ? "₹0" : fmtINR(v, { compact: true })} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }}
@@ -7702,67 +7835,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <div>
                                                           <div className="flex items-center gap-1.5">
                                                               <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily PNG Gas (MMBTU)</h4>
-                                                              {dailyOffsets.png > 0 && (
-                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300">
-                                                                      -{dailyOffsets.png}d
-                                                                  </span>
-                                                              )}
-                                                          </div>
+                                                              </div>
                                                           <p className="text-[9px] text-slate-400 font-medium">
                                                               {getDailyDateRangeText(dailyPngData, dailyOffsets.png, "Last 7 days PNG gas consumption")}
                                                           </p>
                                                       </div>
                                                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                          {dailyOffsets.png > 0 && (
-                                                              <button
-                                                                  type="button"
-                                                                  onClick={() => handleDailyNavigate("png", 0)}
-                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-300 hover:bg-rose-100 transition cursor-pointer"
-                                                                  title="Reset to latest 7 days"
-                                                              >
-                                                                  Latest
-                                                              </button>
-                                                          )}
                                                           <button
                                                               type="button"
-                                                              onClick={() => handleDailyNavigate("png", 7)}
-                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
-                                                              title="Click or click graph left side to view previous 7 days"
+                                                              onClick={() => openMonthDailyModal("png")}
+                                                              className="h-5 px-1.5 text-[8.5px] font-extrabold rounded bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-200/80 dark:border-rose-800/70 transition cursor-pointer flex items-center gap-0.5 shadow-2xs"
+                                                              title={`View full month daily data (${activeMonthInfo.buttonText})`}
                                                           >
-                                                              ◀
-                                                          </button>
-                                                          <button
-                                                              type="button"
-                                                              disabled={dailyOffsets.png === 0}
-                                                              onClick={() => handleDailyNavigate("png", -7)}
-                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.png === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
-                                                              title="Next 7 days (forward)"
-                                                          >
-                                                              ▶
+                                                              <span>{activeMonthInfo.buttonText}</span>
                                                           </button>
                                                       </div>
                                                   </div>
-                                                  <div 
-                                                      className="relative group cursor-pointer select-none"
-                                                      onClick={(e) => {
-                                                          const rect = e.currentTarget.getBoundingClientRect();
-                                                          const clickX = e.clientX - rect.left;
-                                                          if (clickX < rect.width / 2) {
-                                                              handleDailyNavigate("png", 7);
-                                                          } else {
-                                                              handleDailyNavigate("png", dailyOffsets.png > 0 ? -7 : 7);
-                                                          }
-                                                      }}
-                                                      title="Click graph: left half to go back 7 days, right half to go forward"
-                                                  >
-                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                          ‹
-                                                      </div>
-                                                      {dailyOffsets.png > 0 && (
-                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                              ›
-                                                          </div>
-                                                      )}
+                                                  <div className="relative">
                                                       <ResponsiveContainer width="100%" height={255}>
                                                           <AreaChart data={dailyPngData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                               <defs>
@@ -7794,7 +7883,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <p className="text-[9px] text-slate-400">Last 5 months PNG gas consumption</p>
                                                   </div>
                                                   <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 24, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorPngM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#ea580c" stopOpacity={0.45}/>
@@ -7802,7 +7891,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Monthly PNG"]} />
                                                           <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#ea580c" fill="url(#colorPngM)" strokeWidth={3} dot={{ r: 5, fill: '#ea580c', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
@@ -7827,7 +7916,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} MMBTU`, "Financial Year PNG"]} />
                                                           <Area type="monotone" dataKey="png" name="PNG Gas" stroke="#9333ea" fill="url(#colorPngY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#9333ea', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
@@ -7846,67 +7935,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <div>
                                                           <div className="flex items-center gap-1.5">
                                                               <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Nitrogen Gas (m³)</h4>
-                                                              {dailyOffsets.nitrogen > 0 && (
-                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300">
-                                                                      -{dailyOffsets.nitrogen}d
-                                                                  </span>
-                                                              )}
-                                                          </div>
+                                                              </div>
                                                           <p className="text-[9px] text-slate-400 font-medium">
                                                               {getDailyDateRangeText(dailyNitrogenData, dailyOffsets.nitrogen, "Last 7 days N2 gas consumption")}
                                                           </p>
                                                       </div>
                                                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                          {dailyOffsets.nitrogen > 0 && (
-                                                              <button
-                                                                  type="button"
-                                                                  onClick={() => handleDailyNavigate("nitrogen", 0)}
-                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-300 hover:bg-teal-100 transition cursor-pointer"
-                                                                  title="Reset to latest 7 days"
-                                                              >
-                                                                  Latest
-                                                              </button>
-                                                          )}
                                                           <button
                                                               type="button"
-                                                              onClick={() => handleDailyNavigate("nitrogen", 7)}
-                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
-                                                              title="Click or click graph left side to view previous 7 days"
+                                                              onClick={() => openMonthDailyModal("nitrogen")}
+                                                              className="h-5 px-1.5 text-[8.5px] font-extrabold rounded bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-200/80 dark:border-teal-800/70 transition cursor-pointer flex items-center gap-0.5 shadow-2xs"
+                                                              title={`View full month daily data (${activeMonthInfo.buttonText})`}
                                                           >
-                                                              ◀
-                                                          </button>
-                                                          <button
-                                                              type="button"
-                                                              disabled={dailyOffsets.nitrogen === 0}
-                                                              onClick={() => handleDailyNavigate("nitrogen", -7)}
-                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.nitrogen === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
-                                                              title="Next 7 days (forward)"
-                                                          >
-                                                              ▶
+                                                              <span>{activeMonthInfo.buttonText}</span>
                                                           </button>
                                                       </div>
                                                   </div>
-                                                  <div 
-                                                      className="relative group cursor-pointer select-none"
-                                                      onClick={(e) => {
-                                                          const rect = e.currentTarget.getBoundingClientRect();
-                                                          const clickX = e.clientX - rect.left;
-                                                          if (clickX < rect.width / 2) {
-                                                              handleDailyNavigate("nitrogen", 7);
-                                                          } else {
-                                                              handleDailyNavigate("nitrogen", dailyOffsets.nitrogen > 0 ? -7 : 7);
-                                                          }
-                                                      }}
-                                                      title="Click graph: left half to go back 7 days, right half to go forward"
-                                                  >
-                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                          ‹
-                                                      </div>
-                                                      {dailyOffsets.nitrogen > 0 && (
-                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                              ›
-                                                          </div>
-                                                      )}
+                                                  <div className="relative">
                                                       <ResponsiveContainer width="100%" height={255}>
                                                           <AreaChart data={dailyNitrogenData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                               <defs>
@@ -7938,7 +7983,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <p className="text-[9px] text-slate-400">Last 5 months Nitrogen gas consumption</p>
                                                   </div>
                                                   <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 24, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorNitrogenM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#059669" stopOpacity={0.45}/>
@@ -7946,7 +7991,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Nitrogen"]} />
                                                           <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#059669" fill="url(#colorNitrogenM)" strokeWidth={3} dot={{ r: 5, fill: '#059669', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
@@ -7971,7 +8016,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Nitrogen"]} />
                                                           <Area type="monotone" dataKey="nitrogen" name="Nitrogen Gas" stroke="#16a34a" fill="url(#colorNitrogenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#16a34a', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
@@ -7990,67 +8035,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <div>
                                                           <div className="flex items-center gap-1.5">
                                                               <h4 className="text-[11px] font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Daily Oxygen Gas (m³)</h4>
-                                                              {dailyOffsets.oxygen > 0 && (
-                                                                  <span className="text-[8px] font-extrabold px-1.5 py-0.2 rounded bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300">
-                                                                      -{dailyOffsets.oxygen}d
-                                                                  </span>
-                                                              )}
-                                                          </div>
+                                                              </div>
                                                           <p className="text-[9px] text-slate-400 font-medium">
                                                               {getDailyDateRangeText(dailyOxygenData, dailyOffsets.oxygen, "Last 7 days O2 gas consumption")}
                                                           </p>
                                                       </div>
                                                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                          {dailyOffsets.oxygen > 0 && (
-                                                              <button
-                                                                  type="button"
-                                                                  onClick={() => handleDailyNavigate("oxygen", 0)}
-                                                                  className="h-5 px-1.5 text-[8px] font-extrabold rounded bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-300 hover:bg-sky-100 transition cursor-pointer"
-                                                                  title="Reset to latest 7 days"
-                                                              >
-                                                                  Latest
-                                                              </button>
-                                                          )}
                                                           <button
                                                               type="button"
-                                                              onClick={() => handleDailyNavigate("oxygen", 7)}
-                                                              className="h-5 w-6 rounded flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black transition cursor-pointer"
-                                                              title="Click or click graph left side to view previous 7 days"
+                                                              onClick={() => openMonthDailyModal("oxygen")}
+                                                              className="h-5 px-1.5 text-[8.5px] font-extrabold rounded bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900 border border-sky-200/80 dark:border-sky-800/70 transition cursor-pointer flex items-center gap-0.5 shadow-2xs"
+                                                              title={`View full month daily data (${activeMonthInfo.buttonText})`}
                                                           >
-                                                              ◀
-                                                          </button>
-                                                          <button
-                                                              type="button"
-                                                              disabled={dailyOffsets.oxygen === 0}
-                                                              onClick={() => handleDailyNavigate("oxygen", -7)}
-                                                              className={`h-5 w-6 rounded flex items-center justify-center text-[9px] font-black transition ${dailyOffsets.oxygen === 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
-                                                              title="Next 7 days (forward)"
-                                                          >
-                                                              ▶
+                                                              <span>{activeMonthInfo.buttonText}</span>
                                                           </button>
                                                       </div>
                                                   </div>
-                                                  <div 
-                                                      className="relative group cursor-pointer select-none"
-                                                      onClick={(e) => {
-                                                          const rect = e.currentTarget.getBoundingClientRect();
-                                                          const clickX = e.clientX - rect.left;
-                                                          if (clickX < rect.width / 2) {
-                                                              handleDailyNavigate("oxygen", 7);
-                                                          } else {
-                                                              handleDailyNavigate("oxygen", dailyOffsets.oxygen > 0 ? -7 : 7);
-                                                          }
-                                                      }}
-                                                      title="Click graph: left half to go back 7 days, right half to go forward"
-                                                  >
-                                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                          ‹
-                                                      </div>
-                                                      {dailyOffsets.oxygen > 0 && (
-                                                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-80 transition-all bg-slate-900/75 hover:bg-slate-900 text-white rounded-full h-6 w-6 flex items-center justify-center text-[11px] font-bold pointer-events-none z-10 shadow">
-                                                              ›
-                                                          </div>
-                                                      )}
+                                                  <div className="relative">
                                                       <ResponsiveContainer width="100%" height={255}>
                                                           <AreaChart data={dailyOxygenData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
                                                               <defs>
@@ -8082,7 +8083,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <p className="text-[9px] text-slate-400">Last 5 months Oxygen gas consumption</p>
                                                   </div>
                                                   <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 8, left: -10, bottom: 2 }}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 16, right: 24, left: -10, bottom: 2 }}>
                                                           <defs>
                                                               <linearGradient id="colorOxygenM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor="#2563eb" stopOpacity={0.45}/>
@@ -8090,7 +8091,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={38} domain={[0, 'auto']} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Monthly Oxygen"]} />
                                                           <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#2563eb" fill="url(#colorOxygenM)" strokeWidth={3} dot={{ r: 5, fill: '#2563eb', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
@@ -8115,7 +8116,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} padding={{ left: 6, right: 6 }} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 8, right: 16 }} />
                                                           <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} domain={[0, 'auto']} tickFormatter={(v) => v === 0 ? "0" : (v >= 1e5 ? `${Math.round(v/1e5)} L` : (v >= 1e3 ? `${Math.round(v/1e3)} k` : String(v)))} />
                                                           <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} formatter={(v) => [`${fmtNum(v)} m³`, "Financial Year Oxygen"]} />
                                                           <Area type="monotone" dataKey="oxygen" name="Oxygen Gas" stroke="#0891b2" fill="url(#colorOxygenY)" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#0891b2', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1000}>
@@ -12362,7 +12363,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm">
                             <div className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-white dark:bg-[#121a29] border border-slate-200 dark:border-[#26334a] shadow-2xl flex flex-col max-h-[92vh]">
                                 {/* Header */}
-                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4 bg-slate-50/80 dark:bg-[#182234]">
+                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-5 py-3 bg-slate-50/80 dark:bg-[#182234]">
                                     <div className="flex items-center gap-3">
                                         <div className="h-10 w-10 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-100 dark:border-sky-900 flex items-center justify-center text-sky-600 dark:text-sky-400">
                                             <span className="material-symbols-outlined text-[22px]">analytics</span>
@@ -12571,7 +12572,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                 </div>
 
                                 {/* Footer */}
-                                <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 px-6 py-3.5 bg-slate-50 dark:bg-[#182234]">
+                                <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 px-5 py-2.5 bg-slate-50 dark:bg-[#182234]">
                                     <span className="text-[11px] text-slate-400 font-medium">UtilitySense Financial Year Analytics Module</span>
                                     <button
                                         type="button"
@@ -12584,6 +12585,309 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                             </div>
                         </div>
                     )}
+
+                    {/* MONTHLY DAILY DATA POPUP MODAL */}
+                    {monthDailyModal.open && (() => {
+                        const year = monthDailyModal.year || activeMonthInfo.year;
+                        const month = monthDailyModal.month || activeMonthInfo.month;
+                        const daysInMonth = new Date(year, month, 0).getDate();
+                        const dateObj = new Date(year, month - 1, 1);
+                        const monthName = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString("en-US", { month: "long" }) : "September";
+
+                        const metricConfigs = {
+                            electricity: {
+                                title: "Electricity – Daily",
+                                shortName: "Electricity",
+                                unit: "kWh",
+                                color: CHART.dailyElect,
+                                gradientId: "colorModalElect",
+                                icon: "electric_bolt",
+                                dataKey: "electricity",
+                                badgeTone: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
+                                tooltipFormatter: (v) => [`${fmtNum(v)} kWh`, "Electricity"]
+                            },
+                            solar: {
+                                title: "Solar – Daily",
+                                shortName: "Solar",
+                                unit: "kWh",
+                                color: CHART.dailySolar,
+                                gradientId: "colorModalSolar",
+                                icon: "wb_sunny",
+                                dataKey: "solarGen",
+                                badgeTone: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+                                tooltipFormatter: (v) => [`${fmtNum(v)} kWh`, "Solar Gen"]
+                            },
+                            diesel: {
+                                title: "Diesel – Daily",
+                                shortName: "Diesel",
+                                unit: "L",
+                                color: CHART.dailyDiesel,
+                                gradientId: "colorModalDiesel",
+                                icon: "local_gas_station",
+                                dataKey: "diesel",
+                                badgeTone: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+                                tooltipFormatter: (v) => [`${fmtNum(v)} L`, "Diesel Liters"]
+                            },
+                            png: {
+                                title: "PNG – Daily",
+                                shortName: "PNG Gas",
+                                unit: "MMBTU",
+                                color: "#e11d48",
+                                gradientId: "colorModalPng",
+                                icon: "propane_tank",
+                                dataKey: "png",
+                                badgeTone: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
+                                tooltipFormatter: (v, name, item) => [`${fmtNum(v)} MMBTU (₹${fmtINR(item.payload.pngCost, { compact: true })})`, "PNG Gas"]
+                            },
+                            nitrogen: {
+                                title: "N2 / Nitrogen – Daily",
+                                shortName: "Nitrogen Gas",
+                                unit: "m³",
+                                color: "#0d9488",
+                                gradientId: "colorModalNitrogen",
+                                icon: "bubble_chart",
+                                dataKey: "nitrogen",
+                                badgeTone: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300",
+                                tooltipFormatter: (v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.nitrogenCost, { compact: true })})`, "Nitrogen Gas"]
+                            },
+                            oxygen: {
+                                title: "O2 / Oxygen – Daily",
+                                shortName: "Oxygen Gas",
+                                unit: "m³",
+                                color: "#0284c7",
+                                gradientId: "colorModalOxygen",
+                                icon: "mode_fan",
+                                dataKey: "oxygen",
+                                badgeTone: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
+                                tooltipFormatter: (v, name, item) => [`${fmtNum(v)} m³ (₹${fmtINR(item.payload.oxygenCost, { compact: true })})`, "Oxygen Gas"]
+                            }
+                        };
+
+                        const cur = metricConfigs[monthDailyModal.metric] || metricConfigs.electricity;
+
+                        return (
+                            <div 
+                                role="dialog"
+                                aria-modal="true"
+                                className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-sm"
+                                onClick={() => setMonthDailyModal(prev => ({ ...prev, open: false }))}
+                            >
+                                <div 
+                                    className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-white dark:bg-[#121a29] border border-slate-200 dark:border-[#26334a] shadow-2xl flex flex-col max-h-[96vh]"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4 bg-slate-50/80 dark:bg-[#182234]">
+                                        <div className="flex items-center gap-3">
+                                            <div 
+                                                className="h-10 w-10 rounded-xl flex items-center justify-center border shadow-2xs"
+                                                style={{ 
+                                                    backgroundColor: `${cur.color}15`, 
+                                                    borderColor: `${cur.color}35`, 
+                                                    color: cur.color 
+                                                }}
+                                            >
+                                                <span className="material-symbols-outlined text-[22px]">{cur.icon}</span>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex flex-wrap items-center gap-2">
+                                                    <span>{cur.title}</span>
+                                                    <span className="text-slate-400 font-normal">|</span>
+                                                    <span className="text-slate-700 dark:text-slate-200">{monthName} {year}</span>
+                                                    <span className="text-slate-400 font-normal">|</span>
+                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${cur.badgeTone}`}>
+                                                        {daysInMonth} Days
+                                                    </span>
+                                                </h3>
+                                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                                    Complete daily resource breakdown for all {daysInMonth} days of {monthName} {year}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            {/* Month navigation controls */}
+                                            <div className="flex items-center gap-1 bg-white dark:bg-[#121a29] border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 shadow-2xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleModalMonthChange(-1)}
+                                                    className="h-6 w-6 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold transition border-none bg-transparent cursor-pointer"
+                                                    title="Previous Month"
+                                                >
+                                                    ◀
+                                                </button>
+                                                <span className="text-[10px] font-extrabold px-1 text-slate-700 dark:text-slate-200 min-w-[70px] text-center">
+                                                    {monthName.slice(0, 3)} {year}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleModalMonthChange(1)}
+                                                    className="h-6 w-6 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold transition border-none bg-transparent cursor-pointer"
+                                                    title="Next Month"
+                                                >
+                                                    ▶
+                                                </button>
+                                            </div>
+
+                                            {/* Close button */}
+                                            <button
+                                                type="button"
+                                                onClick={() => setMonthDailyModal(prev => ({ ...prev, open: false }))}
+                                                className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition border-none bg-transparent cursor-pointer"
+                                                title="Close Popup"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">close</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Body */}
+                                    <div className="p-3.5 sm:p-4 flex-1 flex flex-col justify-between space-y-2.5 overflow-hidden">
+                                        {/* Metric Switcher & Summary KPI row */}
+                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 bg-slate-50/80 dark:bg-[#182234] rounded-xl border border-slate-200/80 dark:border-[#26334a]">
+                                            {/* 6 Metric Tabs */}
+                                            <div className="flex items-center gap-1 overflow-x-auto pb-0.5 shrink-0">
+                                                {Object.values(metricConfigs).map(m => {
+                                                    const active = monthDailyModal.metric === m.id;
+                                                    return (
+                                                        <button
+                                                            key={m.id}
+                                                            type="button"
+                                                            onClick={() => setMonthDailyModal(prev => ({ ...prev, metric: m.id }))}
+                                                            className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                                                                active
+                                                                    ? 'bg-white dark:bg-[#121a29] text-slate-900 dark:text-white shadow-2xs border-slate-300 dark:border-slate-600'
+                                                                    : 'bg-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                                                            }`}
+                                                        >
+                                                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: m.color }} />
+                                                            <span>{m.shortName}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Quick Stats Cards */}
+                                            <div className="flex items-center gap-2 flex-wrap text-xs">
+                                                <div className="px-2.5 py-1 bg-white dark:bg-[#121a29] rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs">
+                                                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-extrabold block">Month Total</span>
+                                                    <span className="font-extrabold text-slate-800 dark:text-slate-100 text-[11px]">
+                                                        {fmtNum(modalMonthStats.total)} {modalMonthStats.unit}
+                                                    </span>
+                                                </div>
+                                                <div className="px-2.5 py-1 bg-white dark:bg-[#121a29] rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs">
+                                                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-extrabold block">Daily Avg</span>
+                                                    <span className="font-extrabold text-slate-800 dark:text-slate-100 text-[11px]">
+                                                        {fmtNum(modalMonthStats.avg)} {modalMonthStats.unit}
+                                                    </span>
+                                                </div>
+                                                <div className="px-2.5 py-1 bg-white dark:bg-[#121a29] rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs">
+                                                    <span className="text-[9px] uppercase tracking-wider text-slate-400 font-extrabold block">Peak Day ({modalMonthStats.peakLabel})</span>
+                                                    <span className="font-extrabold text-slate-800 dark:text-slate-100 text-[11px]">
+                                                        {fmtNum(modalMonthStats.peak)} {modalMonthStats.unit}
+                                                    </span>
+                                                </div>
+                                                {modalMonthStats.totalCost > 0 && (
+                                                    <div className="px-2.5 py-1 bg-white dark:bg-[#121a29] rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs">
+                                                        <span className="text-[9px] uppercase tracking-wider text-slate-400 font-extrabold block">Est. Cost</span>
+                                                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400 text-[11px]">
+                                                            {fmtINR(modalMonthStats.totalCost)}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Chart Container */}
+                                        <div className="bg-white dark:bg-[#121a29] rounded-2xl border border-slate-200/80 dark:border-[#26334a] p-2 sm:p-2.5 shadow-2xs overflow-x-auto">
+                                            <div className="min-w-[650px] md:min-w-full">
+                                                <ResponsiveContainer width="100%" height={270}>
+                                                    <AreaChart data={modalMonthDailyData} margin={{ top: 16, right: 16, left: -10, bottom: 18 }}>
+                                                        <defs>
+                                                            <linearGradient id={cur.gradientId} x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="0%" stopColor={cur.color} stopOpacity={0.4}/>
+                                                                <stop offset="100%" stopColor={cur.color} stopOpacity={0.05}/>
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
+                                                        <XAxis 
+                                                            dataKey="label" 
+                                                            tick={{ fontSize: 8.5, fill: '#64748b' }} 
+                                                            axisLine={false} 
+                                                            tickLine={false} 
+                                                            interval={0} 
+                                                            padding={{ left: 6, right: 6 }} 
+                                                            angle={daysInMonth > 20 ? -45 : 0} 
+                                                            textAnchor={daysInMonth > 20 ? "end" : "middle"} 
+                                                            height={daysInMonth > 20 ? 34 : 22} 
+                                                            dy={2}
+                                                        />
+                                                        <YAxis 
+                                                            tick={{ fontSize: 9, fill: '#64748b' }} 
+                                                            axisLine={false} 
+                                                            tickLine={false} 
+                                                            width={42} 
+                                                            domain={[0, 'auto']} 
+                                                            tickFormatter={(v) => fmtNum(v, { compact: true })} 
+                                                        />
+                                                        <Tooltip 
+                                                            contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)' }} 
+                                                            labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)' }} 
+                                                            formatter={cur.tooltipFormatter} 
+                                                        />
+                                                        <Area 
+                                                            type="monotone" 
+                                                            dataKey={cur.dataKey} 
+                                                            name={cur.shortName} 
+                                                            stroke={cur.color} 
+                                                            fill={`url(#${cur.gradientId})`} 
+                                                            strokeWidth={2.5} 
+                                                            dot={{ r: 3.5, fill: cur.color, stroke: '#ffffff', strokeWidth: 1.5 }} 
+                                                            activeDot={{ r: 5.5 }} 
+                                                            isAnimationActive={true} 
+                                                            animationDuration={600} 
+                                                            animationEasing="ease-in-out"
+                                                        >
+                                                            <LabelList 
+                                                                dataKey={cur.dataKey} 
+                                                                position="top" 
+                                                                offset={6} 
+                                                                style={{ fontSize: 8, fontWeight: 700, fill: cur.color }} 
+                                                                formatter={(v) => v > 0 ? fmtNum(v, { compact: true }) : ""} 
+                                                            />
+                                                        </Area>
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 px-6 py-3.5 bg-slate-50 dark:bg-[#182234]">
+                                        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                                            <span>Showing all {daysInMonth} days of {monthName} {year}</span>
+                                            {(year !== activeMonthInfo.year || month !== activeMonthInfo.month) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setMonthDailyModal(prev => ({ ...prev, year: activeMonthInfo.year, month: activeMonthInfo.month }))}
+                                                    className="text-sky-600 hover:underline font-bold border-none bg-transparent cursor-pointer ml-1"
+                                                >
+                                                    Reset to Active Filter Month ({activeMonthInfo.monthName} {activeMonthInfo.year})
+                                                </button>
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setMonthDailyModal(prev => ({ ...prev, open: false }))}
+                                            className="px-5 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white rounded-xl text-xs font-bold transition border-none cursor-pointer"
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Custom Confirm Dialog — replaces native window.confirm() */}
                     {confirmDialog && (
