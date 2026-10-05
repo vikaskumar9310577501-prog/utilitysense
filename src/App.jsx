@@ -1788,6 +1788,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const [entrySearch, setEntrySearch] = useState("");
             const [entryLocationFilter, setEntryLocationFilter] = useState("all");
             const [entryPlantFilter, setEntryPlantFilter] = useState("all");
+            const [entryDatePreset, setEntryDatePreset] = useState("all"); // "all" | "today" | "yesterday" | "7days" | "custom"
+            const [entryCustomDate, setEntryCustomDate] = useState("");
             const [entryPage, setEntryPage] = useState(1);
             const [selectedEntryIds, setSelectedEntryIds] = useState([]);
             const entryLimit = 8;
@@ -3121,60 +3123,97 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 }
             };
 
-            // Parse month string (e.g. Apr-25, 04/2025) to Month-End Date (e.g. 2025-04-30)
-            const parseMonthToMonthEnd = (monthStr, fallbackIndex = 0) => {
-                if (!monthStr) return `2025-${String(fallbackIndex + 1).padStart(2, '0')}-28`;
-                const str = String(monthStr).trim();
-
-                const monthsMap = {
-                    jan: { m: 1, days: 31 },
-                    feb: { m: 2, days: 28 },
-                    mar: { m: 3, days: 31 },
-                    apr: { m: 4, days: 30 },
-                    may: { m: 5, days: 31 },
-                    jun: { m: 6, days: 30 },
-                    jul: { m: 7, days: 31 },
-                    aug: { m: 8, days: 31 },
-                    sep: { m: 9, days: 30 },
-                    oct: { m: 10, days: 31 },
-                    nov: { m: 11, days: 30 },
-                    dec: { m: 12, days: 31 }
-                };
-
-                const strLower = str.toLowerCase();
-                let monthNum = null;
-                let daysInMonth = 30;
-
-                Object.keys(monthsMap).forEach(key => {
-                    if (strLower.includes(key)) {
-                        monthNum = monthsMap[key].m;
-                        daysInMonth = monthsMap[key].days;
-                    }
-                });
-
-                let year = 2025;
-                const yearMatch = str.match(/\b(20\d{2}|\d{2})\b/);
-                if (yearMatch) {
-                    const yVal = Number(yearMatch[1]);
-                    year = yVal < 100 ? 2000 + yVal : yVal;
+            // Parse month string (e.g. Apr-25, 04/2025, Date object) to Month-End Date (e.g. 2025-04-30)
+            const parseMonthToMonthEnd = (monthVal, fallbackIndex = 0) => {
+                if (!monthVal) {
+                    const fallbackMonth = (fallbackIndex % 12) + 1;
+                    const mm = String(fallbackMonth).padStart(2, '0');
+                    return `2025-${mm}-28`;
                 }
 
-                if (monthNum === 2 && ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0))) {
-                    daysInMonth = 29;
+                // 1. If it's a Date instance (from cellDates: true)
+                if (monthVal instanceof Date && !isNaN(monthVal.getTime())) {
+                    const year = monthVal.getFullYear();
+                    const month = monthVal.getMonth() + 1;
+                    const lastDay = new Date(year, month, 0).getDate();
+                    return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+                }
+
+                // 2. If it's an Excel serial number
+                if (typeof monthVal === 'number' && monthVal > 20000 && monthVal < 70000) {
+                    const dateObj = new Date((monthVal - 25569) * 86400 * 1000);
+                    if (!isNaN(dateObj.getTime())) {
+                        const year = dateObj.getFullYear();
+                        const month = dateObj.getMonth() + 1;
+                        const lastDay = new Date(year, month, 0).getDate();
+                        return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+                    }
+                }
+
+                const str = String(monthVal).trim();
+
+                // 3. If ISO or YYYY-MM or YYYY-MM-DD
+                const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?/);
+                if (isoMatch) {
+                    const year = parseInt(isoMatch[1], 10);
+                    const month = parseInt(isoMatch[2], 10);
+                    if (month >= 1 && month <= 12) {
+                        const lastDay = new Date(year, month, 0).getDate();
+                        return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+                    }
+                }
+
+                // 4. MM/YYYY or M/YYYY
+                const mmYyyyMatch = str.match(/^(\d{1,2})[-/](\d{4})$/);
+                if (mmYyyyMatch) {
+                    const month = parseInt(mmYyyyMatch[1], 10);
+                    const year = parseInt(mmYyyyMatch[2], 10);
+                    if (month >= 1 && month <= 12) {
+                        const lastDay = new Date(year, month, 0).getDate();
+                        return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+                    }
+                }
+
+                // 5. Month names (Jan, Feb, ... Dec)
+                const monthsMap = {
+                    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+                    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+                };
+                const strLower = str.toLowerCase();
+                let monthNum = null;
+                for (const [key, num] of Object.entries(monthsMap)) {
+                    if (strLower.includes(key)) {
+                        monthNum = num;
+                        break;
+                    }
+                }
+
+                let year = 2025;
+                const year4Match = str.match(/\b(20\d{2})\b/);
+                if (year4Match) {
+                    year = parseInt(year4Match[1], 10);
+                } else {
+                    const year2Match = str.match(/[-/' ](\d{2})\b/);
+                    if (year2Match) {
+                        const y2 = parseInt(year2Match[1], 10);
+                        year = y2 < 70 ? 2000 + y2 : 1900 + y2;
+                    }
                 }
 
                 if (!monthNum) {
                     const numMatch = str.match(/(\d{1,2})/);
                     if (numMatch) {
-                        monthNum = Math.min(12, Math.max(1, Number(numMatch[1])));
-                    } else {
-                        monthNum = (fallbackIndex % 12) + 1;
+                        const n = parseInt(numMatch[1], 10);
+                        if (n >= 1 && n <= 12) monthNum = n;
                     }
                 }
 
-                const mm = String(monthNum).padStart(2, '0');
-                const dd = String(daysInMonth).padStart(2, '0');
-                return `${year}-${mm}-${dd}`;
+                if (!monthNum) {
+                    monthNum = (fallbackIndex % 12) + 1;
+                }
+
+                const lastDay = new Date(year, monthNum, 0).getDate();
+                return `${year}-${String(monthNum).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
             };
 
             // File Upload & Sheet Extraction for Past FY Importer
@@ -3258,8 +3297,19 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                         const parsedDate = parseMonthToMonthEnd(monthRaw, idx);
 
+                        let monthLabel = "";
+                        if (monthRaw instanceof Date && !isNaN(monthRaw.getTime())) {
+                            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                            monthLabel = `${monthNames[monthRaw.getMonth()]}-${String(monthRaw.getFullYear()).slice(-2)}`;
+                        } else if (typeof monthRaw === "string" && monthRaw.trim()) {
+                            monthLabel = monthRaw.trim();
+                        } else {
+                            const monthNames = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+                            monthLabel = monthNames[idx % 12];
+                        }
+
                         return {
-                            monthLabel: String(monthRaw).trim() || `Month ${idx + 1}`,
+                            monthLabel,
                             date: parsedDate,
                             units,
                             rate,
@@ -3283,7 +3333,32 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 }
             };
 
-            // Save Parsed Past FY Monthly Data to Database & State
+            // Detect existing months for the selected Past FY plant to show duplicate warnings and skip duplicates
+            const pastFyRowStatuses = useMemo(() => {
+                if (!pastFyParsedRows || pastFyParsedRows.length === 0) return [];
+                const pCode = pastFyPlant;
+                const existingDates = new Set();
+                (dailyEntries || []).forEach(e => {
+                    if (String(e.plant) === String(pCode) && e.date) {
+                        existingDates.add(e.date);
+                        existingDates.add(e.date.slice(0, 7));
+                    }
+                });
+
+                return pastFyParsedRows.map(r => {
+                    const ym = r.date ? r.date.slice(0, 7) : "";
+                    const isExisting = existingDates.has(r.date) || (ym && existingDates.has(ym));
+                    return {
+                        ...r,
+                        isExisting
+                    };
+                });
+            }, [pastFyParsedRows, pastFyPlant, dailyEntries]);
+
+            const pastFyExistingCount = useMemo(() => pastFyRowStatuses.filter(r => r.isExisting).length, [pastFyRowStatuses]);
+            const pastFyNewCount = useMemo(() => pastFyRowStatuses.filter(r => !r.isExisting).length, [pastFyRowStatuses]);
+
+            // Save Parsed Past FY Monthly Data to Database & State with Selective Duplicate Skipping
             const handleSavePastFyData = async () => {
                 if (pastFyParsedRows.length === 0) {
                     setToast({ type: "error", message: "No parsed rows to save." });
@@ -3296,7 +3371,55 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                 setIsImportingPastFy(true);
                 try {
-                    const payloads = pastFyParsedRows.map(r => ({
+                    // Check against DB entries for this plant
+                    const { data: dbExisting, error: fetchErr } = await supabase
+                        .from('daily_entries')
+                        .select('id, date, plant, remarks')
+                        .eq('plant', pCode);
+
+                    if (fetchErr) {
+                        console.warn("DB check warning, falling back to local entries:", fetchErr);
+                    }
+
+                    const existingDateSet = new Set();
+                    (dbExisting || []).forEach(e => {
+                        if (e.date) {
+                            existingDateSet.add(e.date);
+                            existingDateSet.add(e.date.slice(0, 7));
+                        }
+                    });
+                    (dailyEntries || []).forEach(e => {
+                        if (String(e.plant) === String(pCode) && e.date) {
+                            existingDateSet.add(e.date);
+                            existingDateSet.add(e.date.slice(0, 7));
+                        }
+                    });
+
+                    // Separate into existing (duplicates to skip) and new rows to insert
+                    const duplicateRows = [];
+                    const rowsToInsert = [];
+
+                    pastFyParsedRows.forEach(r => {
+                        const ym = r.date ? r.date.slice(0, 7) : "";
+                        if (existingDateSet.has(r.date) || (ym && existingDateSet.has(ym))) {
+                            duplicateRows.push(r);
+                        } else {
+                            rowsToInsert.push(r);
+                        }
+                    });
+
+                    // If all rows already exist, abort and notify user
+                    if (rowsToInsert.length === 0) {
+                        setToast({
+                            type: "warning",
+                            message: `All ${pastFyParsedRows.length} months already exist for plant ${pCode}. No duplicate data was imported.`
+                        });
+                        setIsImportingPastFy(false);
+                        return;
+                    }
+
+                    // Construct payloads strictly adhering to daily_entries 21 columns
+                    const payloads = rowsToInsert.map(r => ({
                         date: r.date,
                         plant: pCode,
                         location: loc,
@@ -3307,85 +3430,64 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         electricity_closing: r.units,
                         electricity_consumption: r.units,
                         electricity_cost: r.amount,
-                        solar_opening: 0,
-                        solar_closing: r.solar,
                         solar_generated: r.solar,
                         solar_utilized: r.solar,
                         solar_cost: Math.round(r.solar * 3.5),
-                        solar_utilization_pct: 100,
                         diesel_used: 0,
                         diesel_cost: 0,
-                        png_opening: 0,
-                        png_closing: 0,
-                        png_consumption: 0,
-                        png_cost: 0,
-                        nitrogen_opening: 0,
-                        nitrogen_closing: 0,
-                        nitrogen_consumption: 0,
-                        nitrogen_cost: 0,
-                        oxygen_opening: 0,
-                        oxygen_closing: 0,
-                        oxygen_consumption: 0,
-                        oxygen_cost: 0,
-                        water_opening: 0,
-                        water_closing: 0,
-                        water_consumption: 0,
-                        water_cost: 0,
+                        total_cost: Number(r.amount || 0) + Math.round(Number(r.solar || 0) * 3.5),
                         odu: 0,
                         idu: 0,
-                        production_set: 0,
                         production_qty: 0,
-                        production_unit: "Sets",
-                        cost_per_set: 0,
-                        sec: 0,
-                        waste_hazardous: 0,
-                        waste_non_hazardous: 0,
-                        waste_recycled: 0,
                         remarks: `Past Financial Year Monthly Summary Import [${r.monthLabel}]`
                     }));
 
-                    let chunk = [...payloads];
-                    let chunkRes = null;
-                    for (let attempt = 0; attempt < 25; attempt++) {
-                        chunkRes = await supabase.from('daily_entries').insert(chunk).select();
-                        if (chunkRes.error) {
-                            const msg = chunkRes.error.message || "";
-                            const match = msg.match(/Could not find the '([^']+)' column/i);
-                            if (match && match[1]) {
-                                const missingCol = match[1];
-                                chunk = chunk.map(item => {
-                                    const copy = { ...item };
-                                    delete copy[missingCol];
-                                    return copy;
-                                });
-                                continue;
-                            }
-                        }
-                        break;
+                    const { data: insertedData, error: insertError } = await supabase
+                        .from('daily_entries')
+                        .insert(payloads)
+                        .select();
+
+                    if (insertError) {
+                        console.error("Supabase insert error:", insertError);
+                        throw insertError;
                     }
 
-                    const insertedRows = [];
-                    if (chunkRes?.error) {
-                        console.warn("Past FY insert warning:", chunkRes.error.message);
-                        chunk.forEach((item, cIdx) => {
-                            insertedRows.push({ ...item, id: `past_fy_imp_${Date.now()}_${cIdx}` });
+                    const hydratedInserted = (insertedData || []).map(hydrateEntryWithRemarks);
+                    setDailyEntries(prev => [...hydratedInserted, ...prev]);
+
+                    // Auto-adjust dashboard date filter so the imported past year data is immediately visible
+                    if (hydratedInserted.length > 0) {
+                        const dates = hydratedInserted.map(e => e.date).filter(Boolean).sort();
+                        const minDate = dates[0];
+                        const maxDate = dates[dates.length - 1];
+                        setFilters(prev => ({
+                            ...prev,
+                            plant: pCode,
+                            location: loc,
+                            startDate: minDate < prev.startDate ? minDate : prev.startDate,
+                            endDate: maxDate > prev.endDate ? maxDate : prev.endDate
+                        }));
+                    }
+
+                    if (duplicateRows.length > 0) {
+                        const skippedLabels = duplicateRows.map(r => r.monthLabel).join(', ');
+                        setToast({
+                            type: "info",
+                            message: `Imported ${hydratedInserted.length} new records for ${pCode}! Skipped ${duplicateRows.length} existing: (${skippedLabels}).`
                         });
-                    } else if (chunkRes?.data) {
-                        insertedRows.push(...chunkRes.data);
+                    } else {
+                        setToast({
+                            type: "success",
+                            message: `Successfully imported all ${hydratedInserted.length} monthly records for ${pCode} (${loc})!`
+                        });
                     }
 
-                    setDailyEntries(prev => [...insertedRows, ...prev]);
-
-                    setToast({
-                        type: "success",
-                        message: `Successfully imported ${insertedRows.length} monthly records for ${pCode} (${loc})!`
-                    });
                     setIsPastFyModalOpen(false);
                     setPastFyParsedRows([]);
                     setPastFyFileName("");
                 } catch (err) {
                     console.error("Past FY import failed:", err);
-                    setToast({ type: "error", message: `Import failed: ${err.message}` });
+                    setToast({ type: "error", message: `Import failed: ${err.message || "Database error"}` });
                 } finally {
                     setIsImportingPastFy(false);
                 }
@@ -6179,8 +6281,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 });
             }, [filteredEntries, activePngRate, activeNitrogenRate, activeOxygenRate, activeWaterRate]);
 
-            // Last 5 consecutive months (like last 7 days) — fill 0 if no data
+            // Monthly trends data (returns all months if range covers > 5 months e.g. full Past FY, else fills up to 5 consecutive months)
             const last5MonthsTrendsData = useMemo(() => {
+                if (monthlyTrendsData.length > 5) {
+                    return monthlyTrendsData;
+                }
                 const byPeriod = {};
                 monthlyTrendsData.forEach(d => { byPeriod[d.period] = d; });
 
@@ -6626,6 +6731,26 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         }
                     }
 
+                    // Date filter presets: Today, Yesterday, Last 7 Days, Particular Date
+                    if (entryDatePreset === "today") {
+                        const todayStr = toISODate(new Date());
+                        if (e.date !== todayStr) return false;
+                    } else if (entryDatePreset === "yesterday") {
+                        const yest = new Date();
+                        yest.setDate(yest.getDate() - 1);
+                        const yesterdayStr = toISODate(yest);
+                        if (e.date !== yesterdayStr) return false;
+                    } else if (entryDatePreset === "7days") {
+                        const now = new Date();
+                        const d7 = new Date();
+                        d7.setDate(d7.getDate() - 6);
+                        const d7Str = toISODate(d7);
+                        const todayStr = toISODate(now);
+                        if (!e.date || e.date < d7Str || e.date > todayStr) return false;
+                    } else if (entryDatePreset === "custom") {
+                        if (entryCustomDate && e.date !== entryCustomDate) return false;
+                    }
+
                     const searchLower = entrySearch.toLowerCase();
                     if (!searchLower) return true;
                     return (
@@ -6635,7 +6760,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         String(e.date || "").includes(searchLower)
                     );
                 });
-            }, [dailyEntries, entrySearch, entryLocationFilter, entryPlantFilter, allowedPlants, plants, canAccessMolding, currentUser, userHasSpecificDepts, userSpecificDepts]);
+            }, [dailyEntries, entrySearch, entryLocationFilter, entryPlantFilter, entryDatePreset, entryCustomDate, allowedPlants, plants, canAccessMolding, currentUser, userHasSpecificDepts, userSpecificDepts]);
 
             const paginatedEntries = useMemo(() => {
                 const start = (entryPage - 1) * entryLimit;
@@ -8633,7 +8758,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                         <select
                                             value={entryPlantFilter}
-                                            onChange={(e) => setEntryPlantFilter(e.target.value)}
+                                            onChange={(e) => {
+                                                setEntryPlantFilter(e.target.value);
+                                                setEntryPage(1);
+                                            }}
                                             className="h-9 rounded-xl border border-slate-200 px-2.5 text-xs bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold shrink-0"
                                             title="Filter by plant"
                                         >
@@ -8644,6 +8772,37 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                 </option>
                                             ))}
                                         </select>
+
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <select
+                                                value={entryDatePreset}
+                                                onChange={(e) => {
+                                                    setEntryDatePreset(e.target.value);
+                                                    setEntryPage(1);
+                                                }}
+                                                className="h-9 rounded-xl border border-slate-200 px-2.5 text-xs bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold shrink-0"
+                                                title="Filter by date range"
+                                            >
+                                                <option value="all">All Dates</option>
+                                                <option value="today">Today</option>
+                                                <option value="yesterday">Yesterday</option>
+                                                <option value="7days">Last 7 Days</option>
+                                                <option value="custom">Particular Date</option>
+                                            </select>
+
+                                            {entryDatePreset === "custom" && (
+                                                <input
+                                                    type="date"
+                                                    value={entryCustomDate}
+                                                    onChange={(e) => {
+                                                        setEntryCustomDate(e.target.value);
+                                                        setEntryPage(1);
+                                                    }}
+                                                    className="h-9 rounded-xl border border-sky-300 px-2 text-xs bg-sky-50 text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500 font-semibold shrink-0"
+                                                    title="Select particular date"
+                                                />
+                                            )}
+                                        </div>
 
                                         <div className="relative shrink-0">
                                             <input
@@ -12182,11 +12341,29 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                 </label>
                                             </div>
 
+                                            {/* Duplicate Alert Banner */}
+                                            {pastFyExistingCount > 0 && (
+                                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center gap-2">
+                                                    <span className="material-symbols-outlined text-amber-600 text-[18px] shrink-0">warning</span>
+                                                    <div>
+                                                        <span className="font-bold">{pastFyExistingCount} existing month(s) detected:</span>{" "}
+                                                        <span className="font-semibold text-amber-800">{pastFyRowStatuses.filter(r => r.isExisting).map(r => r.monthLabel).join(', ')}</span> already exist for Plant {pastFyPlant}.{" "}
+                                                        {pastFyNewCount > 0 ? (
+                                                            <span>These will be skipped automatically and only the <strong>{pastFyNewCount} new month(s)</strong> will be imported.</span>
+                                                        ) : (
+                                                            <span className="font-bold text-red-600">All months in this file already exist in the database! Duplicate import is prevented.</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {/* Live Preview Table */}
                                             <div className="border border-slate-200 rounded-xl overflow-hidden">
                                                 <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                                                     <span className="font-extrabold text-slate-700 uppercase tracking-wider text-[10px]">Pre-Save Live Data Preview</span>
-                                                    <span className="text-[10px] font-bold text-slate-500">12 Months Summary</span>
+                                                    <span className="text-[10px] font-bold text-slate-500">
+                                                        {pastFyNewCount} New · {pastFyExistingCount} Existing (Skip)
+                                                    </span>
                                                 </div>
                                                 <div className="max-h-60 overflow-y-auto">
                                                     <table className="w-full text-left border-collapse text-xs">
@@ -12195,6 +12372,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                 <th className="py-2 px-3">#</th>
                                                                 <th className="py-2 px-3">Month</th>
                                                                 <th className="py-2 px-3">End Date</th>
+                                                                <th className="py-2 px-3 text-center">Status</th>
                                                                 <th className="py-2 px-3 text-right">Grid Units (kWh)</th>
                                                                 <th className="py-2 px-3 text-right">Tariff (₹/Unit)</th>
                                                                 <th className="py-2 px-3 text-right">Amount (₹)</th>
@@ -12202,11 +12380,24 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-slate-100">
-                                                            {pastFyParsedRows.map((r, idx) => (
-                                                                <tr key={idx} className="hover:bg-slate-50/80 font-medium text-slate-700">
+                                                            {pastFyRowStatuses.map((r, idx) => (
+                                                                <tr key={idx} className={`hover:bg-slate-50/80 font-medium ${r.isExisting ? 'bg-amber-50/30 text-slate-500' : 'text-slate-700'}`}>
                                                                     <td className="py-1.5 px-3 text-slate-400">{idx + 1}</td>
                                                                     <td className="py-1.5 px-3 font-bold text-slate-900">{r.monthLabel}</td>
                                                                     <td className="py-1.5 px-3 text-slate-500">{r.date}</td>
+                                                                    <td className="py-1.5 px-3 text-center">
+                                                                        {r.isExisting ? (
+                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                                                                <span className="material-symbols-outlined text-[12px]">warning</span>
+                                                                                Already Exists (Skip)
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                                                <span className="material-symbols-outlined text-[12px]">check_circle</span>
+                                                                                New (Ready)
+                                                                            </span>
+                                                                        )}
+                                                                    </td>
                                                                     <td className="py-1.5 px-3 text-right font-bold text-sky-600">{fmtNum(r.units)}</td>
                                                                     <td className="py-1.5 px-3 text-right text-slate-600">₹{fmtNum(r.rate, 2)}</td>
                                                                     <td className="py-1.5 px-3 text-right font-bold text-slate-900">₹{fmtNum(r.amount)}</td>
@@ -12219,7 +12410,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                                                 {/* Summary Footer */}
                                                 {pastFyParsedRows.length > 0 && (
-                                                    <div className="p-3 bg-slate-50 border-t border-slate-200 grid grid-cols-3 gap-2 text-center">
+                                                    <div className="p-3 bg-slate-50 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                                                         <div className="bg-white p-2 rounded-lg border border-slate-200">
                                                             <div className="text-[9px] text-slate-400 font-extrabold uppercase">Total Grid Units</div>
                                                             <div className="text-xs font-black text-sky-600">{fmtNum(pastFyParsedRows.reduce((a, b) => a + b.units, 0))} kWh</div>
@@ -12229,8 +12420,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                             <div className="text-xs font-black text-slate-900">₹{fmtNum(pastFyParsedRows.reduce((a, b) => a + b.amount, 0))}</div>
                                                         </div>
                                                         <div className="bg-white p-2 rounded-lg border border-slate-200">
-                                                            <div className="text-[9px] text-slate-400 font-extrabold uppercase">Total Solar Generated</div>
+                                                            <div className="text-[9px] text-slate-400 font-extrabold uppercase">Total Solar Gen</div>
                                                             <div className="text-xs font-black text-amber-600">{fmtNum(pastFyParsedRows.reduce((a, b) => a + b.solar, 0))} kWh</div>
+                                                        </div>
+                                                        <div className="bg-white p-2 rounded-lg border border-slate-200">
+                                                            <div className="text-[9px] text-slate-400 font-extrabold uppercase">Action Plan</div>
+                                                            <div className="text-xs font-black text-emerald-600">
+                                                                {pastFyNewCount} New / {pastFyExistingCount} Skip
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 )}
@@ -12251,7 +12448,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     <button
                                         type="button"
                                         onClick={handleSavePastFyData}
-                                        disabled={pastFyParsedRows.length === 0 || isImportingPastFy}
+                                        disabled={pastFyParsedRows.length === 0 || isImportingPastFy || pastFyNewCount === 0}
                                         className="flex items-center gap-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-sm border-none cursor-pointer"
                                     >
                                         {isImportingPastFy ? (
@@ -12259,10 +12456,15 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                                 <span>Saving to System...</span>
                                             </>
+                                        ) : pastFyNewCount === 0 && pastFyParsedRows.length > 0 ? (
+                                            <>
+                                                <span className="material-symbols-outlined text-[18px]">block</span>
+                                                <span>All Records Already Exist</span>
+                                            </>
                                         ) : (
                                             <>
                                                 <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                                                <span>Confirm & Save to System</span>
+                                                <span>Import {pastFyNewCount} New Month{pastFyNewCount === 1 ? '' : 's'}</span>
                                             </>
                                         )}
                                     </button>
