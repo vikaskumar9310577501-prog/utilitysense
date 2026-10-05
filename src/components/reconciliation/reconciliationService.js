@@ -7,6 +7,28 @@ import * as XLSX from 'xlsx';
 const STORAGE_KEY_BILLS = 'ep_utility_bills_v1';
 const STORAGE_KEY_CLARIFICATIONS = 'ep_reconciliation_clarifications_v1';
 const STORAGE_KEY_TOLERANCES = 'ep_reconciliation_tolerances_v1';
+const STORAGE_KEY_ACTIVE_BILL_META = 'ep_active_bill_meta_v1';
+
+// Active Bill Persistence (Keeps bill analysis open until a new one is uploaded or switched)
+export function getActiveBillMeta() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY_ACTIVE_BILL_META);
+        if (saved) return JSON.parse(saved);
+    } catch (e) {
+        console.error("Failed to load active bill meta", e);
+    }
+    return null;
+}
+
+export function saveActiveBillMeta(meta) {
+    try {
+        if (meta) {
+            localStorage.setItem(STORAGE_KEY_ACTIVE_BILL_META, JSON.stringify(meta));
+        }
+    } catch (e) {
+        console.error("Failed to save active bill meta", e);
+    }
+}
 
 // Default Configurable Tolerances (Master Config)
 export const DEFAULT_TOLERANCE_CONFIG = {
