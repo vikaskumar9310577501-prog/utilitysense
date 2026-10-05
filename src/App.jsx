@@ -6271,17 +6271,21 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return Object.values(map).sort((a, b) => a.period.localeCompare(b.period)).map(d => {
                     const [y, m] = d.period.split("-");
                     const dt = new Date(Number(y), Number(m) - 1, 1);
+                    const daysInThisMonth = new Date(Number(y), Number(m), 0).getDate();
+                    const pad = (n) => String(n).padStart(2, "0");
                     const monthShort = !Number.isNaN(dt.getTime()) ? dt.toLocaleDateString("en-GB", { month: "short" }) : d.period;
-                    const yrShort = !Number.isNaN(dt.getTime()) ? String(dt.getFullYear()).slice(-2) : "";
                     return {
                         ...d,
-                        label: Number.isNaN(dt.getTime()) ? d.period : `${monthShort} '${yrShort}`
+                        label: Number.isNaN(dt.getTime()) ? d.period : `${monthShort} (01-${pad(daysInThisMonth)})`
                     };
                 });
             }, [filteredEntries, activePngRate, activeNitrogenRate, activeOxygenRate, activeWaterRate]);
 
-            // Monthly trends data (strictly returns the last 5 consecutive months up to the current/filtered date)
+            // Monthly trends data (returns all months if range covers > 5 months e.g. full Past FY, else fills up to 5 consecutive months)
             const last5MonthsTrendsData = useMemo(() => {
+                if (monthlyTrendsData.length > 5) {
+                    return monthlyTrendsData;
+                }
                 const byPeriod = {};
                 monthlyTrendsData.forEach(d => { byPeriod[d.period] = d; });
 
@@ -6298,10 +6302,10 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const out = [];
                 for (let i = 4; i >= 0; i--) {
                     const dt = new Date(end.getFullYear(), end.getMonth() - i, 1);
-                    const yrShort = String(dt.getFullYear()).slice(-2);
+                    const daysInThisMonth = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
                     const key = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}`;
                     const monthShort = dt.toLocaleDateString("en-GB", { month: "short" });
-                    const label = `${monthShort} '${yrShort}`;
+                    const label = `${monthShort} (01-${pad(daysInThisMonth)})`;
                     const src = byPeriod[key];
                     const elVal = src ? Number(src.electricity) || 0 : 0;
                     const solVal = src ? Number(src.solarGen) || 0 : 0;

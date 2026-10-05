@@ -7,28 +7,6 @@ import * as XLSX from 'xlsx';
 const STORAGE_KEY_BILLS = 'ep_utility_bills_v1';
 const STORAGE_KEY_CLARIFICATIONS = 'ep_reconciliation_clarifications_v1';
 const STORAGE_KEY_TOLERANCES = 'ep_reconciliation_tolerances_v1';
-const STORAGE_KEY_ACTIVE_BILL_META = 'ep_active_bill_meta_v1';
-
-// Active Bill Persistence (Keeps bill analysis open until a new one is uploaded or switched)
-export function getActiveBillMeta() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY_ACTIVE_BILL_META);
-        if (saved) return JSON.parse(saved);
-    } catch (e) {
-        console.error("Failed to load active bill meta", e);
-    }
-    return null;
-}
-
-export function saveActiveBillMeta(meta) {
-    try {
-        if (meta) {
-            localStorage.setItem(STORAGE_KEY_ACTIVE_BILL_META, JSON.stringify(meta));
-        }
-    } catch (e) {
-        console.error("Failed to save active bill meta", e);
-    }
-}
 
 // Default Configurable Tolerances (Master Config)
 export const DEFAULT_TOLERANCE_CONFIG = {
@@ -169,6 +147,9 @@ export function aggregateSystemConsumption(dailyEntries, location, plantCode, mo
         openingMeter: minOpening,
         closingMeter: maxClosing,
         meterDifference: maxClosing !== null && minOpening !== null ? Math.max(0, maxClosing - minOpening) : null,
+        multiplyingFactor: (totalElectricityKwh > 0 && maxClosing !== null && minOpening !== null && maxClosing > minOpening) 
+            ? Math.round(totalElectricityKwh / (maxClosing - minOpening)) 
+            : null,
         // Demand & PF are not tracked daily as single scalars, so return null rather than fake values
         recordedDemandKva: null,
         billedDemandKva: null,
@@ -193,7 +174,7 @@ export function buildReconciliationData(bill, systemData, toleranceConfig = getT
     const openMeterComp = calculateVariance(b.openingMeter, s.openingMeter, toleranceConfig);
     const closeMeterComp = calculateVariance(b.closingMeter, s.closingMeter, toleranceConfig);
     const meterDiffComp = calculateVariance(b.meterDifference, s.meterDifference, toleranceConfig);
-    const mfComp = calculateVariance(b.multiplyingFactor, null, toleranceConfig);
+    const mfComp = calculateVariance(b.multiplyingFactor, s.multiplyingFactor, toleranceConfig);
     const rkLagComp = calculateVariance(b.rkvahLag, null, toleranceConfig);
     const rkLeadComp = calculateVariance(b.rkvahLead, null, toleranceConfig);
 
@@ -204,7 +185,7 @@ export function buildReconciliationData(bill, systemData, toleranceConfig = getT
         { parameter: "Previous Meter Reading", unit: "kWh", billVal: b.openingMeter, sysVal: s.openingMeter, ...openMeterComp, billRef: "Prev Reading" },
         { parameter: "Current Meter Reading", unit: "kWh", billVal: b.closingMeter, sysVal: s.closingMeter, ...closeMeterComp, billRef: "Curr Reading" },
         { parameter: "Meter Difference", unit: "kWh", billVal: b.meterDifference, sysVal: s.meterDifference, ...meterDiffComp, billRef: "Closing - Opening" },
-        { parameter: "Multiplying Factor", unit: "x", billVal: b.multiplyingFactor, sysVal: null, ...mfComp, billRef: "Meter Multiplying Factor" },
+        { parameter: "Multiplying Factor", unit: "x", billVal: b.multiplyingFactor, sysVal: s.multiplyingFactor, ...mfComp, billRef: "Meter Multiplying Factor" },
         { parameter: "RKVAH Lag", unit: "RKVAh", billVal: b.rkvahLag, sysVal: null, ...rkLagComp, billRef: "Lag Reactive Energy" },
         { parameter: "RKVAH Lead", unit: "RKVAh", billVal: b.rkvahLead, sysVal: null, ...rkLeadComp, billRef: "Lead Reactive Energy" }
     ];
@@ -242,9 +223,12 @@ export function buildReconciliationData(bill, systemData, toleranceConfig = getT
     ];
 
     // 5. Cost Reconciliation Section
-    const nrgCostComp = calculateVariance(b.energyCharges, s.electricityCost, toleranceConfig);
-    const totCostComp = calculateVariance(b.totalBillAmount, s.totalCost, toleranceConfig);
-    const curBillComp = calculateVariance(b.currentBillAmount, s.totalCost, toleranceConfig);
+    // 5. Cost Reconciliation Section
+    // MSEB Grid Bill Amount vs System Grid Electricity Cost
+    const billGridAmount = b.totalBillAmount ?? b.currentBillAmount;
+    const nrgCostComp = calculateVariance(b.energyCharges ?? billGridAmount, s.electricityCost, toleranceConfig);
+    const totCostComp = calculateVariance(billGridAmount, s.electricityCost, toleranceConfig);
+    const curBillComp = calculateVariance(b.currentBillAmount ?? b.totalBillAmount, s.electricityCost, toleranceConfig);
     const demChgComp = calculateVariance(b.demandCharges, null, toleranceConfig);
     const excDemChgComp = calculateVariance(b.excessDemandCharges, null, toleranceConfig);
     const whlChgComp = calculateVariance(b.wheelingCharges, null, toleranceConfig);
@@ -256,7 +240,8 @@ export function buildReconciliationData(bill, systemData, toleranceConfig = getT
     const subComp = calculateVariance(b.subsidiesTotal, null, toleranceConfig);
 
     const costSection = [
-        { parameter: "Energy Charges", unit: "₹", billVal: b.energyCharges, sysVal: s.electricityCost, ...nrgCostComp, billRef: "Base Energy Charges" },
+        { parameter: "MSEB Electricity Bill Amount", unit: "₹", billVal: billGridAmount, sysVal: s.electricityCost, ...totCostComp, billRef: "MSEDCL Net Payable" },
+        { parameter: "Base Energy Charges", unit: "₹", billVal: b.energyCharges, sysVal: s.electricityCost, ...nrgCostComp, billRef: "Base Energy Charges" },
         { parameter: "Demand Charges", unit: "₹", billVal: b.demandCharges, sysVal: null, ...demChgComp, billRef: "Fixed Demand Charges" },
         { parameter: "Excess Demand Charges", unit: "₹", billVal: b.excessDemandCharges, sysVal: null, ...excDemChgComp, billRef: "Penalty for Demand Breach" },
         { parameter: "Wheeling Charges", unit: "₹", billVal: b.wheelingCharges, sysVal: null, ...whlChgComp, billRef: "Wheeling Charge @ Rs/U" },
@@ -266,11 +251,10 @@ export function buildReconciliationData(bill, systemData, toleranceConfig = getT
         { parameter: "Grid Support Charges", unit: "₹", billVal: b.gridSupportCharges, sysVal: null, ...gsChgComp, billRef: "Grid Support Charge (Solar)" },
         { parameter: "Prompt Payment Discount (PPD)", unit: "₹", billVal: b.promptPaymentDiscount, sysVal: null, ...ppdComp, billRef: "PPD Rebate" },
         { parameter: "Govt Subsidy / Rebates", unit: "₹", billVal: b.subsidiesTotal, sysVal: null, ...subComp, billRef: "State Govt Subsidies" },
-        { parameter: "Current Bill Amount", unit: "₹", billVal: b.currentBillAmount, sysVal: s.totalCost, ...curBillComp, billRef: "Total Current Bill" },
-        { parameter: "Net Payable Bill Amount", unit: "₹", billVal: b.totalBillAmount, sysVal: s.totalCost, ...totCostComp, billRef: "Total Payable upto Due Date" }
+        { parameter: "Current Bill Amount", unit: "₹", billVal: b.currentBillAmount, sysVal: s.electricityCost, ...curBillComp, billRef: "Total Current Bill" }
     ];
 
-    // Compute Overall Status
+    // Compute Overall Status based on Grid Consumption & Electricity Cost
     const primaryComps = [netComp, grossComp, solGenComp, totCostComp].filter(c => c.status !== "N/A");
     let overallStatus = "Matched";
     if (primaryComps.some(c => c.status === "High Variance")) {
@@ -297,14 +281,15 @@ export function buildReconciliationData(bill, systemData, toleranceConfig = getT
             consumptionDiff: netComp.diff ?? 0,
             consumptionDiffPct: netComp.diffPct ?? 0,
             
-            billCost: b.totalBillAmount ?? b.currentBillAmount ?? 0,
-            systemCost: s.totalCost ?? 0,
+            billCost: billGridAmount ?? 0,
+            systemCost: s.electricityCost ?? 0,
             costDiff: totCostComp.diff ?? 0,
             costDiffPct: totCostComp.diffPct ?? 0,
 
             solarGenBill: b.solarGenUnits ?? 0,
             solarGenSys: s.solarGenKwh ?? 0,
             solarGenDiff: solGenComp.diff ?? 0,
+            solarGenDiffPct: solGenComp.diffPct ?? 0,
             solarExportBill: b.solarExportUnits ?? b.solarAdjUnits ?? 0,
             solarExportSys: s.solarExportKwh ?? 0
         },
@@ -381,16 +366,29 @@ export async function saveBill(billRecord) {
         if (raw) bills = JSON.parse(raw);
     } catch (e) {}
 
-    const existingIdx = bills.findIndex(b => b.id === billRecord.id || 
-        (b.location === billRecord.location && b.plant === billRecord.plant && b.utility === billRecord.utility && b.billMonth === billRecord.billMonth));
-    
-    if (existingIdx >= 0) {
-        bills[existingIdx] = { ...bills[existingIdx], ...billRecord };
-    } else {
-        bills.unshift(billRecord);
-    }
+    const locUpper = String(billRecord.location || "").toUpperCase();
+    const plantUpper = String(billRecord.plant || "").toUpperCase();
+    const utilLower = String(billRecord.utility || "").toLowerCase();
+
+    // Cleanly remove any existing bill (demo or previous upload) for the same location, plant, utility, and month
+    bills = bills.filter(b => {
+        const bLoc = String(b.location || "").toUpperCase();
+        const bPlant = String(b.plant || "").toUpperCase();
+        const bUtil = String(b.utility || "").toLowerCase();
+        const isSameTarget = bLoc === locUpper && bPlant === plantUpper && bUtil === utilLower && b.billMonth === billRecord.billMonth;
+        return !isSameTarget && b.id !== billRecord.id;
+    });
+
+    bills.unshift(billRecord);
 
     localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(bills));
+    localStorage.setItem('ep_active_audit_bill_id', billRecord.id);
+    localStorage.setItem('ep_active_audit_filter', JSON.stringify({
+        location: billRecord.location,
+        plant: billRecord.plant,
+        utility: billRecord.utility,
+        month: billRecord.billMonth
+    }));
 
     // Supabase upsert attempt
     try {
@@ -599,7 +597,7 @@ function getInitialSeedBills() {
             consumerNumber: "170019014520",
             meterNumber: "LT-8849120",
             status: "Matched",
-            notes: "Verified against MSEDCL monthly bill copy",
+            notes: "Verified against MSEDCL monthly bill copy for NGM Pune",
             uploadedBy: "Vikas Sharma (Energy Mgr)",
             uploadedAt: "2026-08-06T10:30:00.000Z",
             fileName: "MSEDCL_Bill_4010_July_2026.pdf",
@@ -619,20 +617,20 @@ function getInitialSeedBills() {
                 recordedDemandKva: 940,
                 kwMaxDemand: 890,
                 powerFactor: 0.995,
-                billedUnitsKvah: 128450,
-                billedUnitsKwh: 124800,
-                grossUnitsKwh: 145910,
-                openingMeter: 48920,
-                closingMeter: 51338,
-                meterDifference: 2418,
-                multiplyingFactor: 60,
+                billedUnitsKvah: 186040,
+                billedUnitsKwh: 186040,
+                grossUnitsKwh: 186040,
+                openingMeter: 28169,
+                closingMeter: 32820,
+                meterDifference: 4651,
+                multiplyingFactor: 40,
                 rkvahLag: 4200,
                 rkvahLead: 1100,
-                solarGenUnits: 21110,
-                solarExportUnits: 2401,
-                solarAdjUnits: 2401,
+                solarGenUnits: 20896,
+                solarExportUnits: 2896,
+                solarAdjUnits: 2896,
                 solarCapacity: 250,
-                energyCharges: 1048320,
+                energyCharges: 2026710,
                 demandCharges: 480200,
                 excessDemandCharges: 0,
                 wheelingCharges: 147264,
@@ -640,10 +638,10 @@ function getInitialSeedBills() {
                 electricityDuty: 115200,
                 todCharges: -28400,
                 gridSupportCharges: 18450,
-                promptPaymentDiscount: 18420,
+                promptPaymentDiscount: 20267,
                 subsidiesTotal: 0,
-                currentBillAmount: 1831254,
-                totalBillAmount: 1812834
+                currentBillAmount: 2026710,
+                totalBillAmount: 2026710
             }
         },
         {
