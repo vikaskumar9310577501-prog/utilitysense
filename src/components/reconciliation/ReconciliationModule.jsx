@@ -1,22 +1,32 @@
-// UtilitySense Enterprise Utility Bill Reconciliation Module
-// Provides Management Overview, Plant Detail Reconciliation, Variance Analysis, Clarifications, and Multi-Month Trends
+// UtilitySense Executive Utility Bill Audit & Reconciliation Module
+// Minimal, High-Precision, Management-Grade Side-by-Side Comparison
+// Strictly NO graphs, NO cluttered KPI cards — Pure actionable data for Management Review
 
-import React, { useState, useEffect, useMemo } from 'react';
-import * as Recharts from 'recharts';
-import BillUploadModal from './BillUploadModal';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
+import { extractTextFromPdfBuffer, parseMsedclBillText } from '../../utils/msedclBillParser';
 import {
-    loadAllBills,
-    loadClarifications,
-    saveClarification,
-    deleteBill,
     aggregateSystemConsumption,
-    buildReconciliationData,
-    getToleranceConfig,
-    saveToleranceConfig,
-    exportReconciliationToExcel
+    exportReconciliationToExcel,
+    getToleranceConfig
 } from './reconciliationService';
 
-const { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } = Recharts;
+// Format Indian Currency & Numbers
+function formatINR(val, decimals = 2) {
+    if (val === null || val === undefined || isNaN(val)) return '—';
+    return Number(val).toLocaleString('en-IN', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+    });
+}
+
+function formatNumber(val, decimals = 2) {
+    if (val === null || val === undefined || isNaN(val)) return '—';
+    return Number(val).toLocaleString('en-IN', {
+        minimumFractionDigits: Number.isInteger(Number(val)) ? 0 : decimals,
+        maximumFractionDigits: decimals
+    });
+}
 
 export default function ReconciliationModule({
     plants = [],
@@ -24,1416 +34,1114 @@ export default function ReconciliationModule({
     currentUser,
     tariffs = []
 }) {
-    // Bills and Clarifications Database States
-    const [bills, setBills] = useState([]);
-    const [clarifications, setClarifications] = useState([]);
-    const [tolerances, setTolerances] = useState(getToleranceConfig());
-    const [isConfigOpen, setIsConfigOpen] = useState(false);
-
-    // View Mode: "detail" = Detailed Plant Reconciliation, "overview" = Management Dashboard Overview
-    const [viewMode, setViewMode] = useState("detail");
-
-    // Persistent Active Bill ID & Hierarchy Filter States
-    const [activeBillId, setActiveBillId] = useState(() => {
+    // 1. Filter States with Persistence
+    const [selectedPlantCode, setSelectedPlantCode] = useState(() => {
         try {
-            return localStorage.getItem('ep_active_audit_bill_id') || "";
-        } catch (e) {
-            return "";
-        }
-    });
-
-    const [selectedLocation, setSelectedLocation] = useState(() => {
-        try {
-            const saved = localStorage.getItem('ep_active_audit_filter');
+            const saved = localStorage.getItem('ep_active_audit_filter_v2');
             if (saved) {
                 const parsed = JSON.parse(saved);
-                if (parsed.location) return parsed.location;
+                if (parsed.plantCode) return parsed.plantCode;
             }
         } catch (e) {}
-        return "PUNE";
-    });
-
-    const [selectedPlant, setSelectedPlant] = useState(() => {
-        try {
-            const saved = localStorage.getItem('ep_active_audit_filter');
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                if (parsed.plant) return String(parsed.plant);
-            }
-        } catch (e) {}
-        return "4010";
-    });
-
-    const [selectedUtility, setSelectedUtility] = useState(() => {
-        try {
-            const saved = localStorage.getItem('ep_active_audit_filter');
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                if (parsed.utility) return parsed.utility;
-            }
-        } catch (e) {}
-        return "electricity";
+        return plants[0]?.plant_code || '4010';
     });
 
     const [selectedMonth, setSelectedMonth] = useState(() => {
         try {
-            const saved = localStorage.getItem('ep_active_audit_filter');
+            const saved = localStorage.getItem('ep_active_audit_filter_v2');
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (parsed.month) return parsed.month;
             }
         } catch (e) {}
-        return "2026-07";
+        return '2026-07';
     });
 
-    const [statusFilter, setStatusFilter] = useState("all");
+    // 2. Active Bill State with Persistence
+    const [activeBill, setActiveBill] = useState(() => {
+        try {
+            const saved = localStorage.getItem('ep_active_audit_bill_v2');
+            if (saved) return JSON.parse(saved);
+        } catch (e) {}
+        return null;
+    });
 
-    // Persist filter changes
+    // 3. UI States
+    const [isExtracting, setIsExtracting] = useState(false);
+    const [extractError, setExtractError] = useState('');
+    const [isEditingBill, setIsEditingBill] = useState(false);
+    const [editFormData, setEditFormData] = useState(null);
+    const [dragActive, setDragActive] = useState(false);
+    const fileInputRef = useRef(null);
+
+    // Save filter state to localStorage
     useEffect(() => {
         try {
-            localStorage.setItem('ep_active_audit_filter', JSON.stringify({
-                location: selectedLocation,
-                plant: selectedPlant,
-                utility: selectedUtility,
-                month: selectedMonth
-            }));
+            localStorage.setItem(
+                'ep_active_audit_filter_v2',
+                JSON.stringify({ plantCode: selectedPlantCode, month: selectedMonth })
+            );
         } catch (e) {}
-    }, [selectedLocation, selectedPlant, selectedUtility, selectedMonth]);
+    }, [selectedPlantCode, selectedMonth]);
 
-    // Search and Table Sort
-    const [tableSearch, setTableSearch] = useState("");
-    const [activeSectionTab, setActiveSectionTab] = useState("all"); // "all" | "consumption" | "solar" | "demand" | "powerFactor" | "cost"
-
-    // Modals
-    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-    const [isPreviewBillModalOpen, setIsPreviewBillModalOpen] = useState(false);
-
-    // Clarification Form State
-    const [clarificationReason, setClarificationReason] = useState("Meter reading mismatch");
-    const [clarificationComment, setClarificationComment] = useState("");
-    const [clarificationParameter, setClarificationParameter] = useState("Net / Total Consumption");
-    const [clarificationStatus, setClarificationStatus] = useState("Open");
-
-    // Load initial data
+    // Save active bill state to localStorage
     useEffect(() => {
-        loadAllBills().then(data => setBills(data));
-        loadClarifications().then(data => setClarifications(data));
-    }, []);
-
-    // Derived Unique Locations from Plants
-    const availableLocations = useMemo(() => {
-        const set = new Set();
-        plants.forEach(p => {
-            if (p.location) set.add(String(p.location).toUpperCase());
-        });
-        const arr = Array.from(set);
-        return arr.length > 0 ? arr : ["PUNE", "BHIWADI", "GREATER NOIDA", "ROORKIE"];
-    }, [plants]);
-
-    // Plants filtered by Selected Location
-    const availablePlantsForLocation = useMemo(() => {
-        if (!selectedLocation) return plants;
-        return plants.filter(p => String(p.location || "").toUpperCase() === String(selectedLocation).toUpperCase());
-    }, [plants, selectedLocation]);
-
-    // Ensure valid plant selection when location changes
-    useEffect(() => {
-        if (availablePlantsForLocation.length > 0) {
-            const hasMatch = availablePlantsForLocation.some(p => String(p.plant_code) === String(selectedPlant));
-            if (!hasMatch) {
-                setSelectedPlant(String(availablePlantsForLocation[0].plant_code));
+        try {
+            if (activeBill) {
+                localStorage.setItem('ep_active_audit_bill_v2', JSON.stringify(activeBill));
+            } else {
+                localStorage.removeItem('ep_active_audit_bill_v2');
             }
-        }
-    }, [selectedLocation, availablePlantsForLocation, selectedPlant]);
+        } catch (e) {}
+    }, [activeBill]);
 
-    // Find the current active bill matching activeBillId OR Location + Plant + Utility + Month
-    const activeBill = useMemo(() => {
-        if (!bills || bills.length === 0) return null;
-
-        // 1. If an activeBillId is explicitly stored/selected, check if it matches current filter
-        if (activeBillId) {
-            const direct = bills.find(b => b.id === activeBillId);
-            if (direct) {
-                const locMatch = String(direct.location || "").toUpperCase() === String(selectedLocation).toUpperCase();
-                const plantMatch = String(direct.plant || "") === String(selectedPlant);
-                const utilMatch = String(direct.utility || "").toLowerCase() === String(selectedUtility).toLowerCase();
-                const monthMatch = direct.billMonth === selectedMonth;
-                if (locMatch && plantMatch && utilMatch && monthMatch) {
-                    return direct;
-                }
-            }
-        }
-
-        // 2. Find matching bills for current filters
-        const matches = bills.filter(b => 
-            String(b.location || "").toUpperCase() === String(selectedLocation).toUpperCase() &&
-            String(b.plant || "") === String(selectedPlant) &&
-            String(b.utility || "").toLowerCase() === String(selectedUtility).toLowerCase() &&
-            b.billMonth === selectedMonth
+    // Find selected plant object
+    const selectedPlant = useMemo(() => {
+        return (
+            plants.find((p) => p.plant_code === selectedPlantCode) ||
+            plants.find((p) => p.plant_display_name?.toUpperCase() === selectedPlantCode?.toUpperCase()) ||
+            plants[0] || { plant_code: selectedPlantCode, plant_display_name: selectedPlantCode, location_name: 'PUNE' }
         );
+    }, [plants, selectedPlantCode]);
 
-        if (matches.length === 0) return null;
+    // Active Tariff Rates
+    const activeTariffs = useMemo(() => {
+        const elect = tariffs.find((t) => t.type === 'electricity' && t.status === 'Active')?.rate || 10.8939;
+        const solar = tariffs.find((t) => t.type === 'solar' && t.status === 'Active')?.rate || 10.8939;
+        return { electricityRate: Number(elect), solarRate: Number(solar) };
+    }, [tariffs]);
 
-        // Prioritize non-demo, user-uploaded bills
-        const userUploaded = matches.find(b => !String(b.id || "").startsWith("bill_demo_"));
-        return userUploaded || matches[0];
-    }, [bills, activeBillId, selectedLocation, selectedPlant, selectedUtility, selectedMonth]);
-
-    // Synchronize activeBillId when activeBill changes
-    useEffect(() => {
-        if (activeBill?.id && activeBill.id !== activeBillId) {
-            setActiveBillId(activeBill.id);
-            try {
-                localStorage.setItem('ep_active_audit_bill_id', activeBill.id);
-            } catch (e) {}
+    // Aggregate Software Daily Readings for Selected Plant & Month
+    const systemData = useMemo(() => {
+        if (!dailyEntries || !dailyEntries.length || !selectedMonth) {
+            return {
+                entriesCount: 0,
+                grossConsumptionKwh: 0,
+                netConsumptionKwh: 0,
+                electricityCost: 0,
+                solarGenKwh: 0,
+                solarUtilKwh: 0,
+                solarExportKwh: 0,
+                solarAdjustmentKwh: 0,
+                solarCost: 0,
+                totalCost: 0,
+                openingMeter: null,
+                closingMeter: null,
+                meterDifference: null,
+                multiplyingFactor: null
+            };
         }
-    }, [activeBill, activeBillId]);
 
-    // Handler to switch to any uploaded bill with 1 click
-    const handleSelectBill = (bill) => {
-        if (!bill) return;
-        setActiveBillId(bill.id);
-        setSelectedLocation(bill.location);
-        setSelectedPlant(String(bill.plant));
-        setSelectedUtility(bill.utility || "electricity");
-        setSelectedMonth(bill.billMonth);
+        const plantCode = selectedPlant?.plant_code || selectedPlantCode;
+        const plantName = selectedPlant?.plant_display_name || '';
+        const locationName = selectedPlant?.location_name || '';
+
+        // Filter entries strictly for this month and plant
+        const matched = dailyEntries.filter((e) => {
+            if (!e.date || !e.date.startsWith(selectedMonth)) return false;
+            const p = String(e.plant || '').trim().toUpperCase();
+            const matchesPlant =
+                p === String(plantCode).trim().toUpperCase() ||
+                (plantName && p === plantName.toUpperCase());
+            return matchesPlant;
+        });
+
+        let totalElectricityKwh = 0;
+        let totalElectricityCost = 0;
+        let totalSolarGenKwh = 0;
+        let totalSolarUtilKwh = 0;
+        let totalSolarCost = 0;
+        let totalCost = 0;
+        let minOpening = null;
+        let maxClosing = null;
+
+        matched.forEach((e) => {
+            const kwh = Number(e.electricity_consumption) || 0;
+            const eCost = Number(e.electricity_cost) || 0;
+            const sGen = Number(e.solar_generated) || 0;
+            const sUtil = Number(e.solar_utilized) || 0;
+            const sCost = Number(e.solar_cost) || 0;
+            const tCost = Number(e.total_cost) || (eCost + sCost);
+
+            totalElectricityKwh += kwh;
+            totalElectricityCost += eCost;
+            totalSolarGenKwh += sGen;
+            totalSolarUtilKwh += sUtil;
+            totalSolarCost += sCost;
+            totalCost += tCost;
+
+            if (e.electricity_opening !== null && e.electricity_opening !== undefined) {
+                const op = Number(e.electricity_opening);
+                if (minOpening === null || op < minOpening) minOpening = op;
+            }
+            if (e.electricity_closing !== null && e.electricity_closing !== undefined) {
+                const cl = Number(e.electricity_closing);
+                if (maxClosing === null || cl > maxClosing) maxClosing = cl;
+            }
+        });
+
+        const meterDifference = maxClosing !== null && minOpening !== null ? Math.max(0, maxClosing - minOpening) : null;
+        const multiplyingFactor = (totalElectricityKwh > 0 && meterDifference && meterDifference > 0)
+            ? Math.round(totalElectricityKwh / meterDifference)
+            : null;
+
+        return {
+            entriesCount: matched.length,
+            grossConsumptionKwh: totalElectricityKwh,
+            netConsumptionKwh: totalElectricityKwh,
+            electricityCost: totalElectricityCost,
+            solarGenKwh: totalSolarGenKwh,
+            solarUtilKwh: totalSolarUtilKwh,
+            solarExportKwh: totalSolarGenKwh > totalSolarUtilKwh ? (totalSolarGenKwh - totalSolarUtilKwh) : 0,
+            solarAdjustmentKwh: totalSolarUtilKwh,
+            solarCost: totalSolarCost,
+            totalCost: totalCost || (totalElectricityCost + totalSolarCost),
+            openingMeter: minOpening,
+            closingMeter: maxClosing,
+            meterDifference,
+            multiplyingFactor
+        };
+    }, [dailyEntries, selectedPlant, selectedPlantCode, selectedMonth]);
+
+    // Handle File Upload & Automated Parsing
+    const processFile = async (file) => {
+        if (!file) return;
+        setIsExtracting(true);
+        setExtractError('');
+
         try {
-            localStorage.setItem('ep_active_audit_bill_id', bill.id);
-            localStorage.setItem('ep_active_audit_filter', JSON.stringify({
-                location: bill.location,
-                plant: String(bill.plant),
-                utility: bill.utility || "electricity",
-                month: bill.billMonth
-            }));
-        } catch (e) {}
-        setViewMode("detail");
+            const fileName = file.name;
+            const isPdf = fileName.toLowerCase().endsWith('.pdf');
+            const isExcel = fileName.toLowerCase().endsWith('.xlsx') || fileName.toLowerCase().endsWith('.xls');
+
+            let extractedData = {};
+
+            if (isPdf) {
+                const arrayBuffer = await file.arrayBuffer();
+                const rawText = await extractTextFromPdfBuffer(arrayBuffer);
+                if (!rawText || rawText.length < 20) {
+                    throw new Error('Unable to extract text from PDF. The file may be an image scan or protected.');
+                }
+                const parsed = parseMsedclBillText(rawText);
+                if (!parsed) {
+                    throw new Error('Could not identify electricity billing parameters from this PDF.');
+                }
+                extractedData = parsed;
+            } else if (isExcel) {
+                const arrayBuffer = await file.arrayBuffer();
+                const wb = XLSX.read(arrayBuffer, { type: 'array' });
+                const firstSheet = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                // Simple key-value extraction from Excel
+                const dataMap = {};
+                rows.forEach((r) => {
+                    if (r[0] && r[1] !== undefined) {
+                        dataMap[String(r[0]).trim().toLowerCase()] = r[1];
+                    }
+                });
+                extractedData = {
+                    consumerNo: dataMap['consumer no'] || dataMap['consumer number'] || '',
+                    billedUnitsKwh: Number(dataMap['billed units'] || dataMap['total units'] || dataMap['consumption'] || 0),
+                    totalBillAmount: Number(dataMap['bill amount'] || dataMap['total amount'] || dataMap['amount'] || 0),
+                    solarGenUnits: Number(dataMap['solar units'] || dataMap['solar generation'] || 0)
+                };
+            } else {
+                throw new Error('Please upload a PDF (.pdf) or Excel (.xlsx) file.');
+            }
+
+            // If the bill detected a month, optionally align with user selection
+            const billMonth = extractedData.billMonth || selectedMonth;
+
+            const newBill = {
+                id: `bill_${Date.now()}`,
+                fileName,
+                fileSize: file.size,
+                uploadedAt: new Date().toISOString(),
+                billMonth,
+                plantCode: selectedPlantCode,
+                plantName: selectedPlant.plant_display_name,
+                location: selectedPlant.location_name,
+                extractedData
+            };
+
+            setActiveBill(newBill);
+            if (extractedData.billMonth && extractedData.billMonth !== selectedMonth) {
+                setSelectedMonth(extractedData.billMonth);
+            }
+        } catch (err) {
+            console.error('File parsing error:', err);
+            setExtractError(err.message || 'Failed to parse bill. Please check file format.');
+        } finally {
+            setIsExtracting(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     };
 
-    // Aggregate System Consumption strictly for this Location + Plant + Month
-    const systemData = useMemo(() => {
-        return aggregateSystemConsumption(dailyEntries, selectedLocation, selectedPlant, selectedMonth);
-    }, [dailyEntries, selectedLocation, selectedPlant, selectedMonth]);
+    // Drag and Drop handlers
+    const handleDrag = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === 'dragenter' || e.type === 'dragover') {
+            setDragActive(true);
+        } else if (e.type === 'dragleave') {
+            setDragActive(false);
+        }
+    };
 
-    // Build Reconciliation Results
-    const reconData = useMemo(() => {
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            processFile(e.dataTransfer.files[0]);
+        }
+    };
+
+    // Calculate Line-by-Line Comparison Items
+    const comparisonReport = useMemo(() => {
         if (!activeBill) return null;
-        return buildReconciliationData(activeBill, systemData, tolerances);
-    }, [activeBill, systemData, tolerances]);
 
-    // Active Clarifications for current reconciliation
-    const activeClarifications = useMemo(() => {
-        if (!activeBill) return [];
-        return clarifications.filter(c => c.billId === activeBill.id);
-    }, [clarifications, activeBill]);
+        const b = activeBill.extractedData || {};
+        const s = systemData || {};
 
-    // Monthly Trend Data across available months for selected Location + Plant + Utility
-    const monthlyTrendData = useMemo(() => {
-        const monthsList = ["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"];
-        return monthsList.map(mStr => {
-            const billItem = bills.find(b =>
-                String(b.location || "").toUpperCase() === String(selectedLocation).toUpperCase() &&
-                String(b.plant || "") === String(selectedPlant) &&
-                String(b.utility || "").toLowerCase() === String(selectedUtility).toLowerCase() &&
-                b.billMonth === mStr
-            );
-            const sysAgg = aggregateSystemConsumption(dailyEntries, selectedLocation, selectedPlant, mStr);
+        const makeRow = (id, paramName, unit, billVal, sysVal, category, helperText = '', rate = null) => {
+            const hasBill = billVal !== null && billVal !== undefined && !isNaN(billVal);
+            const hasSys = sysVal !== null && sysVal !== undefined && !isNaN(sysVal);
 
-            const billKwh = billItem ? (billItem.extractedData?.billedUnitsKwh ?? billItem.extractedData?.grossUnitsKwh ?? 0) : null;
-            const sysKwh = sysAgg ? sysAgg.netConsumptionKwh : 0;
-            const diff = billKwh !== null ? (billKwh - sysKwh) : 0;
-            const diffPct = billKwh && billKwh > 0 ? ((Math.abs(diff) / billKwh) * 100) : 0;
+            let diff = null;
+            let diffPct = null;
+            let costImpact = null;
+            let status = 'Statutory';
 
-            const [yr, mo] = mStr.split("-");
-            const dObj = new Date(Number(yr), Number(mo) - 1, 1);
-            const label = dObj.toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
+            if (hasBill && hasSys) {
+                const bNum = Number(billVal);
+                const sNum = Number(sysVal);
+                diff = Number((bNum - sNum).toFixed(2));
+                diffPct = Math.abs(bNum) > 0 ? Number(((Math.abs(diff) / Math.abs(bNum)) * 100).toFixed(2)) : 0;
 
-            return {
-                monthKey: mStr,
-                label,
-                billKwh: billKwh || 0,
-                systemKwh: sysKwh || 0,
-                diffKwh: diff,
-                diffPct: Number(diffPct.toFixed(1)),
-                hasBill: Boolean(billItem)
-            };
-        });
-    }, [bills, dailyEntries, selectedLocation, selectedPlant, selectedUtility]);
+                if (rate) {
+                    costImpact = Number((diff * rate).toFixed(2));
+                } else if (unit === '₹') {
+                    costImpact = diff;
+                }
 
-    // Management Overview Summary Dataset (All Plants & Bills)
-    const overviewDataset = useMemo(() => {
-        const rows = [];
-        plants.forEach(p => {
-            const loc = p.location || "PUNE";
-            // Check for bills in the selected month
-            const billItem = bills.find(b => 
-                String(b.plant) === String(p.plant_code) && 
-                b.billMonth === selectedMonth &&
-                String(b.utility || "").toLowerCase() === String(selectedUtility).toLowerCase()
-            );
-            const sysAgg = aggregateSystemConsumption(dailyEntries, loc, p.plant_code, selectedMonth);
-
-            const bCons = billItem ? (billItem.extractedData?.billedUnitsKwh ?? billItem.extractedData?.grossUnitsKwh ?? 0) : null;
-            const sCons = sysAgg ? sysAgg.netConsumptionKwh : 0;
-            const bCost = billItem ? (billItem.extractedData?.totalBillAmount ?? billItem.extractedData?.currentBillAmount ?? 0) : null;
-            const sCost = sysAgg ? sysAgg.totalCost : 0;
-
-            let status = "Not Uploaded";
-            let diff = 0;
-            let diffPct = 0;
-            let costDiff = 0;
-
-            if (bCons !== null) {
-                diff = bCons - sCons;
-                diffPct = bCons > 0 ? (Math.abs(diff) / bCons) * 100 : 0;
-                costDiff = (bCost || 0) - sCost;
-
-                if (diffPct <= tolerances.matchedThreshold) status = "Matched";
-                else if (diffPct <= tolerances.varianceThreshold) status = "Variance";
-                else status = "High Variance";
+                if (diffPct <= 0.5) {
+                    status = 'Verified';
+                } else if (diffPct <= 2.0) {
+                    status = 'Minor Variance';
+                } else {
+                    status = 'Discrepancy';
+                }
+            } else if (hasBill && !hasSys) {
+                status = 'Bill Only';
+                if (unit === '₹') costImpact = Number(billVal);
+            } else if (!hasBill && hasSys) {
+                status = 'Software Only';
             }
 
-            rows.push({
-                location: loc,
-                plantCode: p.plant_code,
-                plantName: p.plant_display_name || p.plant_name,
-                utility: selectedUtility,
-                month: selectedMonth,
-                hasBill: Boolean(billItem),
-                billConsumption: bCons,
-                systemConsumption: sCons,
+            return {
+                id,
+                paramName,
+                unit,
+                billVal: hasBill ? Number(billVal) : null,
+                sysVal: hasSys ? Number(sysVal) : null,
                 diff,
-                diffPct: Number(diffPct.toFixed(2)),
-                billCost: bCost,
-                systemCost: sCost,
-                costDiff,
+                diffPct,
+                costImpact,
                 status,
-                billId: billItem?.id
+                category,
+                helperText
+            };
+        };
+
+        const eRate = activeTariffs.electricityRate;
+        const sRate = activeTariffs.solarRate;
+
+        // 1. Grid Electricity Section
+        const gridSection = [
+            makeRow('net_units', 'Net Billed Electricity (kWh)', 'kWh', b.billedUnitsKwh, s.netConsumptionKwh, 'Grid Consumption', 'Units billed by DISCOM vs Net Daily meter sum', eRate),
+            makeRow('gross_units', 'Gross Grid Units (kWh)', 'kWh', b.grossUnitsKwh, s.grossConsumptionKwh, 'Grid Consumption', 'Total imported grid units before solar netting', eRate),
+            makeRow('open_meter', 'Opening Meter Reading', 'kWh', b.openingMeter, s.openingMeter, 'Meter Readings', 'Meter start reading for billing period'),
+            makeRow('close_meter', 'Closing Meter Reading', 'kWh', b.closingMeter, s.closingMeter, 'Meter Readings', 'Meter end reading for billing period'),
+            makeRow('meter_diff', 'Net Meter Difference', 'kWh', b.meterDifference, s.meterDifference, 'Meter Readings', 'Closing - Opening (Raw units)'),
+            makeRow('mf', 'Multiplying Factor (MF)', 'x', b.multiplyingFactor, s.multiplyingFactor, 'Meter Readings', 'Current/Potential Transformer multiplier'),
+            makeRow('kvah_units', 'Billed Apparent Energy (kVAh)', 'kVAh', b.billedUnitsKvah, null, 'Grid Consumption', 'Recorded kVAh in utility meter'),
+            makeRow('rkvah_lag', 'Reactive Energy Lag (rKVAh)', 'rKVAh', b.rkvahLag, null, 'Grid Consumption', 'Inductive reactive draw'),
+            makeRow('rkvah_lead', 'Reactive Energy Lead (rKVAh)', 'rKVAh', b.rkvahLead, null, 'Grid Consumption', 'Capacitive reactive draw')
+        ];
+
+        // 2. Solar Generation & Credit Section
+        const solarSection = [
+            makeRow('solar_gen', 'Solar Generation (kWh)', 'kWh', b.solarGenUnits, s.solarGenKwh, 'Solar Net Metering', 'Actual solar electricity produced at site', sRate),
+            makeRow('solar_adj', 'Solar Credit / Adjustment (kWh)', 'kWh', b.solarAdjUnits, s.solarAdjustmentKwh, 'Solar Net Metering', 'Solar units credited against grid bill', eRate),
+            makeRow('solar_export', 'Solar Export to Grid (kWh)', 'kWh', b.solarExportUnits, s.solarExportKwh, 'Solar Net Metering', 'Surplus solar injected into MSEB grid', eRate),
+            makeRow('solar_cap', 'Solar Sanctioned Capacity (kWp)', 'kWp', b.solarCapacity, null, 'Solar Net Metering', 'Approved rooftop/ground solar capacity')
+        ];
+
+        // 3. Demand & Power Factor Section
+        const demandSection = [
+            makeRow('recorded_md', 'Recorded Maximum Demand (kVA)', 'kVA', b.recordedDemandKva, null, 'Demand & PF', 'Peak 15/30-minute demand recorded'),
+            makeRow('billed_md', 'Billed Demand (kVA)', 'kVA', b.billedDemandKva, null, 'Demand & PF', 'Higher of recorded MD or 75% contract demand'),
+            makeRow('contract_md', 'Sanctioned Contract Demand (kVA)', 'kVA', b.contractDemandKva, null, 'Demand & PF', 'Contracted sanctioned capacity'),
+            makeRow('power_factor', 'Average Power Factor (PF)', '', b.powerFactor, null, 'Demand & PF', 'Monthly weighted average power factor (Ideal >= 0.99)')
+        ];
+
+        // 4. Financial & Tariff Charges Breakdown
+        const billTotalAmount = b.totalBillAmount ?? b.currentBillAmount;
+        const fixedSurcharges = (Number(b.demandCharges) || 0) +
+            (Number(b.wheelingCharges) || 0) +
+            (Number(b.facCharges) || 0) +
+            (Number(b.electricityDuty) || 0) +
+            (Number(b.taxOnSale) || 0) +
+            (Number(b.gridSupportCharges) || 0);
+
+        const costSection = [
+            makeRow('energy_charges', 'Base Energy Consumption Charges (₹)', '₹', b.energyCharges, s.electricityCost, 'Financials', 'Pure consumption energy cost (Rate × Units)'),
+            makeRow('demand_charges', 'Fixed Demand Charges (₹)', '₹', b.demandCharges, null, 'Statutory Charges', 'Fixed capacity reservation fee per kVA'),
+            makeRow('wheeling_charges', 'Wheeling Charges (₹)', '₹', b.wheelingCharges, null, 'Statutory Charges', 'Grid network transmission cost'),
+            makeRow('fac_charges', 'Fuel Adjustment Charge - FAC (₹)', '₹', b.facCharges, null, 'Statutory Charges', 'Variable fuel surcharge per kWh'),
+            makeRow('duty_charges', 'Electricity Duty & Tax on Sale (₹)', '₹', (Number(b.electricityDuty) || 0) + (Number(b.taxOnSale) || 0) || b.electricityDuty, null, 'Statutory Charges', 'State Government electricity duty'),
+            makeRow('tod_charges', 'Time of Day (TOD) Tariff Adjustment (₹)', '₹', b.todCharges, null, 'Statutory Charges', 'Peak/Off-peak incentive or penalty'),
+            makeRow('grid_support', 'Grid Support Surcharge (₹)', '₹', b.gridSupportCharges, null, 'Statutory Charges', 'Rooftop solar parallel operation fee'),
+            makeRow('ppd_rebate', 'Prompt Payment Discount / Rebate (₹)', '₹', b.promptPaymentDiscount, null, 'Discounts', 'Timely settlement rebate credit'),
+            makeRow('net_bill_amount', 'TOTAL MSEB NET PAYABLE BILL (₹)', '₹', billTotalAmount, s.electricityCost, 'Total Bill', 'Total current payable electricity bill'),
+            makeRow('combined_plant_cost', 'TOTAL COMBINED ENERGY COST (Grid + Solar) (₹)', '₹', billTotalAmount ? (Number(billTotalAmount) + (s.solarCost || 0)) : null, s.totalCost, 'Total Energy', 'Complete plant energy expenditure for this month')
+        ];
+
+        // Summary Calculations
+        const billKwh = b.billedUnitsKwh ?? b.grossUnitsKwh ?? 0;
+        const sysKwh = s.netConsumptionKwh ?? 0;
+        const kwhDiff = billKwh - sysKwh;
+        const kwhDiffPct = billKwh > 0 ? (Math.abs(kwhDiff) / billKwh) * 100 : 0;
+
+        const billCost = billTotalAmount ?? 0;
+        const sysCost = s.electricityCost ?? 0;
+        const costDiff = billCost - sysCost;
+        const costDiffPct = billCost > 0 ? (Math.abs(costDiff) / billCost) * 100 : 0;
+
+        const solarGenBill = b.solarGenUnits ?? 0;
+        const solarGenSys = s.solarGenKwh ?? 0;
+        const solarDiff = solarGenBill - solarGenSys;
+
+        // Executive Verdict
+        let verdict = 'VERIFIED';
+        let verdictColor = 'text-emerald-700 bg-emerald-50 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800';
+        let verdictMessage = 'Consumption readings match within acceptable tolerance (< 0.5%).';
+
+        if (kwhDiffPct > 5.0) {
+            verdict = 'CRITICAL DISCREPANCY';
+            verdictColor = 'text-rose-700 bg-rose-50 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800';
+            verdictMessage = `Meter readings differ by ${formatNumber(Math.abs(kwhDiff))} kWh (${kwhDiffPct.toFixed(1)}%). Requires utility investigation.`;
+        } else if (kwhDiffPct > 1.0) {
+            verdict = 'MINOR VARIANCE';
+            verdictColor = 'text-amber-700 bg-amber-50 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800';
+            verdictMessage = `Small variance of ${formatNumber(Math.abs(kwhDiff))} kWh (${kwhDiffPct.toFixed(1)}%). Within normal billing cut-off timing.`;
+        } else if (fixedSurcharges > 0 && Math.abs(costDiff) > 1000) {
+            verdict = 'VERIFIED WITH STATUTORY SURCHARGES';
+            verdictColor = 'text-sky-700 bg-sky-50 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800';
+            verdictMessage = `Base consumption verified. ₹ ${formatINR(fixedSurcharges)} is statutory MSEB fixed demand & taxes.`;
+        }
+
+        return {
+            sections: [
+                { title: '⚡ 1. Grid Electricity & Meter Readings', rows: gridSection },
+                { title: '☀️ 2. Solar Generation & Export Reconciliation', rows: solarSection },
+                { title: '⚡ 3. Maximum Demand & Power Factor (MD & PF)', rows: demandSection },
+                { title: '💰 4. Financials, Tariffs & Cost Breakdown', rows: costSection }
+            ],
+            summary: {
+                billKwh,
+                sysKwh,
+                kwhDiff,
+                kwhDiffPct,
+                billCost,
+                sysCost,
+                costDiff,
+                costDiffPct,
+                solarGenBill,
+                solarGenSys,
+                solarDiff,
+                fixedSurcharges,
+                verdict,
+                verdictColor,
+                verdictMessage
+            }
+        };
+    }, [activeBill, systemData, activeTariffs]);
+
+    // Export Table to Clean Executive Excel
+    const handleExportExcel = () => {
+        if (!comparisonReport || !activeBill) return;
+
+        const wb = XLSX.utils.book_new();
+
+        // 1. Executive Summary Sheet
+        const summaryData = [
+            ['PG ELECTROPLAST LTD - UTILITY BILL RECONCILIATION AUDIT REPORT'],
+            ['Generated On', new Date().toLocaleString('en-IN')],
+            ['Location', selectedPlant.location_name],
+            ['Plant', `${selectedPlant.plant_code} - ${selectedPlant.plant_display_name}`],
+            ['Billing Month', selectedMonth],
+            ['Audited Bill File', activeBill.fileName || 'Uploaded Bill'],
+            ['Audit Verdict', comparisonReport.summary.verdict],
+            ['Verdict Note', comparisonReport.summary.verdictMessage],
+            [],
+            ['KEY AUDIT PARAMETER', 'AS PER BILL', 'AS PER SOFTWARE', 'VARIANCE (DIFF)', 'VARIANCE %', 'AUDIT STATUS'],
+            [
+                'Net Grid Consumption (kWh)',
+                comparisonReport.summary.billKwh,
+                comparisonReport.summary.sysKwh,
+                comparisonReport.summary.kwhDiff,
+                `${comparisonReport.summary.kwhDiffPct.toFixed(2)}%`,
+                comparisonReport.summary.kwhDiffPct <= 1 ? 'Matched' : 'Variance'
+            ],
+            [
+                'Solar Generation (kWh)',
+                comparisonReport.summary.solarGenBill,
+                comparisonReport.summary.solarGenSys,
+                comparisonReport.summary.solarDiff,
+                '—',
+                Math.abs(comparisonReport.summary.solarDiff) <= 100 ? 'Matched' : 'Variance'
+            ],
+            [
+                'MSEB Net Payable Bill Amount (₹)',
+                comparisonReport.summary.billCost,
+                comparisonReport.summary.sysCost,
+                comparisonReport.summary.costDiff,
+                `${comparisonReport.summary.costDiffPct.toFixed(2)}%`,
+                Math.abs(comparisonReport.summary.costDiff) <= 5000 ? 'Matched' : 'Variance (Includes Fixed Surcharges)'
+            ],
+            [
+                'MSEB Fixed & Statutory Surcharges (₹)',
+                comparisonReport.summary.fixedSurcharges,
+                0,
+                comparisonReport.summary.fixedSurcharges,
+                '100%',
+                'Statutory Demand & Duty'
+            ]
+        ];
+
+        const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+        XLSX.utils.book_append_sheet(wb, wsSummary, 'Executive Summary');
+
+        // 2. Full Parameter Line-by-Line Sheet
+        const detailsData = [
+            ['Category', 'Parameter / Term', 'Unit', 'As Per Bill', 'As Per Software', 'Difference', 'Variance %', 'Cost Impact (₹)', 'Audit Status', 'Notes / Remarks']
+        ];
+
+        comparisonReport.sections.forEach((sec) => {
+            sec.rows.forEach((r) => {
+                detailsData.push([
+                    sec.title.replace(/[^a-zA-Z0-9 &]/g, '').trim(),
+                    r.paramName,
+                    r.unit,
+                    r.billVal !== null ? r.billVal : 'N/A',
+                    r.sysVal !== null ? r.sysVal : 'N/A',
+                    r.diff !== null ? r.diff : 'N/A',
+                    r.diffPct !== null ? `${r.diffPct}%` : 'N/A',
+                    r.costImpact !== null ? r.costImpact : 'N/A',
+                    r.status,
+                    r.helperText || ''
+                ]);
             });
         });
 
-        if (statusFilter === "all") return rows;
-        return rows.filter(r => r.status.toLowerCase() === statusFilter.toLowerCase());
-    }, [plants, bills, dailyEntries, selectedMonth, selectedUtility, tolerances, statusFilter]);
+        const wsDetails = XLSX.utils.aoa_to_sheet(detailsData);
+        XLSX.utils.book_append_sheet(wb, wsDetails, 'Line-Item Comparison');
 
-    // Overview Metric Counters
-    const overviewStats = useMemo(() => {
-        let total = plants.length;
-        let uploaded = 0;
-        let matched = 0;
-        let variance = 0;
-        let highVariance = 0;
+        const fileName = `Bill_Audit_${selectedPlant.plant_display_name}_${selectedMonth}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+    };
 
-        overviewDataset.forEach(r => {
-            if (r.hasBill) uploaded++;
-            if (r.status === "Matched") matched++;
-            if (r.status === "Variance") variance++;
-            if (r.status === "High Variance") highVariance++;
-        });
-
-        const pendingClarificationsCount = clarifications.filter(c => c.status !== "Resolved").length;
-
-        return {
-            totalPlants: total,
-            billsUploaded: uploaded,
-            matched,
-            variance,
-            highVariance,
-            pendingClarifications: pendingClarificationsCount
-        };
-    }, [plants, overviewDataset, clarifications]);
-
-    // Handle Clarification Submission
-    const handleAddClarification = async (e) => {
-        e.preventDefault();
+    // Open Manual Edit Modal
+    const handleStartEdit = () => {
         if (!activeBill) return;
-
-        const newItem = {
-            id: `clarif_${Date.now()}`,
-            billId: activeBill.id,
-            parameter: clarificationParameter,
-            reason: clarificationReason,
-            comment: clarificationComment || "Added during variance analysis review",
-            status: clarificationStatus,
-            createdBy: currentUser?.name || "IT Admin",
-            createdAt: new Date().toISOString(),
-            resolvedBy: clarificationStatus === "Resolved" ? (currentUser?.name || "IT Admin") : null,
-            resolvedAt: clarificationStatus === "Resolved" ? new Date().toISOString() : null
-        };
-
-        const updated = await saveClarification(newItem);
-        setClarifications(updated);
-        setClarificationComment("");
+        setEditFormData({ ...(activeBill.extractedData || {}) });
+        setIsEditingBill(true);
     };
 
-    // Toggle Clarification Status
-    const handleToggleClarificationStatus = async (item, nextStatus) => {
-        const updated = await saveClarification({
-            ...item,
-            status: nextStatus,
-            resolvedBy: nextStatus === "Resolved" ? (currentUser?.name || "IT Admin") : null,
-            resolvedAt: nextStatus === "Resolved" ? new Date().toISOString() : null
+    // Save Manual Edit
+    const handleSaveEdit = (e) => {
+        e.preventDefault();
+        if (!editFormData || !activeBill) return;
+        setActiveBill({
+            ...activeBill,
+            extractedData: {
+                ...activeBill.extractedData,
+                ...editFormData
+            }
         });
-        setClarifications(updated);
+        setIsEditingBill(false);
     };
 
-    // Filtered parameters list for Detailed Table
-    const tableParameters = useMemo(() => {
-        if (!reconData) return [];
-        let items = [];
-
-        if (activeSectionTab === "all" || activeSectionTab === "consumption") {
-            items.push(...reconData.sections.consumption.map(i => ({ ...i, section: "Grid Consumption" })));
-        }
-        if (activeSectionTab === "all" || activeSectionTab === "solar") {
-            items.push(...reconData.sections.solar.map(i => ({ ...i, section: "Solar Reconciliation" })));
-        }
-        if (activeSectionTab === "all" || activeSectionTab === "demand") {
-            items.push(...reconData.sections.demand.map(i => ({ ...i, section: "Demand MD" })));
-        }
-        if (activeSectionTab === "all" || activeSectionTab === "powerFactor") {
-            items.push(...reconData.sections.powerFactor.map(i => ({ ...i, section: "Power Factor" })));
-        }
-        if (activeSectionTab === "all" || activeSectionTab === "cost") {
-            items.push(...reconData.sections.cost.map(i => ({ ...i, section: "Cost & Charges" })));
-        }
-
-        if (tableSearch.trim()) {
-            const q = tableSearch.toLowerCase();
-            items = items.filter(i => 
-                i.parameter.toLowerCase().includes(q) || 
-                (i.billRef && i.billRef.toLowerCase().includes(q))
-            );
-        }
-
-        return items;
-    }, [reconData, activeSectionTab, tableSearch]);
-
-    // Formatters
-    const fmt = (val, decimals = 0) => {
-        if (val === null || val === undefined || isNaN(val)) return "N/A";
-        return Number(val).toLocaleString("en-IN", { maximumFractionDigits: decimals });
-    };
-
-    const getStatusBadge = (status) => {
-        switch (status) {
-            case "Matched":
-                return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Matched
-                </span>;
-            case "Variance":
-                return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Variance
-                </span>;
-            case "High Variance":
-                return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span> High Variance
-                </span>;
-            default:
-                return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-200">
-                    N/A
-                </span>;
+    // Clear active audit
+    const handleClearAudit = () => {
+        if (window.confirm('Are you sure you want to clear the current bill audit?')) {
+            setActiveBill(null);
+            localStorage.removeItem('ep_active_audit_bill_v2');
         }
     };
 
     return (
-        <div className="space-y-4 pt-1">
-            
-            {/* Top Module Header & Breadcrumb */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <div>
+        <div className="w-full flex flex-col gap-4 p-3 md:p-5 max-w-[1600px] mx-auto text-slate-800 dark:text-slate-100">
+            {/* 1. TOP HEADER & AUDIT CONTROLS */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-col gap-0.5">
                     <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-800 text-[10px] font-black uppercase tracking-wider">Enterprise Verification</span>
-                        <h1 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2 m-0">
-                            <span className="material-symbols-outlined text-sky-600 text-[22px]">receipt_long</span>
-                            <span>Utility Bill Audit & Reconciliation</span>
+                        <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+                        <h1 className="text-lg md:text-xl font-black tracking-tight text-slate-900 dark:text-white uppercase">
+                            Utility Bill Audit & Management Reconciliation
                         </h1>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1">
-                        Cross-check utility invoices with UtilitySense logged consumption, solar net credits, peak demand & tariff costs.
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Direct parameter-by-parameter audit between uploaded DISCOM/MSEB utility bill and software daily meter readings.
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2 self-start md:self-auto">
-                    {/* Mode Toggle */}
-                    <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-                        <button
-                            type="button"
-                            onClick={() => setViewMode("detail")}
-                            className={`px-3 py-1.5 rounded-lg border-none cursor-pointer transition ${viewMode === "detail" ? "bg-white text-sky-700 shadow-xs" : "bg-transparent text-slate-600 hover:text-slate-900"}`}
-                        >
-                            Detail Reconciliation
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setViewMode("overview")}
-                            className={`px-3 py-1.5 rounded-lg border-none cursor-pointer transition ${viewMode === "overview" ? "bg-white text-sky-700 shadow-xs" : "bg-transparent text-slate-600 hover:text-slate-900"}`}
-                        >
-                            Management Overview
-                        </button>
-                    </div>
-
-                    {/* Master Tolerance Config Button */}
-                    <button
-                        type="button"
-                        onClick={() => setIsConfigOpen(true)}
-                        className="h-8 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                        title="Configure Reconciliation Tolerances"
-                    >
-                        <span className="material-symbols-outlined text-[16px] text-slate-500">tune</span>
-                        <span className="hidden sm:inline">Tolerances</span>
-                    </button>
-
-                    {/* Upload Bill CTA */}
-                    <button
-                        type="button"
-                        onClick={() => setIsUploadModalOpen(true)}
-                        className="h-8 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm border-none cursor-pointer"
-                    >
-                        <span className="material-symbols-outlined text-[18px]">cloud_upload</span>
-                        <span>Upload Utility Bill</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Global Reconciliation Hierarchy Filter Bar */}
-            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                {/* Filter Controls: Plant & Month */}
                 <div className="flex flex-wrap items-center gap-2.5">
-                    {/* Location Dropdown */}
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
-                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Location:</label>
-                        <select
-                            value={selectedLocation}
-                            onChange={(e) => setSelectedLocation(e.target.value)}
-                            className="border-none bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer"
-                        >
-                            {availableLocations.map(loc => (
-                                <option key={loc} value={loc}>{loc}</option>
-                            ))}
-                        </select>
-                    </div>
-
                     {/* Plant Dropdown */}
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
-                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Plant:</label>
+                    <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg">
+                        <label className="text-[11px] font-extrabold uppercase text-slate-500 dark:text-slate-400">Plant:</label>
                         <select
-                            value={selectedPlant}
-                            onChange={(e) => setSelectedPlant(e.target.value)}
-                            className="border-none bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer max-w-[200px] truncate"
+                            value={selectedPlantCode}
+                            onChange={(e) => setSelectedPlantCode(e.target.value)}
+                            className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 border-none outline-none cursor-pointer"
                         >
-                            {availablePlantsForLocation.map(p => (
-                                <option key={p.plant_code} value={p.plant_code}>
-                                    {p.plant_code} - {p.plant_display_name || p.plant_name}
+                            {plants.map((p) => (
+                                <option key={p.plant_code} value={p.plant_code} className="dark:bg-slate-800">
+                                    {p.location_name ? `${p.location_name} - ` : ''}{p.plant_display_name} ({p.plant_code})
                                 </option>
                             ))}
                         </select>
                     </div>
 
-                    {/* Utility Dropdown */}
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
-                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Utility:</label>
-                        <select
-                            value={selectedUtility}
-                            onChange={(e) => setSelectedUtility(e.target.value)}
-                            className="border-none bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer"
-                        >
-                            <option value="electricity">Electricity (Grid / MSEDCL)</option>
-                            <option value="solar">Solar Power</option>
-                            <option value="water">Water</option>
-                            <option value="png">PNG Gas</option>
-                            <option value="diesel">Diesel Fuel</option>
-                        </select>
-                    </div>
-
-                    {/* Bill Month Selector */}
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
-                        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Bill Month:</label>
+                    {/* Month Picker */}
+                    <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg">
+                        <label className="text-[11px] font-extrabold uppercase text-slate-500 dark:text-slate-400">Month:</label>
                         <input
                             type="month"
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(e.target.value)}
-                            className="border-none bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer"
+                            className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 border-none outline-none cursor-pointer"
                         />
                     </div>
 
-                    {/* Status Filter (for overview) */}
-                    {viewMode === "overview" && (
-                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
-                            <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Status:</label>
-                            <select
-                                value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
-                                className="border-none bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer"
+                    {/* Action Buttons */}
+                    {activeBill ? (
+                        <>
+                            <button
+                                type="button"
+                                onClick={handleExportExcel}
+                                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                                title="Download Audit Comparison in Excel format for Management"
                             >
-                                <option value="all">All Status</option>
-                                <option value="matched">Matched (≤2%)</option>
-                                <option value="variance">Variance (2–5%)</option>
-                                <option value="high variance">High Variance (&gt;5%)</option>
-                                <option value="not uploaded">Not Uploaded</option>
-                            </select>
-                        </div>
-                    )}
-                </div>
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Export to Excel
+                            </button>
 
-                {/* Right Actions */}
-                <div className="flex items-center gap-2">
-                    {reconData && (
+                            <button
+                                type="button"
+                                onClick={handleStartEdit}
+                                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border border-slate-300 dark:border-slate-700 cursor-pointer"
+                                title="Review or manually edit extracted values from bill"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                                Edit Values
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border border-blue-200 dark:border-blue-800 cursor-pointer"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                </svg>
+                                Upload New Bill
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleClearAudit}
+                                className="px-2.5 py-1.5 text-slate-400 hover:text-rose-600 rounded-lg text-xs font-bold transition"
+                                title="Clear current audit"
+                            >
+                                Clear
+                            </button>
+                        </>
+                    ) : (
                         <button
                             type="button"
-                            onClick={() => exportReconciliationToExcel(reconData, availablePlantsForLocation.find(p => p.plant_code === selectedPlant)?.plant_display_name)}
-                            className="h-8 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                            title="Export to Excel"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
                         >
-                            <span className="material-symbols-outlined text-[16px] text-emerald-600">table_view</span>
-                            <span>Export Excel</span>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                            </svg>
+                            Upload Utility Bill (PDF / Excel)
                         </button>
                     )}
+
+                    {/* Hidden Native File Input */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf,.xlsx,.xls"
+                        onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                                processFile(e.target.files[0]);
+                            }
+                        }}
+                        className="hidden"
+                    />
                 </div>
             </div>
 
-            {/* Uploaded Invoices Quick-Access Strip (Persistent across tabs and sessions) */}
-            <div className="bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[14px] text-sky-600">receipt</span>
-                        Audit Invoices ({bills.length}):
-                    </span>
-                    {bills.slice(0, 8).map(b => {
-                        const isSelected = activeBill?.id === b.id;
-                        const pObj = plants.find(p => String(p.plant_code) === String(b.plant));
-                        const pName = pObj?.plant_display_name || b.plant;
-                        return (
-                            <button
-                                key={b.id}
-                                type="button"
-                                onClick={() => handleSelectBill(b)}
-                                className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
-                                    isSelected 
-                                        ? "bg-sky-600 text-white border-sky-600 shadow-xs ring-2 ring-sky-200" 
-                                        : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
-                                }`}
-                            >
-                                <span className="text-[10px]">{b.location} • {pName}</span>
-                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
-                                    {b.billMonth}
-                                </span>
-                                {isSelected && <span className="material-symbols-outlined text-[13px]">check_circle</span>}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                <button
-                    type="button"
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className="px-3 py-1 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer border border-sky-200"
-                >
-                    <span className="material-symbols-outlined text-[15px]">add</span>
-                    <span>Upload New Bill</span>
-                </button>
-            </div>
-
-            {/* ========================================================================= */}
-            {/* VIEW MODE 1: DETAIL RECONCILIATION FOR SELECTED LOCATION + PLANT + MONTH */}
-            {/* ========================================================================= */}
-            {viewMode === "detail" && (
-                <div className="space-y-4">
-                    
-                    {/* Check if Bill Uploaded for this Target */}
-                    {!activeBill ? (
-                        <div className="bg-white rounded-2xl p-10 border border-slate-200 text-center space-y-3">
-                            <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center">
-                                <span className="material-symbols-outlined text-[32px]">receipt_long</span>
-                            </div>
-                            <h3 className="text-base font-extrabold text-slate-900">
-                                No Utility Bill Uploaded for {selectedLocation} • Plant {selectedPlant} • {selectedMonth}
-                            </h3>
-                            <p className="text-xs text-slate-500 max-w-md mx-auto">
-                                UtilitySense has logged daily entries for this month. Upload the official utility invoice PDF to trigger automatic parameter comparison.
-                            </p>
-                            <div className="pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsUploadModalOpen(true)}
-                                    className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-extrabold transition shadow-sm border-none cursor-pointer inline-flex items-center gap-2"
-                                >
-                                    <span className="material-symbols-outlined text-[18px]">upload_file</span>
-                                    <span>Upload {selectedMonth} Bill Now</span>
-                                </button>
-                            </div>
-                        </div>
-                    ) : (
-                        <React.Fragment>
-                            {/* Sticky Top Executive Verification Header */}
-                            <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-md p-4 space-y-3.5">
-                                {/* Bill Meta & Quick Actions */}
-                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-100 text-sky-600 flex items-center justify-center font-bold">
-                                            <span className="material-symbols-outlined text-[22px]">verified</span>
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <h3 className="text-sm font-black text-slate-900 uppercase m-0">
-                                                    {selectedLocation} • Plant {selectedPlant} ({availablePlantsForLocation.find(p => String(p.plant_code) === String(selectedPlant))?.plant_display_name || "Plant"})
-                                                </h3>
-                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-slate-100 text-slate-700">
-                                                    Month: {activeBill.billMonth}
-                                                </span>
-                                                {getStatusBadge(reconData?.overallStatus)}
-                                            </div>
-                                            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1">
-                                                <span>Consumer No: <strong className="text-slate-800">{activeBill.consumerNumber}</strong></span>
-                                                <span>•</span>
-                                                <span>Meter No: <strong className="text-slate-800">{activeBill.meterNumber}</strong></span>
-                                                <span>•</span>
-                                                <span>Bill Date: <strong className="text-slate-800">{activeBill.billDate || "—"}</strong></span>
-                                                <span>•</span>
-                                                <span>Daily Logs: <strong className="text-sky-700 font-bold">{systemData?.entriesCount || 0} / 31 Days Recorded</strong></span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsPreviewBillModalOpen(true)}
-                                            className="h-8 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                                        >
-                                            <span className="material-symbols-outlined text-[16px] text-sky-600">visibility</span>
-                                            <span>Original Bill</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsUploadModalOpen(true)}
-                                            className="h-8 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                                            title="Re-upload or Update Bill"
-                                        >
-                                            <span className="material-symbols-outlined text-[16px]">edit</span>
-                                            <span>Edit</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* 4 HIGH-CLARITY EXECUTIVE KPI CARDS */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                    {/* Card 1: MSEB Grid Electricity Consumption */}
-                                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 hover:border-sky-300 transition">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-[15px] text-amber-500">bolt</span>
-                                                MSEB Grid Consumption
-                                            </span>
-                                            {getStatusBadge(reconData?.consumptionStatus)}
-                                        </div>
-                                        <div className="mt-2 flex items-baseline justify-between">
-                                            <div>
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase block">Bill Billed</span>
-                                                <span className="text-base font-black text-slate-900">{fmt(reconData?.summary.billConsumption)} <span className="text-[11px] font-normal text-slate-500">kWh</span></span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase block">UtilitySense Log</span>
-                                                <span className="text-base font-black text-sky-700">{fmt(reconData?.summary.systemConsumption)} <span className="text-[11px] font-normal text-slate-500">kWh</span></span>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between text-[11px]">
-                                            <span className="text-slate-600">
-                                                Diff: <strong className={reconData?.summary.consumptionDiff !== 0 ? "text-amber-700" : "text-emerald-700"}>{fmt(reconData?.summary.consumptionDiff)} kWh</strong> ({reconData?.summary.consumptionDiffPct}%)
-                                            </span>
-                                            <span className="text-slate-400 text-[10px] font-semibold">
-                                                {systemData?.multiplyingFactor ? `MF: ${systemData.multiplyingFactor}x` : "MF: 40x"}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Card 2: MSEB Grid Cost Reconciliation */}
-                                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 hover:border-sky-300 transition">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-[15px] text-emerald-500">payments</span>
-                                                MSEB Grid Bill Amount
-                                            </span>
-                                            {getStatusBadge(reconData?.costStatus)}
-                                        </div>
-                                        <div className="mt-2 flex items-baseline justify-between">
-                                            <div>
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase block">Bill Total</span>
-                                                <span className="text-base font-black text-slate-900">₹{fmt(reconData?.summary.billCost)}</span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase block">System Cost</span>
-                                                <span className="text-base font-black text-sky-700">₹{fmt(reconData?.summary.systemCost)}</span>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between text-[11px]">
-                                            <span className="text-slate-600">
-                                                Diff: <strong className={reconData?.summary.costDiff !== 0 ? "text-amber-700" : "text-emerald-700"}>₹{fmt(reconData?.summary.costDiff)}</strong> ({reconData?.summary.costDiffPct}%)
-                                            </span>
-                                            <span className="text-slate-400 text-[10px] font-semibold">MSEDCL Grid Tariff</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Card 3: Solar Net Metering & Generation */}
-                                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 hover:border-sky-300 transition">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-[15px] text-amber-500">wb_sunny</span>
-                                                Solar Net Metering
-                                            </span>
-                                            {getStatusBadge(reconData?.solarStatus || "Matched")}
-                                        </div>
-                                        <div className="mt-2 flex items-baseline justify-between">
-                                            <div>
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase block">Solar Generation</span>
-                                                <span className="text-base font-black text-amber-700">{fmt(reconData?.summary.solarGenSys || 20896)} <span className="text-[11px] font-normal text-slate-500">kWh</span></span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase block">Export / Credit</span>
-                                                <span className="text-base font-black text-slate-900">{fmt(reconData?.summary.solarExportBill || reconData?.summary.solarExportSys || 20896)} <span className="text-[11px] font-normal text-slate-500">kWh</span></span>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between text-[11px]">
-                                            <span className="text-slate-600">
-                                                Solar Accounted: <strong className="text-emerald-700">100% On-Site</strong>
-                                            </span>
-                                            <span className="text-slate-400 text-[10px] font-semibold">Captive Solar</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Card 4: Audit Verdict & Completeness */}
-                                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 hover:border-sky-300 transition">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-[15px] text-emerald-600">verified_user</span>
-                                                Audit Verdict
-                                            </span>
-                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
-                                                Tol: &le;{tolerances.matchedThreshold}%
-                                            </span>
-                                        </div>
-                                        <div className="mt-2 flex items-baseline justify-between">
-                                            <div>
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase block">Status</span>
-                                                <span className="text-sm font-black text-emerald-700 flex items-center gap-1">
-                                                    <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                                                    VERIFIED & MATCHED
-                                                </span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase block">Daily Logs</span>
-                                                <span className="text-sm font-black text-slate-800">{systemData?.entriesCount || 0}/31 Days (100%)</span>
-                                            </div>
-                                        </div>
-                                        <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between text-[11px]">
-                                            <span className="text-emerald-700 font-bold">
-                                                ✓ Zero Variance
-                                            </span>
-                                            <span className="text-slate-400 text-[10px] font-semibold">Audit Passed</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Verification Callout for Pune NGM (4010) July 2026 */}
-                                {selectedPlant === "4010" && selectedMonth === "2026-07" && (
-                                    <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-2.5 flex items-start gap-2.5 text-xs text-emerald-950">
-                                        <span className="material-symbols-outlined text-emerald-600 text-[18px] shrink-0 mt-0.5">info</span>
-                                        <div>
-                                            <strong className="font-extrabold">Pune NGM (4010) July 2026 Audit Reassurance:</strong> 31 complete daily logs verified in system (July 1st Opening 28,169 → July 31st Closing 32,820, Diff = 4,651 × 40 MF = 186,040 kWh). Grid electricity cost is ₹20,26,710 and Solar generation is 20,896 kWh. The invoice and system consumption match within 0.0% variance.
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Section 11: MAIN COMPARISON TABLE WITH SECTION FILTERS & SEARCH */}
-                            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                                
-                                {/* Table Controls Bar */}
-                                <div className="p-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveSectionTab("all")}
-                                            className={`px-3 py-1 text-xs font-bold rounded-lg border-none cursor-pointer transition ${activeSectionTab === "all" ? "bg-sky-600 text-white shadow-xs" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"}`}
-                                        >
-                                            All Parameters
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveSectionTab("consumption")}
-                                            className={`px-3 py-1 text-xs font-bold rounded-lg border-none cursor-pointer transition ${activeSectionTab === "consumption" ? "bg-sky-600 text-white shadow-xs" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"}`}
-                                        >
-                                            Grid Consumption
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveSectionTab("solar")}
-                                            className={`px-3 py-1 text-xs font-bold rounded-lg border-none cursor-pointer transition ${activeSectionTab === "solar" ? "bg-sky-600 text-white shadow-xs" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"}`}
-                                        >
-                                            Solar Reconciliation
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveSectionTab("demand")}
-                                            className={`px-3 py-1 text-xs font-bold rounded-lg border-none cursor-pointer transition ${activeSectionTab === "demand" ? "bg-sky-600 text-white shadow-xs" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"}`}
-                                        >
-                                            Demand (MD)
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveSectionTab("cost")}
-                                            className={`px-3 py-1 text-xs font-bold rounded-lg border-none cursor-pointer transition ${activeSectionTab === "cost" ? "bg-sky-600 text-white shadow-xs" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"}`}
-                                        >
-                                            Cost & Tariff Breakdown
-                                        </button>
-                                    </div>
-
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            value={tableSearch}
-                                            onChange={(e) => setTableSearch(e.target.value)}
-                                            placeholder="Search parameter..."
-                                            className="h-8 pl-8 pr-3 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-800 focus:outline-sky-500 w-48"
-                                        />
-                                        <span className="material-symbols-outlined text-[16px] text-slate-400 absolute left-2.5 top-2">search</span>
-                                    </div>
-                                </div>
-
-                                {/* Comparison Table */}
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse text-xs">
-                                        <thead>
-                                            <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-extrabold uppercase text-[10px] tracking-wider">
-                                                <th className="py-2.5 px-4">Parameter</th>
-                                                <th className="py-2.5 px-4">Bill Reference</th>
-                                                <th className="py-2.5 px-4 text-right">Bill Value</th>
-                                                <th className="py-2.5 px-4 text-right">UtilitySense Value</th>
-                                                <th className="py-2.5 px-4 text-right">Difference</th>
-                                                <th className="py-2.5 px-4 text-right">Difference %</th>
-                                                <th className="py-2.5 px-4 text-center">Reconciliation Status</th>
-                                                <th className="py-2.5 px-4 text-center">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {tableParameters.map((row, idx) => (
-                                                <tr key={idx} className="hover:bg-slate-50/70 transition">
-                                                    <td className="py-2.5 px-4 font-bold text-slate-800">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span>{row.parameter}</span>
-                                                            <span className="text-[10px] text-slate-400 font-normal">({row.unit})</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-2.5 px-4 text-slate-500 text-[11px]">
-                                                        {row.billRef || "—"}
-                                                    </td>
-                                                    <td className="py-2.5 px-4 text-right font-black text-slate-900">
-                                                        {row.billVal !== null ? `${fmt(row.billVal, row.unit === "" ? 3 : 0)} ${row.unit}` : "N/A"}
-                                                    </td>
-                                                    <td className="py-2.5 px-4 text-right font-black text-sky-700">
-                                                        {row.sysVal !== null ? `${fmt(row.sysVal, row.unit === "" ? 3 : 0)} ${row.unit}` : "N/A"}
-                                                    </td>
-                                                    <td className={`py-2.5 px-4 text-right font-black ${row.diff !== null && Math.abs(row.diff) > 0 ? (row.diff > 0 ? "text-amber-700" : "text-sky-700") : "text-slate-400"}`}>
-                                                        {row.diff !== null ? `${row.diff > 0 ? "+" : ""}${fmt(row.diff, 0)} ${row.unit}` : "N/A"}
-                                                    </td>
-                                                    <td className="py-2.5 px-4 text-right font-black text-slate-800">
-                                                        {row.diffPct !== null ? `${row.diffPct}%` : "N/A"}
-                                                    </td>
-                                                    <td className="py-2.5 px-4 text-center">
-                                                        {getStatusBadge(row.status)}
-                                                    </td>
-                                                    <td className="py-2.5 px-4 text-center">
-                                                        {row.status === "Variance" || row.status === "High Variance" ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setClarificationParameter(row.parameter);
-                                                                    const el = document.getElementById("clarification-box");
-                                                                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                                                                }}
-                                                                className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-black cursor-pointer transition"
-                                                            >
-                                                                + Clarify
-                                                            </button>
-                                                        ) : (
-                                                            <span className="text-slate-300">—</span>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            {/* Section 12: MONTHLY TREND CHART */}
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h3 className="text-sm font-black text-slate-900 uppercase">Monthly Variance Trend (Bill vs System)</h3>
-                                        <p className="text-xs text-slate-500">Examine recurring vs isolated monthly consumption variances</p>
-                                    </div>
-                                    <div className="flex items-center gap-3 text-xs font-bold">
-                                        <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-sky-600"></span> Bill (kWh)</div>
-                                        <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-teal-500"></span> System (kWh)</div>
-                                        <div className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-rose-500"></span> Variance %</div>
-                                    </div>
-                                </div>
-
-                                <div className="h-64 w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <ComposedChart data={monthlyTrendData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                            <XAxis dataKey="label" stroke="#64748b" fontSize={11} tickLine={false} />
-                                            <YAxis yAxisId="kwh" stroke="#64748b" fontSize={11} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
-                                            <YAxis yAxisId="pct" orientation="right" stroke="#ef4444" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
-                                            <Tooltip
-                                                formatter={(value, name) => {
-                                                    if (name === "Variance %") return [`${value}%`, name];
-                                                    return [`${Number(value).toLocaleString()} kWh`, name];
-                                                }}
-                                                contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0", fontSize: "11px", fontWeight: "bold" }}
-                                            />
-                                            <Bar yAxisId="kwh" dataKey="billKwh" name="Bill (kWh)" fill="#0284c7" radius={[4, 4, 0, 0]} maxBarSize={32} />
-                                            <Bar yAxisId="kwh" dataKey="systemKwh" name="System (kWh)" fill="#14b8a6" radius={[4, 4, 0, 0]} maxBarSize={32} />
-                                            <Line yAxisId="pct" type="monotone" dataKey="diffPct" name="Variance %" stroke="#ef4444" strokeWidth={2.5} dot={{ r: 4 }} />
-                                        </ComposedChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
-
-                            {/* Section 15: DIFFERENCE ANALYSIS & CLARIFICATIONS */}
-                            <div id="clarification-box" className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
-                                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                                    <div className="flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-amber-600">psychology_alt</span>
-                                        <div>
-                                            <h3 className="text-sm font-black text-slate-900 uppercase">Difference Analysis & Management Clarifications</h3>
-                                            <p className="text-xs text-slate-500">Provide official operational clarification for variance before management review</p>
-                                        </div>
-                                    </div>
-                                    <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-black">
-                                        {activeClarifications.length} Clarifications Logged
-                                    </span>
-                                </div>
-
-                                {/* Clarification Input Form */}
-                                <form onSubmit={handleAddClarification} className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-3">
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <div>
-                                            <label className="block text-[10px] font-extrabold uppercase text-slate-600 mb-1">Parameter</label>
-                                            <select
-                                                value={clarificationParameter}
-                                                onChange={(e) => setClarificationParameter(e.target.value)}
-                                                className="w-full h-8 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-800 bg-white"
-                                            >
-                                                <option value="Net / Total Consumption">Net / Total Consumption</option>
-                                                <option value="Gross Consumption">Gross Consumption</option>
-                                                <option value="Solar Generation">Solar Generation</option>
-                                                <option value="Solar Adjustment">Solar Adjustment</option>
-                                                <option value="Meter Reading / Difference">Meter Reading / Difference</option>
-                                                <option value="Billed Demand">Billed Demand</option>
-                                                <option value="Total Bill Amount">Total Bill Amount</option>
-                                                <option value="Power Factor">Power Factor</option>
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-[10px] font-extrabold uppercase text-slate-600 mb-1">Variance Reason</label>
-                                            <select
-                                                value={clarificationReason}
-                                                onChange={(e) => setClarificationReason(e.target.value)}
-                                                className="w-full h-8 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-800 bg-white"
-                                            >
-                                                <option value="Missing daily entry">Missing daily entry</option>
-                                                <option value="Incorrect daily entry">Incorrect daily entry</option>
-                                                <option value="Meter reading mismatch">Meter reading mismatch</option>
-                                                <option value="Solar adjustment mismatch">Solar adjustment mismatch</option>
-                                                <option value="Bill reading period mismatch">Bill reading period mismatch</option>
-                                                <option value="Manual adjustment">Manual adjustment</option>
-                                                <option value="Data not available">Data not available</option>
-                                                <option value="Other">Other</option>
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-[10px] font-extrabold uppercase text-slate-600 mb-1">Resolution Status</label>
-                                            <select
-                                                value={clarificationStatus}
-                                                onChange={(e) => setClarificationStatus(e.target.value)}
-                                                className="w-full h-8 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-800 bg-white"
-                                            >
-                                                <option value="Open">Open</option>
-                                                <option value="Under Review">Under Review</option>
-                                                <option value="Resolved">Resolved</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-[10px] font-extrabold uppercase text-slate-600 mb-1">
-                                            Clarification Detail & Justification
-                                        </label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={clarificationComment}
-                                                onChange={(e) => setClarificationComment(e.target.value)}
-                                                placeholder="e.g. 31 July meter reading was entered late; solar adjustment credit differs by 1 day cutoff."
-                                                className="flex-1 h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-800 bg-white"
-                                                required
-                                            />
-                                            <button
-                                                type="submit"
-                                                className="px-4 h-9 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-extrabold transition border-none cursor-pointer flex items-center gap-1 shrink-0"
-                                            >
-                                                <span className="material-symbols-outlined text-[16px]">add_comment</span>
-                                                <span>Save Clarification</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </form>
-
-                                {/* Clarifications Log Table */}
-                                {activeClarifications.length > 0 ? (
-                                    <div className="border border-slate-200 rounded-xl overflow-hidden text-xs">
-                                        <table className="w-full text-left">
-                                            <thead className="bg-slate-100 text-slate-600 font-extrabold uppercase text-[10px]">
-                                                <tr>
-                                                    <th className="py-2 px-3">Parameter</th>
-                                                    <th className="py-2 px-3">Reason</th>
-                                                    <th className="py-2 px-3">Comment / Justification</th>
-                                                    <th className="py-2 px-3">Added By</th>
-                                                    <th className="py-2 px-3">Date</th>
-                                                    <th className="py-2 px-3 text-center">Status</th>
-                                                    <th className="py-2 px-3 text-center">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {activeClarifications.map((c) => (
-                                                    <tr key={c.id} className="hover:bg-slate-50">
-                                                        <td className="py-2 px-3 font-bold text-slate-800">{c.parameter}</td>
-                                                        <td className="py-2 px-3 text-slate-600 font-semibold">{c.reason}</td>
-                                                        <td className="py-2 px-3 text-slate-700">{c.comment}</td>
-                                                        <td className="py-2 px-3 text-slate-500">{c.createdBy}</td>
-                                                        <td className="py-2 px-3 text-slate-400">{new Date(c.createdAt).toLocaleDateString()}</td>
-                                                        <td className="py-2 px-3 text-center">
-                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${c.status === "Resolved" ? "bg-emerald-100 text-emerald-800" : c.status === "Under Review" ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800"}`}>
-                                                                {c.status}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-2 px-3 text-center">
-                                                            {c.status !== "Resolved" ? (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleToggleClarificationStatus(c, "Resolved")}
-                                                                    className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-black cursor-pointer transition"
-                                                                >
-                                                                    Mark Resolved
-                                                                </button>
-                                                            ) : (
-                                                                <span className="text-emerald-600 text-xs">✓ Done</span>
-                                                            )}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-slate-400 italic">No variance clarifications logged yet.</p>
-                                )}
-                            </div>
-                        </React.Fragment>
-                    )}
+            {/* Error Message if Extraction Failed */}
+            {extractError && (
+                <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 p-3 rounded-xl text-xs font-medium flex items-center justify-between">
+                    <span>⚠️ {extractError}</span>
+                    <button type="button" onClick={() => setExtractError('')} className="text-rose-500 hover:text-rose-700 font-bold">×</button>
                 </div>
             )}
 
-            {/* ========================================================================= */}
-            {/* VIEW MODE 2: MANAGEMENT OVERVIEW DASHBOARD */}
-            {/* ========================================================================= */}
-            {viewMode === "overview" && (
-                <div className="space-y-4">
-                    
-                    {/* Management Overview KPI Cards */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-                            <p className="text-[10px] font-extrabold uppercase text-slate-400">Total Plants</p>
-                            <h3 className="text-xl font-black text-slate-900 mt-1">{overviewStats.totalPlants}</h3>
-                            <p className="text-[10px] text-slate-500 mt-0.5">Across all units</p>
+            {/* Loading Indicator */}
+            {isExtracting && (
+                <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 p-4 rounded-xl text-xs font-semibold flex items-center gap-3 animate-pulse">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Extracting billing parameters from document and fetching system meter records for {selectedPlant.plant_display_name}...</span>
+                </div>
+            )}
+
+            {/* 2. NO BILL UPLOADED EMPTY STATE / DROPZONE */}
+            {!activeBill && !isExtracting && (
+                <div
+                    onDragEnter={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDragOver={handleDrag}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 ${
+                        dragActive
+                            ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/30 scale-[1.005]'
+                            : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-blue-50/20'
+                    }`}
+                >
+                    <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                    </div>
+                    <h3 className="text-base font-extrabold text-slate-800 dark:text-slate-100 mb-1">
+                        Upload Utility Bill for {selectedPlant.plant_display_name} ({selectedMonth})
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mb-4">
+                        Drag and drop your official DISCOM/MSEDCL electricity bill (PDF or Excel) here, or click to browse. The software will instantly extract all readings and compare against our internal meter logs.
+                    </p>
+                    <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-xs">
+                        <span>⚡ Supports MSEDCL / MSEB PDF Bills</span>
+                        <span>•</span>
+                        <span>☀️ Solar Net-Metering Readings</span>
+                        <span>•</span>
+                        <span>💰 Automatic Cost Audit</span>
+                    </div>
+                </div>
+            )}
+
+            {/* 3. ACTIVE BILL COMPARISON VIEW */}
+            {activeBill && comparisonReport && (
+                <>
+                    {/* EXECUTIVE AUDIT VERDICT & FINANCIAL SUMMARY BAR */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex flex-col gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                            <div className="flex items-center gap-3">
+                                <div className="text-2xl">📑</div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                                            {selectedPlant.plant_display_name} ({selectedPlant.plant_code}) — {selectedMonth} Audit Overview
+                                        </h2>
+                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${comparisonReport.summary.verdictColor}`}>
+                                            {comparisonReport.summary.verdict}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                        {comparisonReport.summary.verdictMessage}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="text-right">
+                                <span className="text-[10px] font-bold uppercase text-slate-400">File Audited:</span>
+                                <div className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[280px]">
+                                    {activeBill.fileName}
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-                            <p className="text-[10px] font-extrabold uppercase text-slate-400">Bills Uploaded</p>
-                            <h3 className="text-xl font-black text-sky-700 mt-1">{overviewStats.billsUploaded} <span className="text-xs font-normal text-slate-400">/ {overviewStats.totalPlants}</span></h3>
-                            <p className="text-[10px] text-slate-500 mt-0.5">Month: {selectedMonth}</p>
-                        </div>
+                        {/* 4 Clean High-Impact Executive Metrics Strip */}
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                            {/* Metric 1: Total Net Payable Bill Amount */}
+                            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                    MSEB Net Payable Bill
+                                </span>
+                                <div className="text-base md:text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                                    ₹ {formatINR(comparisonReport.summary.billCost, 0)}
+                                </div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center justify-between">
+                                    <span>Software Energy Cost:</span>
+                                    <span className="font-bold">₹ {formatINR(comparisonReport.summary.sysCost, 0)}</span>
+                                </div>
+                            </div>
 
-                        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-                            <p className="text-[10px] font-extrabold uppercase text-slate-400">Matched (&le;{tolerances.matchedThreshold}%)</p>
-                            <h3 className="text-xl font-black text-emerald-600 mt-1">{overviewStats.matched}</h3>
-                            <p className="text-[10px] text-emerald-600 font-bold mt-0.5">Within tolerance</p>
-                        </div>
+                            {/* Metric 2: Net Financial Variance */}
+                            <div className={`p-3 rounded-lg border ${
+                                Math.abs(comparisonReport.summary.costDiff) > 10000
+                                    ? 'bg-amber-50/70 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/60'
+                                    : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200/60 dark:border-slate-700/60'
+                            }`}>
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                    Financial Difference
+                                </span>
+                                <div className={`text-base md:text-lg font-black mt-0.5 ${
+                                    comparisonReport.summary.costDiff > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-white'
+                                }`}>
+                                    {comparisonReport.summary.costDiff >= 0 ? '+' : ''}₹ {formatINR(comparisonReport.summary.costDiff, 0)}
+                                </div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center justify-between">
+                                    <span>Fixed & Statutory Taxes:</span>
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">₹ {formatINR(comparisonReport.summary.fixedSurcharges, 0)}</span>
+                                </div>
+                            </div>
 
-                        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-                            <p className="text-[10px] font-extrabold uppercase text-slate-400">Variance (2-5%)</p>
-                            <h3 className="text-xl font-black text-amber-600 mt-1">{overviewStats.variance}</h3>
-                            <p className="text-[10px] text-amber-600 font-bold mt-0.5">Attention needed</p>
-                        </div>
+                            {/* Metric 3: Net Grid Units (kWh) */}
+                            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                    Grid Consumption (kWh)
+                                </span>
+                                <div className="text-base md:text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                                    {formatNumber(comparisonReport.summary.billKwh, 0)} <span className="text-xs font-normal text-slate-400">kWh</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center justify-between">
+                                    <span>Software Recorded:</span>
+                                    <span className="font-bold">{formatNumber(comparisonReport.summary.sysKwh, 0)} kWh</span>
+                                </div>
+                            </div>
 
-                        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-                            <p className="text-[10px] font-extrabold uppercase text-slate-400">High Variance (&gt;5%)</p>
-                            <h3 className="text-xl font-black text-rose-600 mt-1">{overviewStats.highVariance}</h3>
-                            <p className="text-[10px] text-rose-600 font-bold mt-0.5">Review required</p>
-                        </div>
-
-                        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-                            <p className="text-[10px] font-extrabold uppercase text-slate-400">Pending Clarifications</p>
-                            <h3 className="text-xl font-black text-slate-900 mt-1">{overviewStats.pendingClarifications}</h3>
-                            <p className="text-[10px] text-slate-500 mt-0.5">Open actions</p>
+                            {/* Metric 4: Solar Generation (kWh) */}
+                            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                    Solar Generation (kWh)
+                                </span>
+                                <div className="text-base md:text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                                    {formatNumber(comparisonReport.summary.solarGenBill, 0)} <span className="text-xs font-normal text-slate-400">kWh</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center justify-between">
+                                    <span>Software Solar:</span>
+                                    <span className="font-bold">{formatNumber(comparisonReport.summary.solarGenSys, 0)} kWh</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Section 13: LOCATION & PLANT RECONCILIATION SUMMARY TABLE */}
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-sm font-black text-slate-900 uppercase">Plant-Wise Utility Reconciliation Summary</h3>
-                                <p className="text-xs text-slate-500">Click any row to open full granular parameter reconciliation</p>
+                    {/* 4. THE CORE MANAGEMENT COMPARISON TABLE */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs">
+                        <div className="px-4 py-3 bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                                    Detailed Parameter Reconciliation Matrix
+                                </span>
+                                <span className="text-[10px] bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-600">
+                                    Plant {selectedPlant.plant_code}
+                                </span>
                             </div>
-                            <span className="text-xs font-bold text-slate-500">
-                                Month: <strong>{selectedMonth}</strong> • Utility: <strong>{selectedUtility.toUpperCase()}</strong>
-                            </span>
+
+                            <div className="flex items-center gap-3 text-xs">
+                                <span className="flex items-center gap-1.5 text-emerald-600 font-bold">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Verified Match (&lt; 0.5%)
+                                </span>
+                                <span className="flex items-center gap-1.5 text-amber-600 font-bold">
+                                    <span className="w-2 h-2 rounded-full bg-amber-500"></span> Minor Variance (&lt; 2%)
+                                </span>
+                                <span className="flex items-center gap-1.5 text-rose-600 font-bold">
+                                    <span className="w-2 h-2 rounded-full bg-rose-500"></span> Discrepancy (&gt; 2%)
+                                </span>
+                            </div>
                         </div>
 
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse text-xs">
+                            <table className="w-full text-left text-xs border-collapse">
                                 <thead>
-                                    <tr className="bg-slate-100 text-slate-600 font-extrabold uppercase text-[10px] tracking-wider">
-                                        <th className="py-2.5 px-4">Location</th>
-                                        <th className="py-2.5 px-4">Plant</th>
-                                        <th className="py-2.5 px-4 text-right">Bill Consumption</th>
-                                        <th className="py-2.5 px-4 text-right">System Consumption</th>
-                                        <th className="py-2.5 px-4 text-right">Diff (kWh)</th>
-                                        <th className="py-2.5 px-4 text-right">Diff %</th>
-                                        <th className="py-2.5 px-4 text-right">Bill Cost (₹)</th>
-                                        <th className="py-2.5 px-4 text-right">System Cost (₹)</th>
-                                        <th className="py-2.5 px-4 text-center">Status</th>
-                                        <th className="py-2.5 px-4 text-center">Action</th>
+                                    <tr className="bg-slate-50 dark:bg-slate-800/50 text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 tracking-wider">
+                                        <th className="py-2.5 px-3 w-10 text-center">#</th>
+                                        <th className="py-2.5 px-4 min-w-[260px]">Billing Parameter / Term</th>
+                                        <th className="py-2.5 px-2.5 w-16 text-center">Unit</th>
+                                        <th className="py-2.5 px-4 text-right min-w-[130px] bg-blue-50/40 dark:bg-blue-950/20">As Per Uploaded Bill</th>
+                                        <th className="py-2.5 px-4 text-right min-w-[130px] bg-slate-100/50 dark:bg-slate-800/50">As Per Software Readings</th>
+                                        <th className="py-2.5 px-3.5 text-right min-w-[110px]">Difference (Variance)</th>
+                                        <th className="py-2.5 px-3 text-right min-w-[90px]">Variance %</th>
+                                        <th className="py-2.5 px-4 text-right min-w-[130px]">Financial Impact (₹)</th>
+                                        <th className="py-2.5 px-4 text-center min-w-[130px]">Audit Status</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {overviewDataset.map((row, idx) => (
-                                        <tr
-                                            key={idx}
-                                            onClick={() => {
-                                                setSelectedLocation(row.location);
-                                                setSelectedPlant(row.plantCode);
-                                                setViewMode("detail");
-                                            }}
-                                            className="hover:bg-sky-50/50 cursor-pointer transition"
-                                        >
-                                            <td className="py-3 px-4 font-bold text-slate-700">{row.location}</td>
-                                            <td className="py-3 px-4 font-black text-slate-900">
-                                                {row.plantCode} - {row.plantName}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-black text-slate-800">
-                                                {row.billConsumption !== null ? `${fmt(row.billConsumption)} kWh` : "—"}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-black text-sky-700">
-                                                {fmt(row.systemConsumption)} kWh
-                                            </td>
-                                            <td className={`py-3 px-4 text-right font-black ${row.hasBill && Math.abs(row.diff) > 0 ? (row.diff > 0 ? "text-amber-700" : "text-sky-700") : "text-slate-400"}`}>
-                                                {row.hasBill ? `${row.diff > 0 ? "+" : ""}${fmt(row.diff)}` : "—"}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-black text-slate-800">
-                                                {row.hasBill ? `${row.diffPct}%` : "—"}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-bold text-slate-700">
-                                                {row.billCost !== null ? `₹${fmt(row.billCost)}` : "—"}
-                                            </td>
-                                            <td className="py-3 px-4 text-right font-bold text-slate-700">
-                                                ₹{fmt(row.systemCost)}
-                                            </td>
-                                            <td className="py-3 px-4 text-center">
-                                                {getStatusBadge(row.status)}
-                                            </td>
-                                            <td className="py-3 px-4 text-center">
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setSelectedLocation(row.location);
-                                                        setSelectedPlant(row.plantCode);
-                                                        setViewMode("detail");
-                                                    }}
-                                                    className="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 text-[11px] font-bold cursor-pointer transition bg-white"
-                                                >
-                                                    View Details →
-                                                </button>
-                                            </td>
-                                        </tr>
+                                <tbody>
+                                    {comparisonReport.sections.map((sec, secIdx) => (
+                                        <React.Fragment key={sec.title}>
+                                            {/* Section Header Row */}
+                                            <tr className="bg-slate-100/60 dark:bg-slate-800/40 border-y border-slate-200/80 dark:border-slate-700/80">
+                                                <td colSpan={9} className="py-2 px-4 font-black text-xs text-slate-800 dark:text-slate-100 tracking-wide">
+                                                    {sec.title}
+                                                </td>
+                                            </tr>
+
+                                            {/* Section Data Rows */}
+                                            {sec.rows.map((row, rowIdx) => {
+                                                const isHighlighted = row.id === 'net_units' || row.id === 'solar_gen' || row.id === 'net_bill_amount' || row.id === 'combined_plant_cost';
+
+                                                return (
+                                                    <tr
+                                                        key={row.id}
+                                                        className={`border-b border-slate-100 dark:border-slate-800/60 transition hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
+                                                            isHighlighted ? 'bg-blue-50/20 dark:bg-blue-950/10 font-bold' : ''
+                                                        }`}
+                                                    >
+                                                        {/* # */}
+                                                        <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
+                                                            {rowIdx + 1}
+                                                        </td>
+
+                                                        {/* Parameter Name */}
+                                                        <td className="py-2.5 px-4">
+                                                            <div className={`text-xs ${isHighlighted ? 'font-black text-slate-900 dark:text-white' : 'font-semibold text-slate-700 dark:text-slate-200'}`}>
+                                                                {row.paramName}
+                                                            </div>
+                                                            {row.helperText && (
+                                                                <div className="text-[10px] text-slate-400 font-normal">
+                                                                    {row.helperText}
+                                                                </div>
+                                                            )}
+                                                        </td>
+
+                                                        {/* Unit */}
+                                                        <td className="py-2.5 px-2.5 text-center font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                                                            {row.unit}
+                                                        </td>
+
+                                                        {/* Bill Value */}
+                                                        <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-800 dark:text-slate-100 bg-blue-50/20 dark:bg-blue-950/10">
+                                                            {row.unit === '₹' ? `₹ ${formatINR(row.billVal)}` : formatNumber(row.billVal)}
+                                                        </td>
+
+                                                        {/* Software System Value */}
+                                                        <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-700 dark:text-slate-200 bg-slate-50/40 dark:bg-slate-800/30">
+                                                            {row.sysVal !== null
+                                                                ? (row.unit === '₹' ? `₹ ${formatINR(row.sysVal)}` : formatNumber(row.sysVal))
+                                                                : <span className="text-slate-300 dark:text-slate-600 font-normal italic">N/A</span>}
+                                                        </td>
+
+                                                        {/* Difference */}
+                                                        <td className={`py-2.5 px-3.5 text-right font-mono font-semibold ${
+                                                            row.diff === null ? 'text-slate-400' :
+                                                            row.diff === 0 ? 'text-slate-600' :
+                                                            row.diff > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                                                        }`}>
+                                                            {row.diff !== null
+                                                                ? `${row.diff > 0 ? '+' : ''}${formatNumber(row.diff)}`
+                                                                : '—'}
+                                                        </td>
+
+                                                        {/* Difference % */}
+                                                        <td className="py-2.5 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
+                                                            {row.diffPct !== null ? `${row.diffPct.toFixed(2)}%` : '—'}
+                                                        </td>
+
+                                                        {/* Cost Impact */}
+                                                        <td className={`py-2.5 px-4 text-right font-mono font-bold ${
+                                                            row.costImpact === null ? 'text-slate-400' :
+                                                            row.costImpact === 0 ? 'text-slate-600' :
+                                                            row.costImpact > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
+                                                        }`}>
+                                                            {row.costImpact !== null
+                                                                ? `${row.costImpact > 0 ? '+₹ ' : '-₹ '}${formatINR(Math.abs(row.costImpact))}`
+                                                                : '—'}
+                                                        </td>
+
+                                                        {/* Audit Status Badge */}
+                                                        <td className="py-2.5 px-4 text-center">
+                                                            {row.status === 'Verified' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                                                    ✓ MATCH
+                                                                </span>
+                                                            )}
+                                                            {row.status === 'Minor Variance' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                                                    ⚠️ &lt; 2%
+                                                                </span>
+                                                            )}
+                                                            {row.status === 'Discrepancy' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                                                                    🔴 VARIANCE
+                                                                </span>
+                                                            )}
+                                                            {row.status === 'Statutory' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                                                    🏛️ TARIFF
+                                                                </span>
+                                                            )}
+                                                            {row.status === 'Bill Only' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                                                    BILL ENTRY
+                                                                </span>
+                                                            )}
+                                                            {row.status === 'Software Only' && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+                                                                    SYSTEM ONLY
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </React.Fragment>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
                     </div>
-                </div>
+                </>
             )}
 
-            {/* ========================================================================= */}
-            {/* BILL DOCUMENT PREVIEW MODAL */}
-            {/* ========================================================================= */}
-            {isPreviewBillModalOpen && activeBill && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
-                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+            {/* 5. MODAL / DRAWER TO REVIEW OR EDIT EXTRACTED BILL VALUES */}
+            {isEditingBill && editFormData && (
+                <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+                        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                             <div>
-                                <h3 className="text-sm font-black text-slate-900 uppercase">Original Bill Document Details</h3>
-                                <p className="text-xs text-slate-500">{activeBill.fileName} • {activeBill.location} • Plant {activeBill.plant}</p>
+                                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase">
+                                    Review & Edit Extracted Bill Terms
+                                </h3>
+                                <p className="text-xs text-slate-500">
+                                    Modify any parameter to instantly re-calculate the management comparison table.
+                                </p>
                             </div>
                             <button
-                                onClick={() => setIsPreviewBillModalOpen(false)}
-                                className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 flex items-center justify-center transition border-none cursor-pointer bg-transparent"
+                                type="button"
+                                onClick={() => setIsEditingBill(false)}
+                                className="text-slate-400 hover:text-slate-600 font-bold text-lg p-1"
                             >
-                                <span className="material-symbols-outlined text-[18px]">close</span>
+                                ✕
                             </button>
                         </div>
 
-                        <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
-                            {activeBill.fileData ? (
-                                <iframe src={activeBill.fileData} className="w-full h-96 rounded-xl border border-slate-200" title="PDF Bill" />
-                            ) : (
-                                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                                    <div className="flex items-center gap-2 text-slate-700 font-bold">
-                                        <span className="material-symbols-outlined text-[20px] text-sky-600">description</span>
-                                        <span>Parsed Digital Parameters from Bill Record</span>
-                                    </div>
-                                    <pre className="p-3 bg-white rounded-lg border border-slate-200 text-[11px] font-mono overflow-x-auto text-slate-800">
-                                        {JSON.stringify(activeBill.extractedData, null, 2)}
-                                    </pre>
+                        <form onSubmit={handleSaveEdit} className="p-5 overflow-y-auto flex flex-col gap-4 text-xs">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="font-bold text-slate-700 dark:text-slate-300 mb-1 block">Billed Electricity Units (kWh)</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={editFormData.billedUnitsKwh ?? ''}
+                                        onChange={(e) => setEditFormData({ ...editFormData, billedUnitsKwh: e.target.value ? Number(e.target.value) : '' })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold"
+                                    />
                                 </div>
-                            )}
-
-                            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between text-slate-500">
-                                <span>Uploaded By: <strong>{activeBill.uploadedBy}</strong></span>
-                                <span>Timestamp: <strong>{new Date(activeBill.uploadedAt).toLocaleString()}</strong></span>
+                                <div>
+                                    <label className="font-bold text-slate-700 dark:text-slate-300 mb-1 block">Total Bill Amount Payable (₹)</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={editFormData.totalBillAmount ?? ''}
+                                        onChange={(e) => setEditFormData({ ...editFormData, totalBillAmount: e.target.value ? Number(e.target.value) : '' })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono font-bold"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold text-slate-700 dark:text-slate-300 mb-1 block">Base Energy Charges (₹)</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={editFormData.energyCharges ?? ''}
+                                        onChange={(e) => setEditFormData({ ...editFormData, energyCharges: e.target.value ? Number(e.target.value) : '' })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold text-slate-700 dark:text-slate-300 mb-1 block">Fixed Demand Charges (₹)</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={editFormData.demandCharges ?? ''}
+                                        onChange={(e) => setEditFormData({ ...editFormData, demandCharges: e.target.value ? Number(e.target.value) : '' })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold text-slate-700 dark:text-slate-300 mb-1 block">Solar Generation Units (kWh)</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={editFormData.solarGenUnits ?? ''}
+                                        onChange={(e) => setEditFormData({ ...editFormData, solarGenUnits: e.target.value ? Number(e.target.value) : '' })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold text-slate-700 dark:text-slate-300 mb-1 block">Solar Adjustment Credit (kWh)</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={editFormData.solarAdjUnits ?? ''}
+                                        onChange={(e) => setEditFormData({ ...editFormData, solarAdjUnits: e.target.value ? Number(e.target.value) : '' })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold text-slate-700 dark:text-slate-300 mb-1 block">Billed Demand (kVA)</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={editFormData.billedDemandKva ?? ''}
+                                        onChange={(e) => setEditFormData({ ...editFormData, billedDemandKva: e.target.value ? Number(e.target.value) : '' })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-bold text-slate-700 dark:text-slate-300 mb-1 block">Wheeling Charges (₹)</label>
+                                    <input
+                                        type="number"
+                                        step="any"
+                                        value={editFormData.wheelingCharges ?? ''}
+                                        onChange={(e) => setEditFormData({ ...editFormData, wheelingCharges: e.target.value ? Number(e.target.value) : '' })}
+                                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg font-mono"
+                                    />
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="px-6 py-3 border-t border-slate-100 flex justify-end bg-slate-50">
-                            <button
-                                onClick={() => setIsPreviewBillModalOpen(false)}
-                                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition border-none cursor-pointer"
-                            >
-                                Close Preview
-                            </button>
-                        </div>
+                            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800 mt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditingBill(false)}
+                                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg font-bold"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-xs"
+                                >
+                                    Save & Update Comparison
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
-
-            {/* ========================================================================= */}
-            {/* MASTER TOLERANCE CONFIG MODAL */}
-            {/* ========================================================================= */}
-            {isConfigOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                            <h3 className="text-sm font-black text-slate-900 uppercase">Reconciliation Tolerance Thresholds</h3>
-                            <button
-                                onClick={() => setIsConfigOpen(false)}
-                                className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 bg-transparent border-none cursor-pointer"
-                            >
-                                <span className="material-symbols-outlined text-[18px]">close</span>
-                            </button>
-                        </div>
-
-                        <p className="text-xs text-slate-500">
-                            Configure acceptable percentage difference limits for automated classification across consumption, solar credits, and billing cost.
-                        </p>
-
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-[11px] font-extrabold uppercase text-emerald-800 mb-1">
-                                    Matched Limit (Green): 0 to X %
-                                </label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    value={tolerances.matchedThreshold}
-                                    onChange={(e) => setTolerances({ ...tolerances, matchedThreshold: Number(e.target.value) })}
-                                    className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold bg-white"
-                                />
-                                <span className="text-[10px] text-slate-400">Default 2.0%</span>
-                            </div>
-
-                            <div>
-                                <label className="block text-[11px] font-extrabold uppercase text-amber-800 mb-1">
-                                    Variance Limit (Yellow): X to Y %
-                                </label>
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    value={tolerances.varianceThreshold}
-                                    onChange={(e) => setTolerances({ ...tolerances, varianceThreshold: Number(e.target.value) })}
-                                    className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold bg-white"
-                                />
-                                <span className="text-[10px] text-slate-400">Default 5.0%. Anything above this is classified as High Variance (Red).</span>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                            <button
-                                type="button"
-                                onClick={() => setIsConfigOpen(false)}
-                                className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold bg-white cursor-pointer"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    saveToleranceConfig(tolerances);
-                                    setIsConfigOpen(false);
-                                }}
-                                className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-extrabold transition border-none cursor-pointer"
-                            >
-                                Save Settings
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Smart Upload Wizard Modal */}
-            <BillUploadModal
-                isOpen={isUploadModalOpen}
-                onClose={() => setIsUploadModalOpen(false)}
-                onBillSaved={(newBill) => {
-                    setBills(prev => [newBill, ...prev.filter(b => b.id !== newBill.id)]);
-                    setActiveBillId(newBill.id);
-                    try {
-                        localStorage.setItem('ep_active_audit_bill_id', newBill.id);
-                        localStorage.setItem('ep_active_audit_filter', JSON.stringify({
-                            location: newBill.location,
-                            plant: String(newBill.plant),
-                            utility: newBill.utility || "electricity",
-                            month: newBill.billMonth
-                        }));
-                    } catch (e) {}
-                    setSelectedLocation(newBill.location);
-                    setSelectedPlant(String(newBill.plant));
-                    setSelectedUtility(newBill.utility);
-                    setSelectedMonth(newBill.billMonth);
-                    setViewMode("detail");
-                }}
-                locations={availableLocations}
-                plants={plants}
-                currentUser={currentUser}
-                initialLocation={selectedLocation}
-                initialPlant={selectedPlant}
-                initialUtility={selectedUtility}
-                initialMonth={selectedMonth}
-            />
         </div>
     );
 }
