@@ -107,6 +107,7 @@ export function parseMsedclBillText(rawText) {
         taxOnSale: null,
         gridSupportCharges: null,
         rebatesTotal: null,
+        pfIncentive: null,
         subsidiesTotal: null,
         promptPaymentDiscount: null,
         otherCharges: null,
@@ -334,6 +335,10 @@ export function parseMsedclBillText(rawText) {
 
     const incMatch = clean.match(/Incremental Consum\. Rebate\s*-?\s*(\d+(?:\.\d+)?)/i);
     if (incMatch) res.rebatesTotal = Number(incMatch[1]);
+
+    const pfIncMatch = clean.match(/P\.?F\.?\s*(?:Penalty|Incentive|Rebate)\s*[:\s]*-?\s*(\d+(?:\.\d+)?)/i) ||
+                       clean.match(/Power Factor\s*(?:Incentive|Rebate)\s*[:\s]*-?\s*(\d+(?:\.\d+)?)/i);
+    if (pfIncMatch) res.pfIncentive = Number(pfIncMatch[1]);
 
     // 8. Solar Net Metering Details
     const solGen = clean.match(/Total Solar Generation Units\s*:\s*(\d+)/i) || clean.match(/TOD SOLAR GENERATION METER.*?(\d{3,7}\.\d+)/i);
