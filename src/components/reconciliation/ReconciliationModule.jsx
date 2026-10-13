@@ -756,9 +756,9 @@ export default function ReconciliationModule({
             {/* 3. ACTIVE BILL COMPARISON VIEW */}
             {activeBill && comparisonReport && (
                 <>
-                    {/* EXECUTIVE AUDIT VERDICT & FINANCIAL SUMMARY BAR */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-xs flex flex-col gap-3">
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                    {/* EXECUTIVE AUDIT VERDICT & FINANCIAL SUMMARY BAR (Sticky on Scroll) */}
+                    <div className="sticky top-[54px] z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-md flex flex-col gap-2.5 transition-all">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2.5">
                             <div className="flex items-center gap-3">
                                 <div className="text-2xl">📑</div>
                                 <div>
@@ -785,9 +785,9 @@ export default function ReconciliationModule({
                         </div>
 
                         {/* 4 Clean High-Impact Executive Metrics Strip */}
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             {/* Metric 1: Total Net Payable Bill Amount */}
-                            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                            <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
                                     MSEB Net Payable Bill
                                 </span>
@@ -801,7 +801,7 @@ export default function ReconciliationModule({
                             </div>
 
                             {/* Metric 2: Net Financial Variance */}
-                            <div className={`p-3 rounded-lg border ${
+                            <div className={`p-2.5 rounded-lg border ${
                                 Math.abs(comparisonReport.summary.costDiff) > 10000
                                     ? 'bg-amber-50/70 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/60'
                                     : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200/60 dark:border-slate-700/60'
@@ -821,7 +821,7 @@ export default function ReconciliationModule({
                             </div>
 
                             {/* Metric 3: Net Grid Units (kWh) */}
-                            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                            <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
                                     Grid Consumption (kWh)
                                 </span>
@@ -835,7 +835,7 @@ export default function ReconciliationModule({
                             </div>
 
                             {/* Metric 4: Solar Generation (kWh) */}
-                            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
+                            <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60">
                                 <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
                                     Solar Generation (kWh)
                                 </span>
@@ -850,9 +850,9 @@ export default function ReconciliationModule({
                         </div>
                     </div>
 
-                    {/* 4. THE CORE MANAGEMENT COMPARISON TABLE */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs">
-                        <div className="px-4 py-3 bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">
+                    {/* 4. THE CORE MANAGEMENT COMPARISON TABLE (With Fixed/Sticky Headers) */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs flex flex-col">
+                        <div className="px-4 py-3 bg-slate-100/90 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2 shrink-0">
                             <div className="flex items-center gap-2">
                                 <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
                                     Detailed Parameter Reconciliation Matrix
@@ -875,26 +875,27 @@ export default function ReconciliationModule({
                             </div>
                         </div>
 
-                        <div className="overflow-x-auto">
+                        {/* Dedicated Scroll Container with Sticky Table Headings */}
+                        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-270px)] min-h-[420px] relative">
                             <table className="w-full text-left text-xs border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-50 dark:bg-slate-800/50 text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 tracking-wider">
-                                        <th className="py-2.5 px-3 w-10 text-center">#</th>
-                                        <th className="py-2.5 px-4 min-w-[260px]">Billing Parameter / Term</th>
-                                        <th className="py-2.5 px-2.5 w-16 text-center">Unit</th>
-                                        <th className="py-2.5 px-4 text-right min-w-[130px] bg-blue-50/40 dark:bg-blue-950/20">As Per Uploaded Bill</th>
-                                        <th className="py-2.5 px-4 text-right min-w-[130px] bg-slate-100/50 dark:bg-slate-800/50">As Per Software Readings</th>
-                                        <th className="py-2.5 px-3.5 text-right min-w-[110px]">Difference (Variance)</th>
-                                        <th className="py-2.5 px-3 text-right min-w-[90px]">Variance %</th>
-                                        <th className="py-2.5 px-4 text-right min-w-[130px]">Financial Impact (₹)</th>
-                                        <th className="py-2.5 px-4 text-center min-w-[130px]">Audit Status</th>
+                                <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 shadow-xs border-b border-slate-200 dark:border-slate-700">
+                                    <tr className="text-[10px] font-black uppercase text-slate-600 dark:text-slate-300 tracking-wider">
+                                        <th className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 py-3 px-3 w-10 text-center shadow-xs">#</th>
+                                        <th className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 py-3 px-4 min-w-[260px] shadow-xs">Billing Parameter / Term</th>
+                                        <th className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 py-3 px-2.5 w-16 text-center shadow-xs">Unit</th>
+                                        <th className="sticky top-0 z-20 bg-blue-100/80 dark:bg-blue-900/60 py-3 px-4 text-right min-w-[130px] shadow-xs text-blue-900 dark:text-blue-200">As Per Uploaded Bill</th>
+                                        <th className="sticky top-0 z-20 bg-slate-200/80 dark:bg-slate-700/80 py-3 px-4 text-right min-w-[130px] shadow-xs text-slate-800 dark:text-slate-100">As Per Software Readings</th>
+                                        <th className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 py-3 px-3.5 text-right min-w-[110px] shadow-xs">Difference (Variance)</th>
+                                        <th className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 py-3 px-3 text-right min-w-[90px] shadow-xs">Variance %</th>
+                                        <th className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 py-3 px-4 text-right min-w-[130px] shadow-xs">Financial Impact (₹)</th>
+                                        <th className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 py-3 px-4 text-center min-w-[130px] shadow-xs">Audit Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {comparisonReport.sections.map((sec, secIdx) => (
                                         <React.Fragment key={sec.title}>
-                                            {/* Section Header Row */}
-                                            <tr className="bg-slate-100/60 dark:bg-slate-800/40 border-y border-slate-200/80 dark:border-slate-700/80">
+                                            {/* Section Header Row (Sticky below main thead) */}
+                                            <tr className="sticky top-[38px] z-10 bg-slate-200/95 dark:bg-slate-700/95 backdrop-blur-xs border-y border-slate-300 dark:border-slate-600 shadow-xs">
                                                 <td colSpan={9} className="py-2 px-4 font-black text-xs text-slate-800 dark:text-slate-100 tracking-wide">
                                                     {sec.title}
                                                 </td>

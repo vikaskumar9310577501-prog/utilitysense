@@ -52,7 +52,8 @@ export async function syncProductionFile(filePath, defaultPlant = 'NGM', default
   try {
     const workbook = XLSX.readFile(filePath);
     const sheetName =
-      workbook.SheetNames.find((s) => s.toLowerCase().includes('daily basis') || s.toLowerCase().includes('daily')) ||
+      workbook.SheetNames.find((s) => s.toLowerCase().includes('daily basis')) ||
+      workbook.SheetNames.find((s) => s.toLowerCase() === 'daily basis data') ||
       workbook.SheetNames[0];
 
     const sheet = workbook.Sheets[sheetName];
