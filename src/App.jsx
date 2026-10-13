@@ -7607,7 +7607,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                   labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
                                                                   formatter={(v, name, item) => {
                                                                       const p = item?.payload || {};
-                                                                      const costVal = p.electricityCost || (Number(v) * (activeElectricityRate || 10.893945));
+                                                                      const costVal = p.electricityCost || (Number(v) * (activeElectRate || 10.893945));
                                                                       return [
                                                                           <div key="daily_el_tt" className="space-y-0.5">
                                                                               <div>⚡ Grid Load: <b>{fmtNum(v)} kWh</b></div>
@@ -7647,7 +7647,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
                                                               formatter={(v, name, item) => {
                                                                   const p = item?.payload || {};
-                                                                  const costVal = p.electricityCost || (Number(v) * (activeElectricityRate || 10.893945));
+                                                                  const costVal = p.electricityCost || (Number(v) * (activeElectRate || 10.893945));
                                                                   return [
                                                                       <div key="monthly_el_tt" className="space-y-0.5">
                                                                           <div>⚡ Grid Load: <b>{fmtNum(v)} kWh</b></div>
