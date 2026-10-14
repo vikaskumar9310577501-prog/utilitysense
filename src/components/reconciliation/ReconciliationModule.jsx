@@ -397,19 +397,6 @@ export default function ReconciliationModule({
             isFinancial: true
         },
         {
-            id: 'elect_kwh',
-            particulars: 'KWH Electricity Consumption',
-            detail: solarExportUnits > 0
-                ? `MSEDCL Net Billed (${billUnitsKwh?.toLocaleString()} kWh) vs Software Net (Gross ${sysGrossKwh?.toLocaleString()} − Export Credit ${solarExportUnits?.toLocaleString()})`
-                : 'Page 2 Total Consumption KWH vs Software Monthly KWH',
-            billVal: fmtUnits(billUnitsKwh, 'kWh'),
-            sysVal: fmtUnits(sysNetKwh, 'kWh'),
-            variance: fmtVariance(varUnitsKwh, 'kWh', false, billUnitsKwh),
-            rawVariance: varUnitsKwh,
-            isComparable: true,
-            isFinancial: false
-        },
-        {
             id: 'elect_kvah',
             particulars: 'KVAH Electricity Consumption',
             detail: billUnitsKvah && billUnitsKwh
@@ -419,6 +406,19 @@ export default function ReconciliationModule({
             sysVal: fmtUnits(sysUnitsKvah, 'units'),
             variance: fmtVariance(varUnitsKvah, 'units', false, billUnitsKvah),
             rawVariance: varUnitsKvah,
+            isComparable: true,
+            isFinancial: false
+        },
+        {
+            id: 'elect_kwh',
+            particulars: 'KWH Electricity Consumption',
+            detail: solarExportUnits > 0
+                ? `MSEDCL Net Billed (${billUnitsKwh?.toLocaleString()} kWh) vs Software Net (Gross ${sysGrossKwh?.toLocaleString()} − Export Credit ${solarExportUnits?.toLocaleString()})`
+                : 'Page 2 Total Consumption KWH vs Software Monthly KWH',
+            billVal: fmtUnits(billUnitsKwh, 'kWh'),
+            sysVal: fmtUnits(sysNetKwh, 'kWh'),
+            variance: fmtVariance(varUnitsKwh, 'kWh', false, billUnitsKwh),
+            rawVariance: varUnitsKwh,
             isComparable: true,
             isFinancial: false
         },
