@@ -313,7 +313,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
         // CALCULATION ENGINE FOR REDESIGNED DATA ENTRY
         // ----------------------------------------------------
         const DEFAULT_MF = 40;
-        const TARIFF_DEFAULTS = { electricity: 10.893945, solar: 10.893945, diesel: 90.62, water: 45, lpg: 85, png: 80, nitrogen: 50, oxygen: 60 };
+        const TARIFF_DEFAULTS = { electricity: 8.44, solar: 8.44, diesel: 90.62, water: 45, lpg: 85, png: 80, nitrogen: 50, oxygen: 60 };
 
         const CalculationEngine = {
             calculateMSEBUnits: (diff, factor = DEFAULT_MF) => diff * (Number(factor) || DEFAULT_MF),
@@ -5493,7 +5493,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             // ----------------------------------------------------
             // CALCULATING CHARTS DATA & METRICS
             // ----------------------------------------------------
-            const filteredEntries = useMemo(() => {
+            const allPlantEntries = useMemo(() => {
                 const plantLocationMap = {};
                 plants.forEach((p) => {
                     const loc = p.location;
@@ -5583,10 +5583,15 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         filterLoc.includes(entryLoc) ||
                         (filterLoc.includes("roork") && entryLoc.includes("roork"));
 
-                    const matchesDate = e.date >= filters.startDate && e.date <= filters.endDate;
-                    return matchesPlant && matchesDept && matchesLocation && matchesDate;
+                    return matchesPlant && matchesDept && matchesLocation;
                 });
-            }, [dailyEntries, filters, allowedPlants, plants, departments, activeTab, canAccessMolding, currentUser, userHasSpecificDepts, userSpecificDepts]);
+            }, [dailyEntries, filters.plant, filters.department, filters.location, allowedPlants, plants, departments, activeTab, canAccessMolding, currentUser, userHasSpecificDepts, userSpecificDepts]);
+
+            const filteredEntries = useMemo(() => {
+                return allPlantEntries.filter((e) => {
+                    return e.date >= filters.startDate && e.date <= filters.endDate;
+                });
+            }, [allPlantEntries, filters.startDate, filters.endDate]);
 
             // Unique locations derived from plants master data (used for Reports location filter)
             const reportLocations = useMemo(() => {
@@ -5801,7 +5806,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             }, [filteredEntries]);
 
             const aggregatedCosts = useMemo(() => {
-                const electRate = Number(activeElectRate) || 10.89;
+                const electRate = Number(activeElectRate) || 8.44;
                 const solarRate = Number(activeSolarRate) || electRate;
                 const dieselRate = Number(activeDieselRate) || 90.62;
                 const pngRate = Number(activePngRate) || 80;
@@ -6261,33 +6266,43 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 return Number(aggregatedCosts.waterCost) || 0;
             }, [aggregatedCosts.waterCost]);
 
-            const monthlyTrendsData = useMemo(() => {
+            const allMonthlyTrendsData = useMemo(() => {
                 const map = {};
                 const pngRate = Number(activePngRate) || 80;
                 const n2Rate = Number(activeNitrogenRate) || 50;
                 const o2Rate = Number(activeOxygenRate) || 60;
                 const waterRate = Number(activeWaterRate) || 45;
-                filteredEntries.forEach(e => {
-                    const parts = e.date.split("-");
+                allPlantEntries.forEach(e => {
+                    const parts = (e.date || "").split("-");
+                    if (parts.length < 2) return;
                     const key = `${parts[0]}-${parts[1]}`; // YYYY-MM
                     if (!map[key]) {
-                        map[key] = { period: key, electricity: 0, solarGen: 0, totalConsumption: 0, diesel: 0, water: 0, waterCost: 0, cost: 0, png: 0, pngCost: 0, nitrogen: 0, nitrogenCost: 0, oxygen: 0, oxygenCost: 0, air: 0, lpg: 0, wasteHaz: 0, wasteNHaz: 0, wasteRec: 0, production: 0, odu: 0, idu: 0 };
+                        map[key] = { period: key, electricity: 0, electricityCost: 0, solarGen: 0, solarCost: 0, totalConsumption: 0, diesel: 0, dieselCost: 0, water: 0, waterCost: 0, cost: 0, png: 0, pngCost: 0, nitrogen: 0, nitrogenCost: 0, oxygen: 0, oxygenCost: 0, air: 0, lpg: 0, wasteHaz: 0, wasteNHaz: 0, wasteRec: 0, production: 0, odu: 0, idu: 0 };
                     }
                     const pngVal = Number(e.png_consumption) || (e.png_closing && e.png_opening ? Math.max(0, Number(e.png_closing) - Number(e.png_opening)) : 0);
                     const n2Val = Number(e.nitrogen_consumption) || (e.nitrogen_closing && e.nitrogen_opening ? Math.max(0, Number(e.nitrogen_closing) - Number(e.nitrogen_opening)) : 0);
                     const o2Val = Number(e.oxygen_consumption) || (e.oxygen_closing && e.oxygen_opening ? Math.max(0, Number(e.oxygen_closing) - Number(e.oxygen_opening)) : 0);
                     const wVal = Number(e.water_consumption) || (e.water_closing && e.water_opening ? Math.max(0, Number(e.water_closing) - Number(e.water_opening)) : (Number(e.water) || 0));
 
-                    map[key].electricity += Number(e.electricity_consumption) || 0;
-                    map[key].electricityCost = (map[key].electricityCost || 0) + (Number(e.electricity_cost) || 0);
-                    map[key].solarGen += Number(e.solar_generated) || 0;
-                    map[key].solarCost = (map[key].solarCost || 0) + (Number(e.solar_cost) || 0);
+                    const elVal = Number(e.electricity_consumption) || 0;
+                    const elCost = Number(e.electricity_cost) || 0;
+                    const solVal = Number(e.solar_generated) || 0;
+                    const solCost = Number(e.solar_cost) || 0;
+                    const dslVal = Number(e.diesel_used) || 0;
+                    const dslCost = Number(e.diesel_cost) || 0;
+                    const lpgCost = Number(e.lpg_cost) || 0;
+                    const totC = Number(e.total_cost) || (elCost + solCost + dslCost + lpgCost);
+
+                    map[key].electricity += elVal;
+                    map[key].electricityCost += elCost;
+                    map[key].solarGen += solVal;
+                    map[key].solarCost += solCost;
                     map[key].totalConsumption = (map[key].electricity || 0) + (map[key].solarGen || 0);
-                    map[key].diesel += Number(e.diesel_used) || 0;
-                    map[key].dieselCost = (map[key].dieselCost || 0) + (Number(e.diesel_cost) || 0);
+                    map[key].diesel += dslVal;
+                    map[key].dieselCost += dslCost;
                     map[key].water += wVal;
                     map[key].waterCost += Number(e.water_cost) || (wVal * waterRate);
-                    map[key].cost += (Number(e.electricity_cost) || 0) + (Number(e.diesel_cost) || 0) + (Number(e.lpg_cost) || 0);
+                    map[key].cost += totC;
 
                     map[key].png += pngVal;
                     map[key].pngCost += Number(e.png_cost) || (pngVal * pngRate);
@@ -6314,16 +6329,23 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         label: Number.isNaN(dt.getTime()) ? d.period : `${monthShort} '${yrShort}`
                     };
                 });
-            }, [filteredEntries, activePngRate, activeNitrogenRate, activeOxygenRate, activeWaterRate]);
+            }, [allPlantEntries, activePngRate, activeNitrogenRate, activeOxygenRate, activeWaterRate]);
+
+            // Monthly trends data filtered to the active report/date range (used for reports and table views)
+            const monthlyTrendsData = useMemo(() => {
+                const startYm = (filters.startDate || "").slice(0, 7);
+                const endYm = (filters.endDate || "").slice(0, 7);
+                return allMonthlyTrendsData.filter(m => (!startYm || m.period >= startYm) && (!endYm || m.period <= endYm));
+            }, [allMonthlyTrendsData, filters.startDate, filters.endDate]);
 
             // Monthly trends data (strictly returns the last 5 consecutive months up to the current/filtered date)
             const last5MonthsTrendsData = useMemo(() => {
                 const byPeriod = {};
-                monthlyTrendsData.forEach(d => { byPeriod[d.period] = d; });
+                allMonthlyTrendsData.forEach(d => { byPeriod[d.period] = d; });
 
                 let endRaw = filters.endDate || new Date().toISOString().slice(0, 10);
-                if (monthlyTrendsData.length) {
-                    const latest = monthlyTrendsData[monthlyTrendsData.length - 1].period; // YYYY-MM
+                if (allMonthlyTrendsData.length) {
+                    const latest = allMonthlyTrendsData[allMonthlyTrendsData.length - 1].period; // YYYY-MM
                     const endYm = String(endRaw).slice(0, 7);
                     if (latest && latest < endYm) endRaw = latest + "-01";
                 }
@@ -6371,7 +6393,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     });
                 }
                 return out;
-            }, [monthlyTrendsData, filters.endDate]);
+            }, [allMonthlyTrendsData, filters.endDate]);
 
             const yearlyTrendsData = useMemo(() => {
                 const map = {};
@@ -6379,21 +6401,33 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                 const n2Rate = Number(activeNitrogenRate) || 50;
                 const o2Rate = Number(activeOxygenRate) || 60;
                 const waterRate = Number(activeWaterRate) || 45;
-                filteredEntries.forEach(e => {
+                allPlantEntries.forEach(e => {
                     const fy = getFinancialYearKey(e.date);
                     if (!map[fy]) {
-                        map[fy] = { period: fy, electricity: 0, solarGen: 0, diesel: 0, water: 0, cost: 0, png: 0, pngCost: 0, nitrogen: 0, nitrogenCost: 0, oxygen: 0, oxygenCost: 0, production: 0, odu: 0, idu: 0 };
+                        map[fy] = { period: fy, electricity: 0, electricityCost: 0, solarGen: 0, solarCost: 0, diesel: 0, dieselCost: 0, water: 0, cost: 0, png: 0, pngCost: 0, nitrogen: 0, nitrogenCost: 0, oxygen: 0, oxygenCost: 0, production: 0, odu: 0, idu: 0 };
                     }
                     const pngVal = Number(e.png_consumption) || (e.png_closing && e.png_opening ? Math.max(0, Number(e.png_closing) - Number(e.png_opening)) : 0);
                     const n2Val = Number(e.nitrogen_consumption) || (e.nitrogen_closing && e.nitrogen_opening ? Math.max(0, Number(e.nitrogen_closing) - Number(e.nitrogen_opening)) : 0);
                     const o2Val = Number(e.oxygen_consumption) || (e.oxygen_closing && e.oxygen_opening ? Math.max(0, Number(e.oxygen_closing) - Number(e.oxygen_opening)) : 0);
                     const wVal = Number(e.water_consumption) || (e.water_closing && e.water_opening ? Math.max(0, Number(e.water_closing) - Number(e.water_opening)) : (Number(e.water) || 0));
 
-                    map[fy].electricity += Number(e.electricity_consumption) || 0;
-                    map[fy].solarGen += Number(e.solar_generated) || 0;
-                    map[fy].diesel += Number(e.diesel_used) || 0;
+                    const elVal = Number(e.electricity_consumption) || 0;
+                    const elCost = Number(e.electricity_cost) || 0;
+                    const solVal = Number(e.solar_generated) || 0;
+                    const solCost = Number(e.solar_cost) || 0;
+                    const dslVal = Number(e.diesel_used) || 0;
+                    const dslCost = Number(e.diesel_cost) || 0;
+                    const lpgCost = Number(e.lpg_cost) || 0;
+                    const totC = Number(e.total_cost) || (elCost + solCost + dslCost + lpgCost);
+
+                    map[fy].electricity += elVal;
+                    map[fy].electricityCost += elCost;
+                    map[fy].solarGen += solVal;
+                    map[fy].solarCost += solCost;
+                    map[fy].diesel += dslVal;
+                    map[fy].dieselCost += dslCost;
                     map[fy].water += wVal;
-                    map[fy].cost += (Number(e.electricity_cost) || 0) + (Number(e.diesel_cost) || 0) + (Number(e.lpg_cost) || 0);
+                    map[fy].cost += totC;
 
                     map[fy].png += pngVal;
                     map[fy].pngCost += Number(e.png_cost) || (pngVal * pngRate);
@@ -6406,7 +6440,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     map[fy].idu += Number(e.idu) || 0;
                 });
                 return Object.values(map).sort((a, b) => a.period.localeCompare(b.period));
-            }, [filteredEntries, activePngRate, activeNitrogenRate, activeOxygenRate, activeWaterRate]);
+            }, [allPlantEntries, activePngRate, activeNitrogenRate, activeOxygenRate, activeWaterRate]);
 
             // Last 4 consecutive Financial Years (e.g. FY 23-24, FY 24-25, FY 25-26, FY 26-27)
             const last4YearsTrendsData = useMemo(() => {
@@ -6424,8 +6458,11 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         period: fyKey,
                         label: `FY ${String(fyStart).slice(-2)}-${String(fyStart + 1).slice(-2)}`,
                         electricity: src ? Number(src.electricity) || 0 : 0,
+                        electricityCost: src ? Number(src.electricityCost) || 0 : 0,
                         solarGen: src ? Number(src.solarGen) || 0 : 0,
+                        solarCost: src ? Number(src.solarCost) || 0 : 0,
                         diesel: src ? Number(src.diesel) || 0 : 0,
+                        dieselCost: src ? Number(src.dieselCost) || 0 : 0,
                         water: src ? Number(src.water) || 0 : 0,
                         cost: src ? Number(src.cost) || 0 : 0,
                         png: src ? Number(src.png) || 0 : 0,
@@ -6440,6 +6477,20 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     });
                 }
                 return out;
+            }, [yearlyTrendsData, filters.endDate]);
+
+            // All available Financial Years (for dropdown selector)
+            const availableFinancialYears = useMemo(() => {
+                const fySet = new Set();
+                const endFyStart = getFinancialYearStart(filters.endDate || new Date().toISOString().slice(0, 10));
+                for (let i = 3; i >= 0; i--) {
+                    const fyStart = endFyStart - i;
+                    fySet.add(`FY ${fyStart}-${fyStart + 1}`);
+                }
+                yearlyTrendsData.forEach(d => {
+                    if (d.period) fySet.add(d.period);
+                });
+                return Array.from(fySet).sort().reverse();
             }, [yearlyTrendsData, filters.endDate]);
 
             // ODU / IDU from the OneDrive MIS sheets (NGM_MIS + Backup PGTL), via production_summary.
@@ -6580,7 +6631,9 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             const openFyAnalysisModal = (fyKey = "", defaultMetric = "electricity") => {
                 let targetFy = fyKey;
                 if (!targetFy) {
-                    targetFy = last4YearsTrendsData[last4YearsTrendsData.length - 1]?.period || "FY 2025-2026";
+                    targetFy = (availableFinancialYears && availableFinancialYears.length > 0)
+                        ? availableFinancialYears[0]
+                        : (last4YearsTrendsData[last4YearsTrendsData.length - 1]?.period || "FY 2025-2026");
                 }
                 setSelectedFyForAnalysis(targetFy);
                 setSelectedFyMetric(defaultMetric);
@@ -6614,11 +6667,12 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
 
                 return monthsDef.map(m => {
                     const ymPrefix = `${m.year}-${String(m.monthNum).padStart(2, '0')}`;
-                    const monthEntries = filteredEntries.filter(e => (e.date || "").startsWith(ymPrefix));
+                    const monthEntries = allPlantEntries.filter(e => (e.date || "").startsWith(ymPrefix));
 
                     let electricity = 0;
                     let electricityCost = 0;
                     let solarGen = 0;
+                    let solarCost = 0;
                     let diesel = 0;
                     let dieselCost = 0;
                     let totalCost = 0;
@@ -6627,13 +6681,15 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         const elUnits = Number(e.electricity_consumption) || 0;
                         const elCost = Number(e.electricity_cost) || 0;
                         const sol = Number(e.solar_generated) || 0;
+                        const solCost = Number(e.solar_cost) || 0;
                         const dsl = Number(e.diesel_used) || 0;
                         const dslCost = Number(e.diesel_cost) || 0;
-                        const totC = Number(e.total_cost) || (elCost + dslCost);
+                        const totC = Number(e.total_cost) || (elCost + solCost + dslCost);
 
                         electricity += elUnits;
                         electricityCost += elCost;
                         solarGen += sol;
+                        solarCost += solCost;
                         diesel += dsl;
                         dieselCost += dslCost;
                         totalCost += totC;
@@ -6649,12 +6705,13 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         electricityCost,
                         unitRate,
                         solarGen,
+                        solarCost,
                         diesel,
                         dieselCost,
                         totalCost
                     };
                 });
-            }, [selectedFyForAnalysis, filteredEntries]);
+            }, [selectedFyForAnalysis, allPlantEntries]);
 
             // Export FY Analysis Breakdown to Excel
             const exportFyAnalysisXLSX = () => {
@@ -6667,13 +6724,14 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         "Effective Rate (INR/kWh)": Math.round(r.unitRate * 100) / 100,
                         "Electricity Cost (INR)": r.electricityCost,
                         "Solar Gen (kWh)": r.solarGen,
+                        "Solar Cost (INR)": r.solarCost || 0,
                         "Diesel Used (L)": r.diesel,
                         "Total Utility Cost (INR)": r.totalCost
                     }));
 
                     const ws = XLSX.utils.json_to_sheet(tableData);
                     ws['!cols'] = [
-                        { wch: 10 }, { wch: 16 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 24 }
+                        { wch: 10 }, { wch: 16 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 24 }
                     ];
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, "FY_Monthly_Analysis");
@@ -6688,7 +6746,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
             // Power Factor (PF) Analytics - Cos φ & APFC performance
             const powerFactorTrendsData = useMemo(() => {
                 return last5MonthsTrendsData.map((m, idx) => {
-                    const monthEntries = filteredEntries.filter(e => (e.date || "").startsWith(m.period));
+                    const monthEntries = allPlantEntries.filter(e => (e.date || "").startsWith(m.period));
                     const explicitPfs = monthEntries.map(e => Number(e.power_factor)).filter(v => v > 0 && v <= 1.0);
 
                     let pfVal = 0;
@@ -6710,7 +6768,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                         incentive: pfVal >= 0.98 ? "Rebate Tier (+2.5%)" : (pfVal >= 0.95 ? "Normal" : "Penalty Risk")
                     };
                 });
-            }, [last5MonthsTrendsData, filteredEntries, filters.plant]);
+            }, [last5MonthsTrendsData, allPlantEntries, filters.plant]);
 
             const avgPowerFactor = useMemo(() => {
                 const active = powerFactorTrendsData.filter(d => d.pf > 0);
@@ -7156,8 +7214,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     plantFilterMeta?.name ||
                     (targetPlant !== "all" ? targetPlant : finalRows.length === 1 ? resolvePlantMeta(finalRows[0].plant).name : "All Plants");
 
-                const electRate = Math.round((Number(activeElectRate) || 10.89) * 100) / 100;
-                const solarRate = Number(activeSolarRate) || 10.89;
+                const electRate = Math.round((Number(activeElectRate) || 8.44) * 100) / 100;
+                const solarRate = Number(activeSolarRate) || 8.44;
                 const dieselRate = Number(activeDieselRate) || 90.62;
 
                 const primaryLoc = locationLabel !== "All Locations"
@@ -7324,7 +7382,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                     endDate
                 });
                 if (!payload || !payload.list || payload.list.length === 0) {
-                    setToast({ type: "error", message: "Print ke liye koi entry nahi mili. Filters check karo." });
+                    setToast({ type: "error", message: "No entries found for print. Please check your filter settings." });
                     return;
                 }
                 setPlantPrintPayload(payload);
@@ -7607,7 +7665,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                                   labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
                                                                   formatter={(v, name, item) => {
                                                                       const p = item?.payload || {};
-                                                                      const costVal = p.electricityCost || (Number(v) * (activeElectRate || 10.893945));
+                                                                      const rate = Number(activeElectRate) || 8.44;
+                                                                      const costVal = p.electricityCost || (Number(v) * rate);
                                                                       return [
                                                                           <div key="daily_el_tt" className="space-y-0.5">
                                                                               <div>⚡ Grid Load: <b>{fmtNum(v)} kWh</b></div>
@@ -7632,7 +7691,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                       <p className="text-[9px] text-slate-400">X: month · Y: grid electricity (kWh). 1 L = 1 lakh kWh, 1 Cr = 1 crore kWh</p>
                                                   </div>
                                                   <ResponsiveContainer width="100%" height={255}>
-                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 28, right: 20, left: -4, bottom: 4 }}>
+                                                      <AreaChart data={last5MonthsTrendsData} margin={{ top: 28, right: 20, left: 10, bottom: 4 }}>
                                                           <defs>
                                                               <linearGradient id="colorElectM" x1="0" y1="0" x2="0" y2="1">
                                                                   <stop offset="0%" stopColor={CHART.monthlyElect} stopOpacity={0.45}/>
@@ -7640,18 +7699,19 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                               </linearGradient>
                                                           </defs>
                                                           <CartesianGrid stroke="#e2e8f0" strokeDasharray="0" vertical={false} />
-                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 4, right: 8 }} />
-                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={40} tickMargin={2} domain={[0, 'auto']} tickFormatter={fmtQtyAxis} />
+                                                          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} interval={0} axisLine={false} tickLine={false} padding={{ left: 24, right: 16 }} />
+                                                          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} width={42} tickMargin={4} domain={[0, (dataMax) => Math.ceil((dataMax * 1.15) / 10000) * 10000]} tickFormatter={fmtQtyAxis} />
                                                           <Tooltip
                                                               contentStyle={{ fontSize: 10, borderRadius: 10, background: 'var(--tooltip-bg)', border: '1px solid var(--border)', color: 'var(--text-body)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                                                               labelStyle={{ fontWeight: 'bold', color: 'var(--text-heading)', marginBottom: 4 }}
                                                               formatter={(v, name, item) => {
                                                                   const p = item?.payload || {};
-                                                                  const costVal = p.electricityCost || (Number(v) * (activeElectRate || 10.893945));
+                                                                  const rate = Number(activeElectRate) || 8.44;
+                                                                  const costVal = p.electricityCost || (Number(v) * rate);
                                                                   return [
                                                                       <div key="monthly_el_tt" className="space-y-0.5">
                                                                           <div>⚡ Grid Load: <b>{fmtNum(v)} kWh</b></div>
-                                                                          <div className="text-emerald-600 dark:text-emerald-400">💰 Cost: <b>{fmtINR(costVal)}</b></div>
+                                                                          <div className="text-emerald-600 dark:text-emerald-400">💰 Cost: <b>{fmtINR(costVal)}</b> <span className="text-[9px] text-slate-400 font-normal">(@ ₹{rate.toFixed(2)}/unit)</span></div>
                                                                       </div>,
                                                                       ""
                                                                   ];
@@ -8715,7 +8775,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                     <span className="material-symbols-outlined text-[18px]">description</span>
                                 </button>
 
-                                <button type="button" onClick={() => setActiveTab("reconciliation")} className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${activeTab === 'reconciliation' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white font-extrabold' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Utility Bill Audit & Reconciliation">
+                                <button type="button" onClick={() => setActiveTab("reconciliation")} className={`h-[28px] px-2.5 rounded-full transition flex items-center gap-1 cursor-pointer border-none shrink-0 ${activeTab === 'reconciliation' ? 'bg-white text-[#0284c7] shadow-sm dark:bg-slate-700 dark:text-white font-extrabold' : 'bg-transparent text-slate-500 hover:text-slate-700'}`} title="Utility Bill Audit">
                                     <span className="material-symbols-outlined text-[17px]">receipt_long</span>
                                     <span className="text-[10px] uppercase tracking-wider font-extrabold hidden sm:inline">Bill Audit</span>
                                 </button>
@@ -10616,7 +10676,7 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                             </div>
                                         </div>
 
-                                        {/* Section 3: Solar — Previous show-only; Daily × ₹10.89 */}
+                                        {/* Section 3: Solar — Daily Reading × ₹8.44 */}
                                         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                                             <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-amber-50/50">
                                                 <span className="material-symbols-outlined text-[16px] text-amber-600">solar_power</span>
@@ -12908,8 +12968,8 @@ const { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContain
                                                     onChange={(e) => setSelectedFyForAnalysis(e.target.value)}
                                                     className="h-9 rounded-lg border border-slate-300 dark:border-slate-700 px-3 bg-white dark:bg-[#121a29] text-slate-800 dark:text-slate-100 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-sky-500/30"
                                                 >
-                                                    {last4YearsTrendsData.map(d => (
-                                                        <option key={d.period} value={d.period}>{d.period}</option>
+                                                    {availableFinancialYears.map(fy => (
+                                                        <option key={fy} value={fy}>{fy}</option>
                                                     ))}
                                                 </select>
                                             </div>

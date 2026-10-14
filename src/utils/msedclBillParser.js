@@ -95,9 +95,15 @@ export function parseMsedclBillText(rawText) {
         solarCapacity: null,
         solarMeterReading: null,
         solarGenMeterConsumption: null,
+        solarGenOpening: null,
+        solarGenClosing: null,
+        solarGenDiff: null,
+        solarGenMf: null,
 
         // Financial & Cost Breakdown
         energyCharges: null,
+        energyTariffRate: null,
+        gridSupportTariffRate: null,
         demandCharges: null,
         excessDemandCharges: null,
         todCharges: null,
@@ -177,6 +183,7 @@ export function parseMsedclBillText(rawText) {
 
     // 4. Financial: Total Payable Bill Amount & Current Bill
     const curBillMatch = clean.match(/TOTAL CURRENT BILL(?: AS PER TARIFF)?\s*(\d+(?:\.\d+)?)/i) ||
+                         clean.match(/(\d{6,9}\.\d{2})\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+Tax on Sale/i) ||
                          clean.match(/Current Bill Amount\s*[:=]?\s*Rs\.?\s*(\d+(?:\.\d+)?)/i);
     if (curBillMatch) res.currentBillAmount = Number(curBillMatch[1]);
 
@@ -185,6 +192,9 @@ export function parseMsedclBillText(rawText) {
                      clean.match(/Net Payable Amount\s*[:=]?\s*Rs\.?\s*(\d+(?:\.\d+)?)/i) ||
                      curBillMatch;
     if (totMatch) res.totalBillAmount = Number(totMatch[1]);
+    if (res.currentBillAmount === null && res.totalBillAmount !== null) {
+        res.currentBillAmount = res.totalBillAmount;
+    }
 
     // 5. Units (kVAh and kWh)
     const kvahMatch = clean.match(/KVAH\s*(\d+(?:\.\d+)?)/i) || 
@@ -192,62 +202,89 @@ export function parseMsedclBillText(rawText) {
                       clean.match(/Industrial\s*(\d+)\s*8\.44/i);
     if (kvahMatch) res.billedUnitsKvah = Number(kvahMatch[1]);
 
-    const kwhMatch = clean.match(/Total Consumption\s*(\d+(?:\.\d+)?)/i) || 
-                     clean.match(/Net Consumption\s*(\d+(?:\.\d+)?)/i) ||
-                     clean.match(/Billed Units\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
-                     clean.match(/Units Billed\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
-                     clean.match(/Total Billed Units\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
-                     clean.match(/Net Billed Units\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
-                     clean.match(/Active Consumption\s*(\d+(?:\.\d+)?)/i) ||
-                     clean.match(/Consumption\s*\(?KWH\)?\s*[:\s]*(\d+(?:\.\d+)?)/i);
-    if (kwhMatch) {
-        res.billedUnitsKwh = Number(kwhMatch[1]);
-    } else if (res.billedUnitsKvah !== null) {
-        // In Maharashtra HT industrial bills, energy charges are billed directly on kVAh
-        res.billedUnitsKwh = res.billedUnitsKvah;
+    // High-Precision HT Consumption & Meter Reading Table Check (Page 2 MSEDCL Format):
+    // Format: KWH <closing> <opening> <diff> <mf> <consumption> <lt> <solarAdj> <assessed> <totalConsumption>
+    const htKwhTableMatch = clean.match(/KWH\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)/i);
+    if (htKwhTableMatch) {
+        res.closingMeter = Number(htKwhTableMatch[1]);
+        res.openingMeter = Number(htKwhTableMatch[2]);
+        res.meterDifference = Number(htKwhTableMatch[3]);
+        res.multiplyingFactor = Number(htKwhTableMatch[4]);
+        res.grossUnitsKwh = Number(htKwhTableMatch[5]);
+        const solAdjVal = Math.abs(Number(htKwhTableMatch[7]));
+        if (solAdjVal > 0) {
+            res.solarAdjUnits = solAdjVal;
+            if (res.solarExportUnits === null) res.solarExportUnits = solAdjVal;
+        }
+        res.billedUnitsKwh = Number(htKwhTableMatch[9]);
     }
 
-    const grossMatch = clean.match(/Gross Units\s*(\d+(?:\.\d+)?)/i) || 
-                       clean.match(/Gross Consumption\s*(\d+(?:\.\d+)?)/i) ||
-                       clean.match(/Consumption\s*(\d+(?:\.\d+)?)\s*(?:L\.T|RKVAH)/i) || 
-                       clean.match(/Consumption\s*(\d{4,8}\.\d+)/i);
-    if (grossMatch) {
-        res.grossUnitsKwh = Number(grossMatch[1]);
-    } else if (res.billedUnitsKwh !== null) {
-        res.grossUnitsKwh = res.billedUnitsKwh;
+    if (res.billedUnitsKwh === null) {
+        const kwhMatch = clean.match(/Total Consumption\s*(\d+(?:\.\d+)?)/i) || 
+                         clean.match(/Net Consumption\s*(\d+(?:\.\d+)?)/i) ||
+                         clean.match(/Billed Units\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
+                         clean.match(/Units Billed\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
+                         clean.match(/Total Billed Units\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
+                         clean.match(/Net Billed Units\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
+                         clean.match(/Active Consumption\s*(\d+(?:\.\d+)?)/i) ||
+                         clean.match(/Consumption\s*\(?KWH\)?\s*[:\s]*(\d+(?:\.\d+)?)/i);
+        if (kwhMatch) {
+            res.billedUnitsKwh = Number(kwhMatch[1]);
+        } else if (res.billedUnitsKvah !== null) {
+            // In Maharashtra HT industrial bills, energy charges are billed directly on kVAh
+            res.billedUnitsKwh = res.billedUnitsKvah;
+        }
+    }
+
+    if (res.grossUnitsKwh === null) {
+        const grossMatch = clean.match(/Gross Units\s*(\d+(?:\.\d+)?)/i) || 
+                           clean.match(/Gross Consumption\s*(\d+(?:\.\d+)?)/i) ||
+                           clean.match(/Consumption\s*(\d+(?:\.\d+)?)\s*(?:L\.T|RKVAH)/i) || 
+                           clean.match(/Consumption\s*(\d{4,8}\.\d+)/i);
+        if (grossMatch) {
+            res.grossUnitsKwh = Number(grossMatch[1]);
+        } else if (res.billedUnitsKwh !== null) {
+            res.grossUnitsKwh = res.billedUnitsKwh;
+        }
     }
 
     // Meter Readings & Multiplying Factor
     // 1. Current / Closing Reading
-    const curRead = clean.match(/Current\s*(?:Reading|Rdg)?\s*[:\s]*\d{0,2}[-/.]?\d{0,2}[-/.]?\d{0,4}\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
-                    clean.match(/Current\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
-                    clean.match(/Closing\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
-                    clean.match(/Present\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
-                    clean.match(/Current\s*\d{2}[-/.]\d{2}[-/.]\d{2,4}\s*(\d+(?:\.\d+)?)/i);
-    if (curRead) res.closingMeter = Number(curRead[1]);
+    if (res.closingMeter === null) {
+        const curRead = clean.match(/Current\s*(?:Reading|Rdg)?\s*[:\s]*\d{0,2}[-/.]?\d{0,2}[-/.]?\d{0,4}\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
+                        clean.match(/Current\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
+                        clean.match(/Closing\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
+                        clean.match(/Present\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
+                        clean.match(/Current\s*\d{2}[-/.]\d{2}[-/.]\d{2,4}\s*(\d+(?:\.\d+)?)/i);
+        if (curRead) res.closingMeter = Number(curRead[1]);
+    }
 
     // 2. Previous / Opening Reading
-    const prevRead = clean.match(/Previous\s*(?:Reading|Rdg)?\s*[:\s]*\d{0,2}[-/.]?\d{0,2}[-/.]?\d{0,4}\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
-                     clean.match(/Previous\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
-                     clean.match(/Opening\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
-                     clean.match(/Past\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
-                     clean.match(/Previous\s*\d{2}[-/.]\d{2}[-/.]\d{2,4}\s*(\d+(?:\.\d+)?)/i);
-    if (prevRead) res.openingMeter = Number(prevRead[1]);
+    if (res.openingMeter === null) {
+        const prevRead = clean.match(/Previous\s*(?:Reading|Rdg)?\s*[:\s]*\d{0,2}[-/.]?\d{0,2}[-/.]?\d{0,4}\s*[:\s]*(\d+(?:\.\d+)?)/i) ||
+                         clean.match(/Previous\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
+                         clean.match(/Opening\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
+                         clean.match(/Past\s*(?:Reading|Rdg)?\s*[:\s]*(\d{4,8}(?:\.\d+)?)/i) ||
+                         clean.match(/Previous\s*\d{2}[-/.]\d{2}[-/.]\d{2,4}\s*(\d+(?:\.\d+)?)/i);
+        if (prevRead) res.openingMeter = Number(prevRead[1]);
+    }
 
     // 3. Multi-column meter reading rows: KWH <val1> <val2> <val3>
-    const kwhRow = clean.match(/KWH\s+(\d{3,8}(?:\.\d+)?)\s+(\d{3,8}(?:\.\d+)?)\s+(\d{3,8}(?:\.\d+)?)/i);
-    if (kwhRow) {
-        const v1 = Number(kwhRow[1]);
-        const v2 = Number(kwhRow[2]);
-        const v3 = Number(kwhRow[3]);
-        if (v1 > v2) {
-            if (res.closingMeter === null) res.closingMeter = v1;
-            if (res.openingMeter === null) res.openingMeter = v2;
-            if (res.meterDifference === null) res.meterDifference = v3;
-        } else if (v2 > v1) {
-            if (res.closingMeter === null) res.closingMeter = v2;
-            if (res.openingMeter === null) res.openingMeter = v1;
-            if (res.meterDifference === null) res.meterDifference = v3;
+    if (res.closingMeter === null || res.openingMeter === null || res.meterDifference === null) {
+        const kwhRow = clean.match(/KWH\s+(\d{3,8}(?:\.\d+)?)\s+(\d{3,8}(?:\.\d+)?)\s+(\d{3,8}(?:\.\d+)?)/i);
+        if (kwhRow) {
+            const v1 = Number(kwhRow[1]);
+            const v2 = Number(kwhRow[2]);
+            const v3 = Number(kwhRow[3]);
+            if (v1 > v2) {
+                if (res.closingMeter === null) res.closingMeter = v1;
+                if (res.openingMeter === null) res.openingMeter = v2;
+                if (res.meterDifference === null) res.meterDifference = v3;
+            } else if (v2 > v1) {
+                if (res.closingMeter === null) res.closingMeter = v2;
+                if (res.openingMeter === null) res.openingMeter = v1;
+                if (res.meterDifference === null) res.meterDifference = v3;
+            }
         }
     }
 
@@ -305,8 +342,18 @@ export function parseMsedclBillText(rawText) {
     const excDemChg = clean.match(/Excess Demand Charges?\s*(\d+(?:\.\d+)?)/i);
     if (excDemChg) res.excessDemandCharges = Number(excDemChg[1]);
 
-    const nrgChg = clean.match(/Energy Charges\s*(\d+(?:\.\d+)?)/i);
-    if (nrgChg) res.energyCharges = Number(nrgChg[1]);
+    // Energy Charges & Tariff Rate
+    const ecTableMatch = clean.match(/Industrial[\s\S]*?Rate\s*([\d.]+)[\s\S]*?Charges Rs\.?\s*(\d+(?:\.\d+)?)/i);
+    if (ecTableMatch) {
+        res.energyTariffRate = Number(ecTableMatch[1]);
+        res.energyCharges = Number(ecTableMatch[2]);
+    } else {
+        const nrgChg = clean.match(/Energy Charges\s*(\d+(?:\.\d+)?)/i) ||
+                       clean.match(/(\d+(?:\.\d+)?)\s*Energy Charges/i);
+        if (nrgChg) res.energyCharges = Number(nrgChg[1]);
+        const rateMatch = clean.match(/Rate\s*:\s*([\d.]+)/i) || clean.match(/Rate\s+([\d.]+)\s+Charges Rs/i);
+        if (rateMatch) res.energyTariffRate = Number(rateMatch[1]);
+    }
 
     const todChg = clean.match(/TOD Tariff EC\s*(\d+(?:\.\d+)?)/i);
     if (todChg) res.todCharges = Number(todChg[1]);
@@ -323,8 +370,13 @@ export function parseMsedclBillText(rawText) {
     const tosChg = clean.match(/Tax on Sale.*?Ps\.\/U\s*(\d+(?:\.\d+)?)/i);
     if (tosChg) res.taxOnSale = Number(tosChg[1]);
 
-    const gsChg = clean.match(/Grid Support Charge\s*(\d+(?:\.\d+)?)/i);
-    if (gsChg) res.gridSupportCharges = Number(gsChg[1]);
+    // Grid Support Charges
+    const gsChg = clean.match(/(\d+(?:\.\d+)?)\s*Grid Support Charge/i) ||
+                  clean.match(/Grid Support Charge\s*(\d+(?:\.\d+)?)/i);
+    if (gsChg) {
+        res.gridSupportCharges = Number(gsChg[1]);
+        res.gridSupportTariffRate = 1.42;
+    }
 
     // Subsidies, Discounts & Rebates
     const subMatch = clean.match(/Subsidy from Govt of Maharashtra.*?(\d+(?:\.\d+)?)/i);
@@ -341,8 +393,52 @@ export function parseMsedclBillText(rawText) {
     if (pfIncMatch) res.pfIncentive = Number(pfIncMatch[1]);
 
     // 8. Solar Net Metering Details
-    const solGen = clean.match(/Total Solar Generation Units\s*:\s*(\d+)/i) || clean.match(/TOD SOLAR GENERATION METER.*?(\d{3,7}\.\d+)/i);
-    if (solGen) res.solarGenUnits = Number(solGen[1]);
+    const totGen = clean.match(/Total Solar Generation Units\s*:\s*(\d+)/i) || clean.match(/TOD SOLAR GENERATION METER.*?(\d{3,7}\.\d+)/i);
+    if (totGen) res.solarGenUnits = Number(totGen[1]);
+
+    // Page 6 Solar Generation Meter readings
+    const solMeterMatch = clean.match(/TOD SOLAR GENERATION METER\s+([\w\-]+)\s+([^\n\r]+)/i);
+    if (solMeterMatch) {
+        const tokens = solMeterMatch[2].match(/\d+(?:\.\d+)?/g) || [];
+        const nums = tokens.map(Number).filter(n => n > 100);
+        const targetUnits = res.solarGenUnits || 0;
+        let matchedPair = null;
+
+        if (targetUnits > 0) {
+            for (let i = 0; i < nums.length; i++) {
+                for (let j = 0; j < nums.length; j++) {
+                    if (i !== j && nums[i] > nums[j]) {
+                        const diff = Number((nums[i] - nums[j]).toFixed(2));
+                        if (Math.abs(diff * 4 - targetUnits) < 2.5) {
+                            matchedPair = { closing: nums[i], opening: nums[j], diff };
+                            break;
+                        }
+                    }
+                }
+                if (matchedPair) break;
+            }
+        }
+
+        if (matchedPair) {
+            res.solarGenClosing = matchedPair.closing;
+            res.solarGenOpening = matchedPair.opening;
+            res.solarGenDiff = matchedPair.diff;
+            res.solarGenMf = 4.0;
+        } else {
+            const decReadings = tokens.filter(s => /^\d{5,8}\.\d{1,3}$/.test(s)).map(Number);
+            if (decReadings.length >= 2) {
+                const maxR = Math.max(decReadings[0], decReadings[1]);
+                const minR = Math.min(decReadings[0], decReadings[1]);
+                res.solarGenClosing = maxR;
+                res.solarGenOpening = minR;
+                res.solarGenDiff = Number((maxR - minR).toFixed(2));
+                res.solarGenMf = 4.0;
+                if (!res.solarGenUnits) {
+                    res.solarGenUnits = Number((res.solarGenDiff * res.solarGenMf).toFixed(0));
+                }
+            }
+        }
+    }
 
     const solAdj = clean.match(/Adjustment-Solar\s*(-?\d+(?:\.\d+)?)/i);
     if (solAdj) res.solarAdjUnits = Math.abs(Number(solAdj[1]));
